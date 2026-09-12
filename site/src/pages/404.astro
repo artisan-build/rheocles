@@ -1,0 +1,39 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Not found — Rheocles" description="Nothing at this path.">
+	<section class="wrap nf">
+		<p class="kicker">404</p>
+		<h1>Nothing at this path.</h1>
+		<p class="nf__lede">
+			Rheocles never guesses from a folder listing, and neither does this site. The page was
+			moved, or never existed; the manifest would have said which.
+		</p>
+		<p class="nf__links">
+			<a class="button button--primary" href="/">The front page</a>
+			<a class="button" href="/docs">The docs</a>
+		</p>
+	</section>
+</Base>
+
+<style>
+	.nf {
+		padding-block: 5rem 2rem;
+	}
+	.nf h1 {
+		font-size: clamp(2.2rem, 6vw, 3.6rem);
+		margin: 0.6rem 0 1.2rem;
+	}
+	.nf__lede {
+		font-size: 1.1rem;
+		max-width: 36rem;
+		color: var(--ink-soft);
+	}
+	.nf__links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-top: 1.6rem;
+	}
+</style>

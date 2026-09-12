@@ -15,7 +15,7 @@ const headings = [
 	...api.groups.map((g) => ({ depth: 2, slug: g.id, text: g.label })),
 	{ depth: 2, slug: 'event-types', text: 'Event types' },
 ];
-const draft = api.source === 'spec';
+const draft = api.source !== 'openapi';
 ---
 
 <Docs
@@ -24,7 +24,9 @@ const draft = api.source === 'spec';
 	description={
 		api.source === 'openapi'
 			? `Generated from docs/openapi.yaml, version ${api.version ?? ''}. CI validates the running daemon against the same file.`
-			: 'Every route, on both transports. Built from the spec’s endpoint table until docs/openapi.yaml lands; then generated from it.'
+			: api.source === 'merged'
+				? `Every route, on both transports. ${api.pinned} generated from docs/openapi.yaml ${api.version ? `(${api.version})` : ''}; ${api.planned} still only in the spec, marked planned.`
+				: 'Every route, on both transports. Built from the spec’s endpoint table until docs/openapi.yaml lands; then generated from it.'
 	}
 	draft={draft}
 	existing={existing}
@@ -36,27 +38,37 @@ const draft = api.source === 'spec';
 		<tbody>
 			<tr><td>HTTP + SSE</td><td><code>http://127.0.0.1:7447</code></td></tr>
 			<tr><td>WebSocket</td><td><code>ws://127.0.0.1:7448</code></td></tr>
-			<tr><td>Auth</td><td><code>Authorization: Bearer &lt;token&gt;</code> on every request, every transport</td></tr>
+			<tr><td>Auth</td><td><code>Authorization: Bearer &lt;token&gt;</code> on every HTTP request; <code>?access_token=</code> also accepted on <code>GET /events</code>; on the WebSocket, a first frame of <code>{`{ "auth": "<token>" }`}</code></td></tr>
 			<tr><td>Bodies</td><td>JSON in, JSON out; <code>Content-Type: application/json</code></td></tr>
 			<tr><td>Paths</td><td>every file path in every response is relative to <code>outputRoot</code> from <code>GET /</code></td></tr>
 			<tr><td>Times</td><td>host times are ISO 8601 UTC with milliseconds; <code>t</code> is seconds from the cue; <code>timecode</code> is <code>HH:MM:SS:FF</code></td></tr>
-			<tr><td>Absence</td><td>an unmeasured value is <code>null</code>, never <code>0</code></td></tr>
+			<tr><td>Absence</td><td>an unmeasurable value is absent, or <code>null</code> where the field is always present — never <code>0</code></td></tr>
 		</tbody>
 	</table>
 	<Code
-		code={`{ "error": "conflict",
-  "message": "destination ep12 already exists",
-  "status": 409 }`}
+		code={`{ "error": "destination ep12 already exists", "code": "conflict" }`}
 		lang="json"
-		title="the error shape"
+		title="the error shape — error for humans, code for programs"
 	/>
+	<table>
+		<thead><tr><th>status</th><th>code</th><th>when</th></tr></thead>
+		<tbody>
+			<tr><td><code>400</code></td><td><code>bad_request</code></td><td>malformed JSON, missing body, a frame without <code>method</code>/<code>path</code></td></tr>
+			<tr><td><code>401</code></td><td><code>unauthorized</code></td><td>no token, wrong token, WebSocket before the auth frame</td></tr>
+			<tr><td><code>404</code></td><td><code>not_found</code></td><td>no such route, stream or take</td></tr>
+			<tr><td><code>405</code></td><td><code>method_not_allowed</code></td><td>the path exists, the method does not</td></tr>
+			<tr><td><code>409</code></td><td><code>conflict</code></td><td>destination already exists; a take already active</td></tr>
+			<tr><td><code>500</code></td><td><code>internal</code></td><td>a handler threw</td></tr>
+			<tr><td><code>507</code></td><td><code>insufficient_storage</code></td><td>the disk pre-flight refused the take</td></tr>
+		</tbody>
+	</table>
 	{
 		draft && (
 			<Callout kind="note" title="Where this comes from">
-				This page is rendered from a hand-typed copy of the spec's endpoint table. When
-				<code>docs/openapi.yaml</code> has paths, the same page is generated from it and this
-				banner goes away. Status codes marked "to be confirmed" and the WebSocket envelope are
-				the reference's to pin.
+				Routes marked <b>pinned</b> are generated from <code>docs/openapi.yaml</code>, which CI
+				validates against the running daemon. Routes marked <b>planned</b> are from the spec's
+				endpoint table and change here before they change in the code; each becomes pinned as
+				the YAML gains it, and this banner goes when the last one does.
 			</Callout>
 		)
 	}
@@ -75,8 +87,9 @@ const draft = api.source === 'spec';
 
 	<h2 id="event-types">Event types</h2>
 	<p class="blurb">
-		Delivered on <code>GET /events</code> as SSE, with the type as the event name, and on the
-		WebSocket as <code>{`{ "event", "data" }`}</code> frames.
+		Delivered on <code>GET /events</code> as <code>data:</code> lines, and on the WebSocket as
+		objects with an <code>event</code> key and no <code>id</code>. Shapes are planned until the
+		YAML pins them.
 	</p>
 	<table>
 		<thead><tr><th>event</th><th>when</th><th>data</th></tr></thead>

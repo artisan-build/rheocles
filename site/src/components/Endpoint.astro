@@ -10,17 +10,26 @@ interface Props {
 const { endpoint: e } = Astro.props;
 const slug = `${e.method}-${e.path}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const responseLang = e.method === 'WS' || e.path === '/events' ? 'txt' : 'json';
+// Descriptions from the YAML use backticks for identifiers.
+const inline = (t: string) =>
+	t
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/`([^`]+)`/g, '<code>$1</code>');
 ---
 
 <section class="ep" id={slug}>
 	<h3 class="ep__head">
 		<span class:list={['ep__method', `ep__method--${e.method.toLowerCase()}`]}>{e.method}</span>
 		<code class="ep__path">{e.path}</code>
+		{e.pinned && <span class="ep__badge ep__badge--pinned">pinned</span>}
+		{e.planned && <span class="ep__badge ep__badge--planned">planned</span>}
 	</h3>
 	<div class="ep__grid">
 		<div class="ep__prose">
 			<p class="ep__summary">{e.summary}</p>
-			{e.description && <p class="ep__desc" set:html={e.description.replace(/`([^`]+)`/g, '<code>$1</code>')} />}
+			{e.description && <p class="ep__desc" set:html={inline(e.description)} />}
 			{
 				e.request && (
 					<table class="ep__fields">
@@ -30,7 +39,7 @@ const responseLang = e.method === 'WS' || e.path === '/events' ? 'txt' : 'json';
 								<tr>
 									<td><code>{f.name}</code>{f.required && <span class="req" title="required">*</span>}</td>
 									<td><code class="type">{f.type}</code></td>
-									<td>{f.note}</td>
+									<td set:html={inline(f.note)} />
 								</tr>
 							))}
 						</tbody>
@@ -53,6 +62,22 @@ const responseLang = e.method === 'WS' || e.path === '/events' ? 'txt' : 'json';
 			{e.ws && <Code code={e.ws} lang="json" title="over WebSocket" />}
 		</div>
 	</div>
+	{
+		e.responseFields && (
+			<table class="ep__fields ep__fields--response">
+				<thead><tr><th>response field</th><th>type</th><th></th></tr></thead>
+				<tbody>
+					{e.responseFields.map((f) => (
+						<tr>
+							<td><code>{f.name}</code>{f.required && <span class="req" title="always present">*</span>}</td>
+							<td><code class="type">{f.type}</code></td>
+							<td set:html={inline(f.note)} />
+						</tr>
+					))}
+				</tbody>
+			</table>
+		)
+	}
 </section>
 
 <style>
@@ -93,6 +118,31 @@ const responseLang = e.method === 'WS' || e.path === '/events' ? 'txt' : 'json';
 		background: transparent;
 		padding: 0;
 		font-size: 1em;
+	}
+	.ep__badge {
+		font-size: 0.62rem;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		padding: 0.2em 0.55em;
+		border-radius: 999px;
+		margin-left: 0.2rem;
+	}
+	.ep__badge--pinned {
+		color: var(--olive);
+		border: 1px solid var(--olive);
+	}
+	.ep__badge--planned {
+		color: var(--script);
+		border: 1px solid var(--limestone-line);
+	}
+	.ep__fields--response {
+		margin-top: 0.4rem;
+	}
+	.ep__fields--response td:nth-child(1) {
+		width: 30%;
+	}
+	.ep__fields--response td:nth-child(2) {
+		width: 26%;
 	}
 	.ep__grid {
 		display: grid;

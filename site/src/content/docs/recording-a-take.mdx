@@ -22,9 +22,9 @@ left to decide.
 
 ```json title="POST /takes → 201"
 { "id": "tk_7f3a", "state": "created",
-  "files": { "cam-1a2b": "ep12/cam-facetime.mov",
-             "mic-3c4d": "ep12/mic-sm7b.wav",
-             "dsp-5e6f": "ep12/display-prompter.mov" } }
+  "files": { "camera:0x2300000fd9009c": "ep12/cam-facetime.mov",
+             "microphone:Scarlett_2i2": "ep12/mic-sm7b.wav",
+             "display:56A96CFC-7F21": "ep12/display-prompter.mov" } }
 ```
 
 **Nothing is recording after create.** This is the call Pteroprompter makes to

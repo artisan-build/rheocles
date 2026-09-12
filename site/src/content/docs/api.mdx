@@ -24,10 +24,18 @@ dispatcher, two framings: anything possible on one is possible on the other,
 and both are up whenever the daemon is. The ports are chosen only to stay
 clear of Sonocles' 7357 and 7358 on the same machine.
 
-```js title="both, at once"
-const es = new EventSource('http://127.0.0.1:7447/events')   // browsers, curl, anything
-const ws = new WebSocket('ws://127.0.0.1:7448/')             // one socket, commands and events
+Both are up from the moment `rheocles-core` starts, before any stream is
+armed or any take exists.
+
+```json title="a WebSocket frame is the HTTP request, as an object"
+→ { "id": 7, "method": "GET", "path": "/", "query": {}, "body": null }
+← { "id": 7, "status": 200, "body": { "name": "Rheocles", … } }
 ```
+
+`id` is anything the client likes and is echoed back untouched; `method`,
+`path`, `query` and `body` are exactly the HTTP request's; `status` is the
+HTTP status the same command would have produced. Events arrive on the same
+socket as objects with an `event` key and no `id`.
 
 ## Authentication
 
@@ -57,12 +65,21 @@ on Bonjour, the capture box shows *Allow Len's MacBook?*, one click pins the
 certificate and issues a token. Sonocles is being retrofitted to the same
 shape; one pairing design, two apps.
 
-<Callout kind="trap" title="EventSource and the header">
-A browser `EventSource` cannot set an `Authorization` header. How the token
-travels on `GET /events` from a browser — a query parameter, or `fetch` with
-a readable stream — is Engine's to pin in the reference. Native clients,
-`curl`, and the WebSocket set the header.
-</Callout>
+### On each transport
+
+| transport | the token travels as |
+|---|---|
+| HTTP | `Authorization: Bearer <token>` on every request, including `GET /`. Missing or wrong → `401` with `WWW-Authenticate: Bearer realm="Rheocles"` |
+| SSE | the header, or `GET /events?access_token=<token>` — a browser `EventSource` cannot set headers (RFC 6750 §2.3). Loopback only, so the URL form exposes nothing the header form did not |
+| WebSocket | the first frame, `{ "auth": "<token>" }`, answered `{ "id": null, "status": 200, "body": { "authenticated": true } }`. Until then every command answers `401` and no event is delivered. A browser `WebSocket` cannot set a header either, so the frame is the one way that works everywhere, and it is the only way |
+
+```js title="pairing, both ways"
+const token = /* the token file, or the pairing code from the popover */
+const ws = new WebSocket('ws://127.0.0.1:7448/')
+ws.onopen = () => ws.send(JSON.stringify({ auth: token }))
+
+const es = new EventSource(`http://127.0.0.1:7447/events?access_token=${token}`)
+```
 
 ## The command set
 
@@ -93,10 +110,16 @@ WebSocket frame, is on the [API reference](/docs/api/reference).
   `GET /`. Clients store relative paths.
 - **Ids are the handle.** A take id, a stream id. Paths are what you get
   back when you ask.
-- **Absence is `null`.** An unmeasured drift, a level with no signal yet. Never
-  zero by default.
-- **Errors are JSON** with an `error` code, a `message` for humans, and the
-  HTTP `status` repeated in the body so the WebSocket carries the same shape.
+- **Absence is absence.** An unmeasurable value is left out — `freeBytes` on a
+  volume that will not say — or is `null` where the field is always present,
+  like a stream's `driftMs` before it has written a frame. Never zero by
+  default.
+- **Errors are one shape**, `{ "error": "for humans", "code": "for_programs" }`,
+  on every route and both transports. HTTP carries the status in the status
+  line, the WebSocket in the frame's `status`. The codes are on the
+  [reference](/docs/api/reference#conventions).
+- **CORS is open.** A page in your browser can call the API; the token is the
+  lock, not the origin.
 - **Same destination twice is a `409`.** Rheocles never silently suffixes.
 
 ## The reference is generated
