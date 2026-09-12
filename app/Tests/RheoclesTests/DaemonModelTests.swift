@@ -131,6 +131,35 @@ struct DaemonModelTests {
             })
     }
 
+    @Test("Events are dispatched as they arrive, not on the next pulse")
+    func eventsArrive() async throws {
+        let port = StubDaemon.freePort()
+        let scratch = StubDaemon.scratch()
+        let tokenFile = scratch.appendingPathComponent("token")
+        let theirs = try StubDaemon.launch(port: port, tokenFile: tokenFile)
+        defer { theirs.terminate() }
+        #expect(await StubDaemon.waitUntilAnswers(port: port, token: "ab" * 32))
+
+        var configuration = DaemonModel.Configuration()
+        configuration.port = port
+        configuration.tokenFile = tokenFile
+        // A slow pulse, so anything that arrives arrived by the event stream.
+        configuration.pulse = .seconds(30)
+        let model = DaemonModel(configuration: configuration)
+        model.connect()
+        defer { model.shutdown() }
+        #expect(await eventually { model.status == .running })
+
+        #expect(await eventually(.seconds(3)) { model.streamStatus["microphone:stub"] != nil })
+        let first = model.streamStatus["microphone:stub"]?.framesWritten ?? 0
+        #expect(model.levels["microphone:stub"] == -20)
+        // And keeps arriving.
+        #expect(
+            await eventually(.seconds(3)) {
+                (model.streamStatus["microphone:stub"]?.framesWritten ?? 0) > first
+            })
+    }
+
     @Test("The token is read from the file; a stale one is a refusal, not a relaunch")
     func tokenLoading() async throws {
         let port = StubDaemon.freePort()
