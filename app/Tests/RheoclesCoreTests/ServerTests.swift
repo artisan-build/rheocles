@@ -7,9 +7,26 @@ import Testing
 /// a front end does, minus the popover.
 @Suite("Server", .serialized)
 struct ServerTests {
-    /// Both transports up, both handed the same dispatcher.
+    struct FakeCatalog: StreamSource {
+        func streams() async -> [StreamInfo] {
+            [
+                StreamInfo(
+                    id: "camera:fake", kind: .camera, name: "Fake camera", model: "Test",
+                    capabilities: .init(video: .init(width: 1280, height: 720, maxFrameRate: 30))),
+                StreamInfo(
+                    id: "microphone:fake", kind: .microphone, name: "Fake mic", model: "Test",
+                    capabilities: .init(audio: .init(sampleRate: 48000, channels: 1))),
+            ]
+        }
+    }
+
+    /// Both transports up, both handed the same dispatcher, fake devices.
     private func running() throws -> Server {
         var configuration = Server.Configuration()
+        configuration.catalog = FakeCatalog()
+        configuration.permissions = {
+            Permissions(camera: .authorized, microphone: .denied, screen: .notDetermined)
+        }
         // Spare ports, away from the real 7447/7448 in case a daemon is up.
         let base = UInt16.random(in: 20000...60000)
         configuration.httpPort = base
@@ -59,6 +76,21 @@ struct ServerTests {
         #expect((discovery.freeBytes ?? 0) > 0)
         #expect(!discovery.hostname.isEmpty)
         #expect(discovery.machineId.count == 36)
+    }
+
+    @Test("GET /streams lists every stream with armed state and the permissions")
+    func streams() async throws {
+        let server = try running()
+        defer { server.stop() }
+        let (status, data) = try await get(server, "/streams", token: server.token)
+        #expect(status == 200)
+        let list = try JSONDecoder().decode(Server.StreamList.self, from: data)
+        #expect(list.streams.map(\.id) == ["camera:fake", "microphone:fake"])
+        #expect(list.streams.allSatisfy { !$0.armed })
+        #expect(
+            list.permissions
+                == Permissions(camera: .authorized, microphone: .denied, screen: .notDetermined))
+        #expect(try await get(server, "/streams", token: nil).0 == 401)
     }
 
     @Test("No token, or the wrong token, is 401 with the error shape")
@@ -143,6 +175,13 @@ struct ServerTests {
         #expect(ok["status"] == .number(200))
         let reply = try await roundTrip(task, #"{"id": 1, "method": "GET", "path": "/"}"#)
         #expect(reply["status"] == .number(200))
+        let streams = try await roundTrip(task, #"{"id": 2, "method": "GET", "path": "/streams"}"#)
+        guard case .object(let body)? = streams["body"], case .array(let items)? = body["streams"]
+        else {
+            Issue.record("no streams in the WebSocket reply")
+            return
+        }
+        #expect(items.count == 2)
         task.cancel(with: .normalClosure, reason: nil)
     }
 

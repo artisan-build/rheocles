@@ -12,6 +12,10 @@ public final class Server: Sendable {
         public var wsPort = Rheocles.defaultWebSocketPort
         public var outputRoot = Rheocles.defaultOutputRoot
         public var tokenStore = TokenStore.standard
+        /// Where streams come from. The daemon uses the real devices; tests
+        /// hand in a fake.
+        public var catalog: any StreamSource = DeviceCatalog.standard
+        public var permissions: @Sendable () -> Permissions = { DeviceCatalog.permissions() }
 
         public init() {}
     }
@@ -35,6 +39,17 @@ public final class Server: Sendable {
         )
     }
 
+    /// `GET /streams`.
+    public struct StreamList: Codable, Sendable, Equatable {
+        public var streams: [StreamInfo]
+        public var permissions: Permissions
+
+        public init(streams: [StreamInfo], permissions: Permissions) {
+            self.streams = streams
+            self.permissions = permissions
+        }
+    }
+
     /// The command table. Order is the order `commands` lists them in.
     static func routes(configuration: Configuration) -> [Command] {
         [
@@ -43,7 +58,13 @@ public final class Server: Sendable {
                     json: Discovery.current(
                         outputRoot: configuration.outputRoot,
                         httpPort: configuration.httpPort, wsPort: configuration.wsPort))
-            }
+            },
+            Command("GET", "/streams") { _ in
+                Response(
+                    json: StreamList(
+                        streams: await configuration.catalog.streams(),
+                        permissions: configuration.permissions()))
+            },
         ]
     }
 

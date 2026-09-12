@@ -25,6 +25,14 @@ if args.contains("--version") {
     print(Rheocles.version)
     exit(0)
 }
+if args.contains("--list-streams") {
+    // What GET /streams would answer, without binding anything: the quick
+    // way to see what this process is allowed to see.
+    let list = Server.StreamList(
+        streams: await DeviceCatalog.standard.streams(), permissions: DeviceCatalog.permissions())
+    print(String(decoding: Response(json: list).body, as: UTF8.self))
+    exit(0)
+}
 
 var configuration = Server.Configuration()
 if let p = opt("--http-port").flatMap(UInt16.init) { configuration.httpPort = p }

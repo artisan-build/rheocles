@@ -29,6 +29,19 @@ paths:
                 $ref: '#/components/schemas/Discovery'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /streams:
+    get:
+      operationId: listStreams
+      summary: Every stream with its armed state, plus what macOS lets this process see.
+      responses:
+        '200':
+          description: Streams, in a fixed order — displays, windows, cameras, microphones, system audio.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 components:
   securitySchemes:
     bearer:
@@ -70,6 +83,81 @@ components:
             - conflict
             - internal
             - insufficient_storage
+    StreamList:
+      type: object
+      required: [streams, permissions]
+      additionalProperties: false
+      properties:
+        streams:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stream'
+        permissions:
+          $ref: '#/components/schemas/Permissions'
+    Stream:
+      type: object
+      required: [id, kind, name, model, capabilities, armed]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: Stable and URL-safe, `<kind>:<identifier>`. Clients hold this.
+          pattern: '^(display|window|camera|microphone|systemAudio):[A-Za-z0-9._-]+$'
+        kind:
+          type: string
+          enum: [display, window, camera, microphone, systemAudio]
+        name:
+          type: string
+          description: What the user calls it.
+        model:
+          type: string
+          description: What the hardware calls itself, or the owning application for a window.
+        capabilities:
+          type: object
+          additionalProperties: false
+          properties:
+            video:
+              type: object
+              required: [width, height, maxFrameRate]
+              additionalProperties: false
+              properties:
+                width:
+                  type: integer
+                  description: Native pixels.
+                height:
+                  type: integer
+                maxFrameRate:
+                  type: number
+                  description: The highest advertised rate; the signal's real rate can be lower.
+            audio:
+              type: object
+              required: [sampleRate, channels]
+              additionalProperties: false
+              properties:
+                sampleRate:
+                  type: number
+                channels:
+                  type: integer
+        armed:
+          type: boolean
+          description: Whether the capture session is live.
+    Permissions:
+      type: object
+      description: >
+        What macOS has let this process do. Screen Recording gates displays and
+        windows both; with `screen` anything but `authorized` the list has none.
+      required: [camera, microphone, screen]
+      additionalProperties: false
+      properties:
+        camera:
+          $ref: '#/components/schemas/PermissionStatus'
+        microphone:
+          $ref: '#/components/schemas/PermissionStatus'
+        screen:
+          $ref: '#/components/schemas/PermissionStatus'
+    PermissionStatus:
+      type: string
+      enum: [authorized, denied, restricted, notDetermined]
     Discovery:
       type: object
       required: [name, version, hostname, machineId, outputRoot, auth, ports]

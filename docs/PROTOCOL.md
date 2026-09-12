@@ -4,8 +4,8 @@ Every command is reachable over both transports, and every event reaches
 both. One command table, two encoders: this document describes the table
 once and the two encodings once.
 
-**Status:** current with the code through task 4 step 1 (`GET /`, auth,
-framing). Sections marked *planned* describe what the next steps add and are
+**Status:** current with the code through task 4 step 2 (`GET /`, auth,
+framing, `GET /streams`). Sections marked *planned* describe what the next steps add and are
 what the front ends build against; they change here before they change in
 the code.
 
@@ -47,7 +47,7 @@ next request.
 | route | does | since |
 |---|---|---|
 | `GET /` | discovery: name, version, hostname, machine id, output root, free bytes, auth mode, ports | step 1 |
-| `GET /streams` | every stream with armed state | *planned*, step 2 |
+| `GET /streams` | every stream with armed state, plus what macOS lets this process see | step 2 |
 | `POST /streams/{id}/arm` | `{ "armed": true\|false }` — device live or not; never stamps, never writes | *planned*, step 3 |
 | `POST /takes` | create: snapshot the armed set, reserve paths, write the manifest; nothing records | *planned*, step 4 |
 | `POST /takes/{id}/start` | the cue | *planned*, step 4 |
@@ -83,6 +83,65 @@ reports as the one absolute path in the API.
 absent means unknown, never zero. `machineId` is the kernel host UUID,
 stable across renames and reboots; both it and `hostname` go into every
 manifest so a take stays legible after the machine is gone.
+
+### `GET /streams`
+
+```json
+{
+  "streams": [
+    { "id": "display:56A96CFC-7F21-168E-0857-D6964E3302DB", "kind": "display",
+      "name": "BenQ PD3220U", "model": "vendor 2513 model 32813",
+      "capabilities": { "video": { "width": 3840, "height": 2160, "maxFrameRate": 60 } },
+      "armed": false },
+    { "id": "window:11597", "kind": "window",
+      "name": "Google Chrome — Timecode and sync — Rheocles docs", "model": "com.google.Chrome",
+      "capabilities": { "video": { "width": 1200, "height": 900, "maxFrameRate": 60 } },
+      "armed": false },
+    { "id": "camera:0x2300000fd9009c", "kind": "camera",
+      "name": "Elgato 4K X", "model": "UVC Camera VendorID_4057 ProductID_156",
+      "capabilities": { "video": { "width": 3840, "height": 2160, "maxFrameRate": 30 } },
+      "armed": false },
+    { "id": "microphone:AppleUSBAudioEngine_Focusrite_Scarlett_2i2_USB_Y8CABR91C1CA8A_1_2", "kind": "microphone",
+      "name": "Scarlett 2i2 USB", "model": "Scarlett 2i2 USB:1235:8210",
+      "capabilities": { "audio": { "sampleRate": 48000, "channels": 2 } },
+      "armed": false },
+    { "id": "systemAudio:system", "kind": "systemAudio",
+      "name": "System audio", "model": "Core Audio tap",
+      "capabilities": { "audio": { "sampleRate": 48000, "channels": 2 } },
+      "armed": false }
+  ],
+  "permissions": { "camera": "notDetermined", "microphone": "authorized", "screen": "authorized" }
+}
+```
+
+Order is fixed — displays, windows, cameras, microphones, system audio — so
+the list is stable between calls even as devices come and go.
+
+- **`id`** is stable and URL-safe: `<kind>:<identifier>` with the identifier
+  reduced to `[A-Za-z0-9._-]`. Cameras and microphones use the device's
+  unique id; displays their CoreGraphics UUID, which survives reconnects
+  where the display number does not; windows their window number, which
+  survives nothing and is not meant to. Clients hold ids; the manifest
+  records `id`, `name` and `model` together (spec §5).
+- **`kind`** is one of `display`, `window`, `camera`, `microphone`,
+  `systemAudio`.
+- **`capabilities.video`** is native pixels and the highest advertised rate.
+  The signal's real rate can be lower (a 1080p30 HDMI source on a card that
+  advertises 120); the writer follows the frames, not this field.
+- **`capabilities.audio`** is the device's current sample rate and channel
+  count. Recording is always 48 kHz 24-bit BWF regardless (spec §8).
+- **`armed`** is whether the capture session is live (spec §6). Read here,
+  changed by `POST /streams/{id}/arm` (*planned*, step 3).
+- **`permissions`** is what macOS has let this process do — `authorized`,
+  `denied`, `restricted` or `notDetermined`. Screen Recording gates displays
+  and windows both: with `screen` anything but `authorized` the list simply
+  has none, and this field is how a client tells "no displays" from "not
+  allowed to see them". `notDetermined` means never asked; an app missing
+  the entitlement never appears in System Settings at all (spec §4).
+
+Windows are filtered to on-screen, titled, normal-layer windows of real
+applications at least 64×64 points. The list is long and volatile by
+nature; the popover hides it behind a setting (spec §5).
 
 ## Encodings
 
