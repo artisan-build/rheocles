@@ -30,6 +30,7 @@ struct ServerTests {
             configuration.catalog = FakeCatalog()
             configuration.sessionFactory = FakeFactory()
             configuration.writerFactory = FakeWriterFactory()
+            configuration.previewFactory = PushingFactory()
             configuration.freeBytes = { _ in 1 << 40 }
             configuration.permissions = {
                 Permissions(camera: .authorized, microphone: .denied, screen: .notDetermined)
@@ -198,6 +199,32 @@ struct ServerTests {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await URLSession.shared.data(for: request)
         return ((response as! HTTPURLResponse).statusCode, data)
+    }
+
+    @Test("GET /preview returns JPEG bytes over HTTP and base64 over WebSocket")
+    func previewImage() async throws {
+        let server = try running()
+        defer { server.stop() }
+        var request = URLRequest(
+            url: URL(
+                string: "http://127.0.0.1:\(server.configuration.httpPort)/preview/camera:fake")!)
+        request.setValue("Bearer \(server.token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let http = response as! HTTPURLResponse
+        #expect(http.statusCode == 200)
+        #expect(http.value(forHTTPHeaderField: "Content-Type") == "image/jpeg")
+        #expect(data.starts(with: [0xFF, 0xD8, 0xFF]))
+
+        // WebSocket: the binary body comes base64 with its content type.
+        let task = socket(server)
+        _ = try await roundTrip(task, #"{"auth": "\#(server.token)"}"#)
+        let reply = try await roundTrip(
+            task, #"{"id": 9, "method": "GET", "path": "/preview/camera:fake"}"#)
+        #expect(reply["status"] == .number(200))
+        #expect(reply["contentType"] == .string("image/jpeg"))
+        guard case .string(let base64)? = reply["base64"] else { Issue.record("no base64"); return }
+        #expect(Data(base64Encoded: base64)?.starts(with: [0xFF, 0xD8, 0xFF]) == true)
+        task.cancel(with: .normalClosure, reason: nil)
     }
 
     @Test("Settings: GET, PATCH codec and root, root refused while a take is active")

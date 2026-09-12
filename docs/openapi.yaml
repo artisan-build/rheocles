@@ -17,6 +17,29 @@ security:
   - bearer: []
 # Events, as delivered on GET /events (SSE `data:` lines) and to every
 # authenticated WebSocket client — the same bytes on both.
+# The WebSocket transport (ws://127.0.0.1:7448) carries every operation above
+# and every event, full duplex. Not an OpenAPI `path`; described here.
+x-websocket:
+  url: ws://127.0.0.1:7448/
+  auth:
+    description: >
+      The first frame must authenticate; until it does, every command is
+      answered 401 and no event is delivered. A browser WebSocket cannot set
+      an Authorization header, so the frame is the only way.
+    request: { auth: '<token>' }
+    response: { id: null, status: 200, body: { authenticated: true } }
+  request:
+    description: One JSON object per text frame. `id` is echoed untouched; method, path, query and body are the HTTP request's.
+    example: { id: 4, method: POST, path: /takes, query: {}, body: { name: Episode 12 } }
+  response:
+    description: >
+      `status` is the HTTP status the same command would give. A JSON body is
+      inline in `body`; a binary body (a preview JPEG) comes as `base64` with
+      its `contentType` instead.
+    example: { id: 4, status: 201, body: { take: { id: 20260912T040433-fd9q, state: created } } }
+    binaryExample: { id: 16, status: 200, contentType: image/jpeg, base64: '/9j/4AAQSk…' }
+  events:
+    description: Unsolicited frames with an `event` key and no `id`; the same objects GET /events delivers (see x-events).
 x-events:
   - event: levels
     description: Per-stream peak level (audio, dBFS), frames written and drift, ~4x/s while recording.
@@ -456,6 +479,79 @@ paths:
       x-ws:
         request: { id: 15, method: POST, path: /token/rotate }
         response: { id: 15, status: 200, body: { token: 9f3c00112233445566778899aabbccddeeff00112233445566778899aabbccdd } }
+  /preview/{stream}:
+    get:
+      operationId: preview
+      summary: One preview frame, on demand. Nothing is captured when nobody is looking; one preview at a time.
+      description: >
+        A polite second opener grabs a single frame and closes the device, so
+        preview never disturbs an armed or recording take. Video streams answer
+        a small JPEG (longest side 640); audio streams answer the current peak
+        level as JSON, for the popover's meter.
+      parameters:
+        - name: stream
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A JPEG for video streams, or a JSON level for audio streams.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: object
+                required: [levelDb]
+                additionalProperties: false
+                properties:
+                  levelDb:
+                    type: number
+                    description: Peak dBFS of a short sample.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: The device delivered no frame to preview (code `no_frame`), or is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 16, method: GET, path: '/preview/display:56A96CFC-7F21-168E-0857-D6964E3302DB' }
+        response: { id: 16, status: 200, contentType: image/jpeg, base64: '/9j/4AAQSk…' }
+  /events:
+    get:
+      operationId: events
+      summary: The Server-Sent Events stream — every event, one-way.
+      description: >
+        `text/event-stream`; each event is one `data: <json>` line (see
+        x-events). `EventSource` cannot set headers, so the bearer token is
+        accepted as `?access_token=` here as well as in the Authorization
+        header. The same events reach every authenticated WebSocket client.
+      security:
+        - bearer: []
+        - accessToken: []
+      parameters:
+        - name: access_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The bearer token, for EventSource which cannot set a header.
+      responses:
+        '200':
+          description: The event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 components:
   parameters:
     takeId:
@@ -471,6 +567,11 @@ components:
       description: >
         The token in ~/Library/Application Support/Rheocles/token. Also accepted
         as ?access_token= on GET /events, for EventSource.
+    accessToken:
+      type: apiKey
+      in: query
+      name: access_token
+      description: The same bearer token as a query parameter, for EventSource.
   responses:
     BadRequest:
       description: Malformed or missing JSON body.

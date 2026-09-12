@@ -117,7 +117,8 @@ public final class HTTPServer: Transport, @unchecked Sendable {
 
         Task {
             let response = await dispatcher.dispatch(request)
-            self.respond(conn, status: response.status, body: response.body)
+            self.respond(
+                conn, status: response.status, body: response.body, contentType: response.contentType)
         }
     }
 
@@ -153,11 +154,14 @@ public final class HTTPServer: Transport, @unchecked Sendable {
         507: "Insufficient Storage",
     ]
 
-    private func respond(_ conn: NWConnection, status: Int, body: Data?, extra: String = "") {
+    private func respond(
+        _ conn: NWConnection, status: Int, body: Data?, extra: String = "",
+        contentType: String = "application/json"
+    ) {
         let reason = Self.reasons[status] ?? "Status"
         let head =
             [
-                "HTTP/1.1 \(status) \(reason)", "Content-Type: application/json",
+                "HTTP/1.1 \(status) \(reason)", "Content-Type: \(contentType)",
                 "Content-Length: \(body?.count ?? 0)", "Access-Control-Allow-Origin: *",
                 "Access-Control-Allow-Methods: GET, POST, PATCH, OPTIONS",
                 "Access-Control-Allow-Headers: Authorization, Content-Type",

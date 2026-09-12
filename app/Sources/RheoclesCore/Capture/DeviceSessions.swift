@@ -5,11 +5,17 @@ import os
 
 /// The daemon's session factory: real devices, one session type per kind.
 public struct DeviceSessionFactory: SessionFactory {
-    public init() {}
+    /// Preview sessions are polite second openers: no config lock, no format
+    /// change, so grabbing a frame never disturbs an armed or recording take.
+    public let preview: Bool
+
+    public init(preview: Bool = false) {
+        self.preview = preview
+    }
 
     public func makeSession(for stream: StreamInfo) throws -> any StreamSession {
         switch stream.kind {
-        case .camera: try CameraSession(stream)
+        case .camera: try CameraSession(stream, preview: preview)
         case .microphone: try MicrophoneSession(stream)
         case .display, .window: ScreenSession(stream)
         case .systemAudio: SystemAudioSession(stream)
@@ -94,8 +100,13 @@ final class CameraSession: AVCaptureStreamSession, AVCaptureVideoDataOutputSampl
     @unchecked Sendable
 {
     private var locked = false
+    /// Preview sessions do not hold the configuration lock or force the
+    /// native format — they are polite second openers that take whatever the
+    /// device is already giving (S1), so a preview never disturbs a take.
+    private let previewMode: Bool
 
-    init(_ stream: StreamInfo) throws {
+    init(_ stream: StreamInfo, preview: Bool = false) throws {
+        previewMode = preview
         try super.init(stream, mediaType: .video, label: "camera")
     }
 

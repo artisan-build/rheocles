@@ -21,6 +21,9 @@ public final class Server: Sendable {
         /// How arming opens a device. Tests hand in sessions that only
         /// remember what they were told.
         public var sessionFactory: any SessionFactory = DeviceSessionFactory()
+        /// How preview opens a device for a single frame — a polite second
+        /// opener that never disturbs an armed take. Tests hand in a fake.
+        public var previewFactory: any SessionFactory = DeviceSessionFactory(preview: true)
         /// How a take's files get written. Tests hand in fakes.
         public var writerFactory: any WriterFactory = DeviceWriterFactory()
         /// Free space on a volume, for the disk pre-flight. Tests fake it.
@@ -38,6 +41,7 @@ public final class Server: Sendable {
     public let registry: Registry
     public let takes: TakeEngine
     public let settings: Settings
+    public let preview: PreviewService
     private let auth: BearerAuth
     private let tokenStore: TokenStore
 
@@ -85,15 +89,18 @@ public final class Server: Sendable {
             http.broadcast(event)
             ws.broadcast(event)
         }
+        let preview = PreviewService(
+            catalog: configuration.catalog, factory: configuration.previewFactory)
         self.http = http
         self.ws = ws
         self.registry = registry
         self.takes = takes
+        self.preview = preview
         dispatcher = Dispatcher(
             Server.routes(
                 registry: registry, takes: takes, settings: settings, auth: auth,
                 tokenStore: configuration.tokenStore, permissions: configuration.permissions,
-                httpPort: configuration.httpPort, wsPort: configuration.wsPort))
+                preview: preview, httpPort: configuration.httpPort, wsPort: configuration.wsPort))
         router.dispatcher = dispatcher
     }
 
@@ -139,7 +146,7 @@ public final class Server: Sendable {
     static func routes(
         registry: Registry, takes: TakeEngine, settings: Settings, auth: BearerAuth,
         tokenStore: TokenStore, permissions: @escaping @Sendable () -> Permissions,
-        httpPort: UInt16, wsPort: UInt16
+        preview: PreviewService, httpPort: UInt16, wsPort: UInt16
     ) -> [Command] {
         [
             Command("GET", "/") { _ in
@@ -220,6 +227,10 @@ public final class Server: Sendable {
                 }
                 if let codec = patch.codec { settings.update(codec: codec) }
                 return Response(json: settings.values)
+            },
+            Command("GET", "/preview/{stream}") { request in
+                let result = try await preview.preview(request.params["stream"] ?? "")
+                return Response(body: result.body, contentType: result.contentType)
             },
             Command("POST", "/token/rotate") { _ in
                 let new = try tokenStore.rotate()

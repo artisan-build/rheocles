@@ -4,11 +4,11 @@ Every command is reachable over both transports, and every event reaches
 both. One command table, two encoders: this document describes the table
 once and the two encodings once.
 
-**Status:** current with the code through task 4 step 6 — everything below
-except `GET /preview/{stream}` (step 7). Takes record real files (HEVC or
-ProRes MOV with a time-of-day `tmcd` track and 1 s fragments, Broadcast Wave
-audio with a `bext` `TimeReference`); join/leave/markers, live `levels`,
-`drift`, `stalled`, `settings` and `token/rotate` are live. Sections marked *planned* describe what the next steps add and are
+**Status:** current with the code through task 4 step 7 — everything below is
+live. Takes record real files (HEVC or ProRes MOV with a time-of-day `tmcd`
+track and 1 s fragments, Broadcast Wave audio with a `bext` `TimeReference`);
+join/leave/markers, live `levels`, `drift`, `stalled`, `settings`,
+`token/rotate` and on-demand `preview` are all in. Sections marked *planned* describe what the next steps add and are
 what the front ends build against; they change here before they change in
 the code.
 
@@ -64,7 +64,7 @@ next request.
 | `GET /settings` | the daemon's output root and default codec | step 6 |
 | `PATCH /settings` | `{ "outputRoot"?, "codec"? }` — change either | step 6 |
 | `POST /token/rotate` | `{}` → `{ "token" }` — new token, old one dead after the response | step 6 |
-| `GET /preview/{stream}` | one low-rate preview frame; one stream at a time | *planned*, step 7 |
+| `GET /preview/{stream}` | one preview frame on demand — JPEG for video, a JSON level for audio; one at a time | step 7 |
 
 Paths in every response are relative to the output root, which `GET /`
 reports as the one absolute path in the API.
@@ -354,6 +354,22 @@ Rewrites the token file and invalidates the old token for **every request
 after this response** on both transports (a WebSocket that authenticated with
 the old token stays up but must re-`auth` with the new one for later
 commands). The pairing UI shows the new token; nothing else changes.
+
+### Preview (spec §12)
+
+`GET /preview/{stream}` answers **one frame, on demand**. Nothing is captured
+when nobody is looking: each request opens the device, grabs a single frame,
+and closes it — and it opens as a **polite second opener** (no configuration
+lock, no format change), so previewing a camera or screen that a take is
+recording never disturbs the take. One preview runs at a time.
+
+- **Video** (display, window, camera) → `image/jpeg`, longest side 640.
+- **Audio** (microphone, system audio) → `application/json`
+  `{ "levelDb": <peak dBFS of a short sample> }`, for the popover's meter.
+
+`404` for an unknown stream; `503 no_frame` if the device delivered no frame
+(a camera with no signal). Over WebSocket the JPEG comes back as `base64`
+with its `contentType` (see below), since a JSON frame cannot carry raw bytes.
 
 ### Files and clocks
 

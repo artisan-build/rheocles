@@ -43,15 +43,20 @@ public struct Request: Sendable {
 public struct Response: Sendable {
     public var status: Int
     public var body: Data
+    /// The media type of `body`. JSON on every route but preview, which
+    /// answers `image/jpeg` bytes.
+    public var contentType: String
 
-    public init(status: Int = 200, body: Data) {
+    public init(status: Int = 200, body: Data, contentType: String = "application/json") {
         self.status = status
         self.body = body
+        self.contentType = contentType
     }
 
     public init<T: Encodable>(status: Int = 200, json value: T) {
         self.status = status
         self.body = (try? Response.encoder.encode(value)) ?? Data("{}".utf8)
+        self.contentType = "application/json"
     }
 
     /// Sorted keys so responses are stable across runs — the contract test

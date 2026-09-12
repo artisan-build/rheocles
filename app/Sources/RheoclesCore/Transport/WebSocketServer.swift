@@ -170,7 +170,7 @@ public final class WebSocketServer: Transport, @unchecked Sendable {
         let request = Request(method: method, path: path, query: frame.query ?? [:], body: body)
         Task {
             let response = await dispatcher.dispatch(request)
-            self.send(conn, id: id, status: response.status, body: response.body)
+            self.send(conn, id: id, response: response)
         }
     }
 
@@ -180,6 +180,25 @@ public final class WebSocketServer: Transport, @unchecked Sendable {
         frame.append(Data(#","status":\#(status),"body":"#.utf8))
         frame.append(body)
         frame.append(Data("}".utf8))
+        sendText(conn, frame)
+    }
+
+    /// A non-JSON body (a preview JPEG) cannot go inline in the frame, so it
+    /// is delivered base64 with its content type: the same bytes a browser
+    /// would `data:`-URL. JSON bodies stay inline.
+    private func send(_ conn: NWConnection, id: Data?, response: Response) {
+        guard response.contentType != "application/json" else {
+            send(conn, id: id, status: response.status, body: response.body)
+            return
+        }
+        var frame = Data(#"{"id":"#.utf8)
+        frame.append(id ?? Data("null".utf8))
+        frame.append(
+            Data(
+                #","status":\#(response.status),"contentType":"\#(response.contentType)","base64":""#
+                    .utf8))
+        frame.append(Data(response.body.base64EncodedString().utf8))
+        frame.append(Data(#""}"#.utf8))
         sendText(conn, frame)
     }
 
