@@ -79,6 +79,10 @@ final class Daemon
             $this->discovery = $this->client->discovery();
             $this->status = self::RUNNING;
             $this->why = null;
+            // Something answers. It is ours only if the child we launched
+            // is still the one running; a core that took the port after
+            // ours died belongs to whoever started it.
+            $this->ours = $this->ours && $this->alive();
             if (! $this->ours) {
                 Log::info("using a running rheocles-core on :{$this->client->port}");
             }

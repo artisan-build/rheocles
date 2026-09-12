@@ -44,9 +44,15 @@ final class Server
             test()->markTestSkipped('no rheocles-core: run swift build --package-path app -c release && php/bin/sync-sidecar.sh');
         }
 
+        // Its own settings file too: --output-root is persisted to the
+        // settings file (PROTOCOL § Settings), and without this the default
+        // ~/Library/Application Support/Rheocles/settings.json — the user's
+        // real one, which every front end's daemon reads — would come away
+        // pointing at a test's temp directory.
         return self::spawn($httpPort, [
             $binary, '--http-port', (string) $httpPort, '--ws-port', (string) $wsPort,
             '--token-file', $tokenFile, '--output-root', $outputRoot,
+            '--settings-file', dirname($tokenFile).'/settings.json',
         ]);
     }
 
@@ -63,7 +69,10 @@ final class Server
 
     private static function spawn(int $port, array $cmd, array $env = []): self
     {
-        $process = proc_open($cmd, [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, $env + getenv());
+        // Output to a file per port, so a server that does not come up can
+        // say why (the message names it).
+        $log = sys_get_temp_dir()."/rheo-test-server-$port.log";
+        $process = proc_open($cmd, [0 => ['file', '/dev/null', 'r'], 1 => ['file', $log, 'a'], 2 => ['file', $log, 'a']], $pipes, null, $env + getenv());
         if (! is_resource($process)) {
             throw new \RuntimeException('could not start '.implode(' ', $cmd));
         }
@@ -87,7 +96,8 @@ final class Server
             usleep(50_000);
         }
         $this->stop();
-        throw new \RuntimeException("nothing listening on :{$this->port} after {$timeout}s");
+        $log = sys_get_temp_dir()."/rheo-test-server-{$this->port}.log";
+        throw new \RuntimeException("nothing listening on :{$this->port} after {$timeout}s — ".trim((string) @file_get_contents($log)));
     }
 
     public function running(): bool

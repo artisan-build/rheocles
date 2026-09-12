@@ -6,6 +6,7 @@
  */
 import {
   decodeEvent, reduce, initial, setStreams, headline, sections, detail, writingIds, bytes, abbreviate,
+  isRecording, isOver, elapsed, clock, lateJoined, finishedLine,
 } from './state.js'
 
 const R = window.RHEO
@@ -24,6 +25,10 @@ let clickError = ''
 /** One POST /streams/{id}/arm in flight: the switch shows what was asked for. */
 let pending = null
 let showSettings = false
+/** A take call in flight: Record, Stop and Mark are one at a time. */
+let takeBusy = false
+/** Ticks once a second while a take is recording, so the elapsed time moves. */
+let ticker = null
 
 const PULSE = 3000
 
@@ -52,6 +57,7 @@ const el = (tag, cls, text) => {
 function render() {
   const h = headline(daemon, state)
   $('mark').dataset.tone = h.tone
+  renderMark()
   $('state').dataset.tone = h.tone
   $('state-label').textContent = h.label
   $('gear').setAttribute('aria-pressed', String(showSettings))
@@ -74,6 +80,21 @@ function render() {
   }
   $('error').textContent = clickError || pulseError
   fit()
+}
+
+/**
+ * The header's mark: solid strokes; recording stops the bar short and lights
+ * the dot at its foot; a late-joined stream is a shorter stroke that starts
+ * to the right of the bar — the same drawing as the menu bar icon.
+ */
+function renderMark() {
+  const recording = daemon.status === 'running' && isRecording(state)
+  $('mark-bar').setAttribute('d', recording ? 'M5 4 V25' : 'M5 4 V28')
+  $('mark-dot').hidden = !recording
+  const late = recording ? lateJoined(state.take) : []
+  document.querySelectorAll('#mark .stroke').forEach((p, i) => {
+    p.setAttribute('d', late.includes(i) ? p.dataset.late : p.dataset.cue)
+  })
 }
 
 /** Every stream, grouped by kind in the daemon's order, each with its arm switch. */
@@ -191,10 +212,69 @@ function renderSettings() {
   box.append(el('p', 'prose script pad', 'Output root, codec and the pairing code arrive with task 4.'))
 }
 
-/** Record or Stop, the take's name, and the time since the cue (task 3). The disabled pill keeps its place. */
+/**
+ * Record or Stop, the take's name, and the time since the cue (spec §12).
+ *
+ * One button (spec §7). Record is POST /record — create and start in one —
+ * and is only offered when something is armed, because a take with no
+ * streams is a folder with a manifest in it. While recording the bar turns
+ * oxide and counts; afterwards it says what the take became, in olive if
+ * complete and oxide with the reason if not.
+ */
 function renderTakeBar() {
-  const n = state.streams.filter(s => s.armed).length
-  $('takebar-note').textContent = n === 0 ? 'Arm a stream to record.' : `${n} armed · Record arrives with task 3.`
+  const take = state.take
+  const recording = isRecording(state)
+  const armed = state.streams.filter(s => s.armed).length
+  const canRecord = armed > 0 && !takeBusy
+  $('takebar').dataset.recording = String(recording)
+
+  $('record').hidden = recording
+  $('record').disabled = !canRecord
+  $('stop').hidden = !recording
+  $('stop').disabled = takeBusy
+  $('takebar-note').hidden = recording || armed > 0
+  $('take-name').hidden = recording || armed === 0 || isOver(take)
+  $('live').hidden = !recording
+  $('finished').hidden = recording || !isOver(take)
+  $('markers').hidden = !recording
+
+  if (recording) {
+    $('live-name').textContent = take.name || '··'
+    const e = elapsed(take)
+    $('live-elapsed').textContent = e == null ? '··:··' : clock(e)
+    $('live-writing').textContent = `${writingIds(state).length} writing`
+    const n = (take.markers || []).length
+    $('marker-count').textContent = n === 0 ? 'no markers' : `${n} marker${n === 1 ? '' : 's'}`
+    $('marker-count').classList.toggle('absent', n === 0)
+  } else if (isOver(take)) {
+    const f = finishedLine(take)
+    const box = $('finished')
+    box.dataset.complete = String(f.complete)
+    const text = $('finished-text')
+    text.replaceChildren()
+    // Two lines at most, breaking only between parts: "2 files" and the
+    // name hold together (non-breaking spaces), the separators do not.
+    const nb = t => t.replace(/ /g, '\u00a0')
+    const [name, word, ...rest] = f.text.split(' · ')
+    text.append(el('span', 'name', nb(name)), ' · ', el('span', 'state-word', word))
+    for (const part of rest) text.append(' · ', nb(part))
+    if (f.reason) text.append(' — ', el('span', 'reason', f.reason))
+  }
+  tick(recording)
+}
+
+/** The one-second tick while recording; idle otherwise. */
+function tick(recording) {
+  if (recording && !ticker) {
+    ticker = setInterval(() => {
+      if (!isRecording(state)) return
+      const e = elapsed(state.take)
+      $('live-elapsed').textContent = e == null ? '··:··' : clock(e)
+    }, 1000)
+  } else if (!recording && ticker) {
+    clearInterval(ticker)
+    ticker = null
+  }
 }
 
 /** GET / under the streams: the daemon is answering, its version, whose it is, how much room there is. */
@@ -235,7 +315,7 @@ async function pulse() {
     // rendered before that has no events URL. Once, start over with one.
     if (!R.token) { location.reload(); return }
     pulseError = ''
-    await Promise.all([readDiscovery(), readStreams()])
+    await Promise.all([readDiscovery(), readStreams(), discoverTake()])
     listen()
   } else {
     discovery = null
@@ -268,6 +348,30 @@ async function readStreams() {
   }
 }
 
+/**
+ * Find a take that is recording — one started by another client, or one
+ * that was running when the popover opened — and keep the active one
+ * current. Events carry the rest; this is the fallback.
+ */
+async function discoverTake() {
+  try {
+    if (isRecording(state)) {
+      const r = await core(`/takes/${state.take.id}`)
+      if (r.ok) state = { ...state, take: await r.json() }
+      return
+    }
+    const r = await core('/takes')
+    if (!r.ok) return
+    const active = (await r.json()).find(t => t.state === 'recording')
+    if (active && (!state.take || state.take.id !== active.id)) {
+      const m = await core(`/takes/${active.id}`)
+      if (m.ok) state = { ...state, take: await m.json() }
+    }
+  } catch {
+    // The pulse's other reads report; this one is best effort.
+  }
+}
+
 // MARK: - events
 
 /** One EventSource for as long as the daemon is up; the browser reconnects. */
@@ -277,7 +381,11 @@ function listen() {
   source.onmessage = e => {
     const event = decodeEvent(e.data)
     if (!event) return
-    state = reduce(state, event)
+    // `levels` arrives ~4×/s while recording and changes nothing here yet
+    // (task 4); only a state that moved is worth a render.
+    const next = reduce(state, event)
+    if (next === state) return
+    state = next
     render()
   }
   source.onerror = () => {
@@ -310,12 +418,69 @@ async function arm(id, armed) {
   render()
 }
 
+/** Record: create and start in one — the popover's one button (spec §7). */
+async function record() {
+  if (takeBusy) return
+  takeBusy = true
+  clickError = ''
+  render()
+  const r = await php('POST', '/api/record', { name: $('take-name').value })
+  if (r.ok) {
+    state = { ...state, take: r.body.take }
+    $('take-name').value = ''
+  } else {
+    clickError = `POST /record → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  }
+  takeBusy = false
+  await readStreams()
+  render()
+}
+
+/** Stop the active take; the manifest comes back final. */
+async function stop() {
+  if (takeBusy || !state.take) return
+  takeBusy = true
+  clickError = ''
+  render()
+  const id = state.take.id
+  const r = await php('POST', `/api/takes/${encodeURIComponent(id)}/stop`)
+  if (r.ok) state = { ...state, take: r.body }
+  else clickError = `POST /takes/${id}/stop → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  takeBusy = false
+  await readStreams()
+  render()
+}
+
+/**
+ * POST /takes/{id}/markers while recording (spec §10): Rheocles stamps `t`
+ * from its own clock; the label is ours and it never reads it. The manifest
+ * comes back with the marker on it.
+ */
+async function mark() {
+  if (takeBusy || !isRecording(state)) return
+  takeBusy = true
+  clickError = ''
+  const id = state.take.id
+  const r = await php('POST', `/api/takes/${encodeURIComponent(id)}/markers`, {
+    label: $('marker-label').value, count: (state.take.markers || []).length,
+  })
+  if (r.ok) { state = { ...state, take: r.body }; $('marker-label').value = '' }
+  else clickError = `POST /takes/${id}/markers → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  takeBusy = false
+  render()
+}
+
 async function setPreference(values) {
   const r = await php('POST', '/api/preferences', values)
   if (r.ok) preferences = r.body
   render()
 }
 
+$('record').addEventListener('click', record)
+$('stop').addEventListener('click', stop)
+$('mark-button').addEventListener('click', mark)
+$('take-name').addEventListener('keydown', e => { if (e.key === 'Enter' && !$('record').disabled) record() })
+$('marker-label').addEventListener('keydown', e => { if (e.key === 'Enter') mark() })
 $('quit').addEventListener('click', () => php('POST', '/quit'))
 $('relaunch').addEventListener('click', async () => {
   await php('POST', '/daemon/relaunch')

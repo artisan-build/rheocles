@@ -19,5 +19,10 @@ if [[ ! -x "$built" ]]; then
 fi
 
 mkdir -p "$root/php/extras"
+# Remove before copying, never overwrite in place: on Apple Silicon a Mach-O
+# rewritten under an inode the kernel has already validated keeps the old
+# signature cache and is SIGKILLed on its next launch (`Killed: 9`, nothing
+# in the log). A fresh inode is validated fresh.
+rm -f "$root/php/extras/rheocles-core"
 cp "$built" "$root/php/extras/rheocles-core"
 echo "synced $(du -h "$root/php/extras/rheocles-core" | cut -f1) → php/extras/rheocles-core ($("$built" --version 2>/dev/null || echo 'version unknown'))"

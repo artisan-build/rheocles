@@ -36,13 +36,29 @@ export function reduce(state, event) {
     }
     case 'take':
       return event.take && event.take.state ? { ...state, take: event.take } : state
+    case 'marker': {
+      // `{ t, label }` just added to the active take (PROTOCOL § Events);
+      // appended here so the count moves before the next manifest arrives.
+      const m = event.marker
+      if (!m || !state.take || state.take.id !== event.take) return state
+      return { ...state, take: { ...state.take, markers: [...(state.take.markers || []), m] } }
+    }
     default:
       return state
   }
 }
 
 export const armedCount = state => state.streams.filter(s => s.armed).length
-export const isRecording = state => !!state.take && state.take.state === 'recording'
+
+/**
+ * Recording is a take the daemon says is recording — with one check the
+ * daemon's own list cannot make: every recording stream is armed (join arms),
+ * so a `recording` manifest with nothing armed is one a dead daemon left on
+ * disk, not a take in progress. Before the first stream read, the take is
+ * taken at its word.
+ */
+export const isRecording = state =>
+  !!state.take && state.take.state === 'recording' && (state.streams.length === 0 || armedCount(state) > 0)
 
 /**
  * The header's tone and word, from the daemon's condition. The state pill
@@ -135,6 +151,45 @@ export function nudge(kind, permissions, ours) {
 /** Streams in the active take and still writing: joined and not left. */
 export const writingIds = state =>
   isRecording(state) ? state.take.streams.filter(s => s.started && !s.stopped).map(s => s.id) : []
+
+export const isOver = take => !!take && (take.state === 'complete' || take.state === 'incomplete')
+
+/** Seconds since the cue, to now or to the stop; null before the cue. */
+export function elapsed(take, now = Date.now()) {
+  if (!take || !take.started) return null
+  const end = take.stopped ? Date.parse(take.stopped) : now
+  return Math.max(0, (end - Date.parse(take.started)) / 1000)
+}
+
+/** `h:mm:ss` from the cue — what a tape counter says. */
+export function clock(seconds) {
+  const total = Math.floor(seconds)
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60
+  const two = n => String(n).padStart(2, '0')
+  return h > 0 ? `${h}:${two(m)}:${two(s)}` : `${two(m)}:${two(s)}`
+}
+
+/**
+ * Streams that joined more than a second after the cue, by position among
+ * the take's first four — what the mark draws as a shorter stroke (BRAND §
+ * Mark). The same rule as IconState::lateJoined, so header and menu bar agree.
+ */
+export function lateJoined(take) {
+  if (!take || !take.started) return []
+  const cue = Date.parse(take.started)
+  return (take.streams || []).slice(0, 4)
+    .map((s, i) => (s.started && Date.parse(s.started) - cue > 1000 ? i : -1))
+    .filter(i => i >= 0)
+}
+
+/** The finished line: name · state · elapsed · n files — reason. */
+export function finishedLine(take, now = Date.now()) {
+  const parts = [take.name || take.id, take.state]
+  const e = elapsed(take, now)
+  if (e != null) parts.push(clock(e))
+  parts.push(`${(take.streams || []).length} file${(take.streams || []).length === 1 ? '' : 's'}`)
+  return { text: parts.join(' · '), reason: take.reason || null, complete: take.state === 'complete' }
+}
 
 // MARK: - formatting
 

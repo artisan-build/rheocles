@@ -55,7 +55,10 @@ final class IconState
         if ($status !== 'running') {
             return self::idle();
         }
-        if ($take !== null && ($take['state'] ?? null) === 'recording') {
+        // Every recording stream is armed (join arms), so a `recording`
+        // manifest with nothing armed is one a dead daemon left on disk and
+        // the next daemon serves from there — not a take in progress.
+        if ($take !== null && ($take['state'] ?? null) === 'recording' && $armedCount > 0) {
             return self::recording(self::lateJoined($take));
         }
 

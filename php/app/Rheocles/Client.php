@@ -101,14 +101,23 @@ final class Client
 
     // MARK: transport
 
+    /**
+     * Reads answer at once or not at all: two seconds on loopback is a
+     * daemon that is not going to answer, and the pulse should say so.
+     */
     public function get(string $path): array
     {
-        return $this->send('GET', $path, fn (PendingRequest $r) => $r->get($this->base().$path));
+        return $this->send('GET', $path, fn (PendingRequest $r) => $r->get($this->base().$path), timeout: 2);
     }
 
+    /**
+     * Commands touch hardware — arming spins a device up, stop finalizes
+     * writers — and a busy CoreAudio can take more than two seconds to
+     * hand a microphone over. Ten is patience, not a hang.
+     */
     public function post(string $path, array|object $body): array
     {
-        return $this->send('POST', $path, fn (PendingRequest $r) => $r->post($this->base().$path, $body));
+        return $this->send('POST', $path, fn (PendingRequest $r) => $r->post($this->base().$path, $body), timeout: 10);
     }
 
     /**
@@ -116,11 +125,9 @@ final class Client
      * throws on connection failure and Laravel wraps it — that is
      * Unreachable, the case the lifecycle watches for.
      */
-    private function send(string $method, string $path, \Closure $call): array
+    private function send(string $method, string $path, \Closure $call, int $timeout): array
     {
-        // Loopback: an answer that takes longer than this is a daemon that
-        // is not going to answer.
-        $request = Http::acceptJson()->timeout(2)->connectTimeout(1);
+        $request = Http::acceptJson()->timeout($timeout)->connectTimeout(1);
         if ($this->token !== null) {
             $request = $request->withToken($this->token);
         }

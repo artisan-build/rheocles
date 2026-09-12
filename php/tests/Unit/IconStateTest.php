@@ -18,8 +18,12 @@ it('is idle with nothing armed, armed with anything armed', function () {
         ->and(IconState::derive('running', ['state' => 'complete'], 2)->kind)->toBe(IconState::ARMED);
 });
 
+it('does not believe a recording manifest with nothing armed — a dead daemon left it', function () {
+    expect(IconState::derive('running', ['state' => 'recording', 'streams' => []], 0)->kind)->toBe(IconState::IDLE);
+});
+
 it('is recording when the daemon says a take is recording', function () {
-    $state = IconState::derive('running', ['state' => 'recording', 'started' => '2026-09-12T04:04:33.347Z', 'streams' => []], 0);
+    $state = IconState::derive('running', ['state' => 'recording', 'started' => '2026-09-12T04:04:33.347Z', 'streams' => []], 1);
     expect($state->kind)->toBe(IconState::RECORDING)
         ->and($state->lateJoined)->toBe([])
         ->and($state->name())->toBe('rheoRecording0000Template');
