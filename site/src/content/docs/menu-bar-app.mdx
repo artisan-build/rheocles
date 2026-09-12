@@ -1,0 +1,90 @@
+---
+title: The menu bar app
+description: A popover over whatever you are doing. Every stream with an arm toggle, one Record button, and a mark in the menu bar that tells the truth about the take.
+draft: true
+---
+import Callout from '../../components/Callout.astro';
+import Cards from '../../components/Cards.astro';
+import Card from '../../components/Card.astro';
+
+Rheocles.app has no window and no Dock icon. It lives in the menu bar, opens
+as a popover, and is a thin client of `rheocles-core` over the same API you
+get. Nothing in it is a feature the API lacks; nothing in the API is a
+feature it lacks.
+
+## The mark
+
+The mark is the state. It is a template image, so it takes the menu bar's
+colour, and it is drawn from shapes rather than a SwiftUI view — a bare view
+as a `MenuBarExtra` label renders with no colour at all, which Sonocles paid
+to learn.
+
+| state | the mark |
+|---|---|
+| idle, nothing armed | the whole mark at 40 % |
+| something armed | the strokes in outline |
+| recording | the strokes filled |
+| a stream joined late | a shorter stroke that starts to the right of the bar |
+
+You can read the take from across the room without opening anything, and —
+the case the ochre exists for — you can see from across the room that six
+cameras are still armed.
+
+## The popover
+
+**Streams.** Every camera, microphone, display and system audio, each with
+an arm toggle. Armed rows are ochre. Audio streams show a level meter while
+armed. Windows are listed only when *Show windows* is on in settings.
+
+**Preview, on demand.** One stream at a time, behind a button — not a wall of
+thumbnails. A preview is a low-rate `GET /preview/{stream}`; opening another
+closes the first.
+
+**Record / Stop.** One button. Record is `POST /record`: create and start
+together. The current take's name and elapsed time sit beside it.
+
+**Settings.** Output root, codec (HEVC or ProRes 422, one global setting),
+*Show windows*, and the bearer token — shown as a pairing code, with a
+rotate button.
+
+<Callout kind="note" title="It asks when it needs to">
+The first time you arm a kind of stream, macOS prompts for that permission.
+Rheocles does not ask for anything in advance. If arming a camera prompts
+nothing and records nothing, see [Troubleshooting](/docs/troubleshooting#nothing-prompts-and-nothing-records).
+</Callout>
+
+## The daemon
+
+The app bundles `rheocles-core` and launches it if nothing answers on 7447;
+if something does, it uses what is running. Two front ends on one machine —
+the menu bar app and the NativePHP app, or a future Pteroprompter — share one
+daemon. There is no LaunchAgent in the MVP: the daemon lives as long as
+something is talking to it.
+
+## Reviewing the UI without a screen
+
+```sh
+Rheocles.app/Contents/MacOS/Rheocles --render-preview ./previews
+```
+
+renders every popover state to PNG offscreen, as Sonocles does, so a change
+can be reviewed from a build log. AppKit-backed controls do not rasterise
+this way; anything in the popover that needs to appear in a preview is drawn
+from shapes.
+
+## Style
+
+The app follows `docs/BRAND.md` and this site, not Pteroprompter. It is dark
+— it sits over a running take and should never flash white at you mid-take —
+on the same palette as the site: `slip` ground, `bone` text, `aegean` for the
+signature, `ochre` armed, `oxide` recording, `script` for a value it does not
+have.
+
+<Cards>
+	<Card title="Streams and arming" href="/docs/streams-and-arming" tone="ochre">
+		What the toggle does, and what armed costs.
+	</Card>
+	<Card title="The NativePHP app" href="/docs/nativephp-app">
+		The same popover, in PHP, on the same daemon.
+	</Card>
+</Cards>

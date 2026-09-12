@@ -1,0 +1,59 @@
+---
+title: The NativePHP app
+description: The same UI as the menu bar app, in PHP, driving the same daemon over the same API. It exists to be lifted whole into Pteroprompter.
+draft: true
+---
+import Callout from '../../components/Callout.astro';
+import Cards from '../../components/Cards.astro';
+import Card from '../../components/Card.astro';
+
+Pteroprompter is a NativePHP app. The plan is for it to record its own takes
+— camera, prompter screen, microphone, system audio, as separate files on one
+cue — and the cheapest way to get there is to build the Rheocles UI in
+NativePHP first, against the real daemon, and then lift it whole.
+
+So `php/` is a second front end with full parity to the [menu bar
+app](/docs/menu-bar-app): every stream with an arm toggle, preview on
+demand, one Record button, settings, the pairing code. It bundles its own
+copy of `rheocles-core` as a sidecar and launches it on demand, exactly as
+the Swift app does.
+
+## What it is not
+
+It does not reimplement capture. AVFoundation and ScreenCaptureKit are not
+reachable from PHP, and nothing about recording happens in this app. "Feature
+complete" means the UI: everything you can click in the Swift popover you can
+click here, and both clicks become the same API call.
+
+## One daemon
+
+Launch the NativePHP app while the menu bar app is running and it finds the
+daemon already on 7447 and uses it. Launch it alone and it starts its own
+bundled copy. Two front ends, one engine, one set of armed streams — arm a
+camera in one and it is armed in the other, because there is only one place
+that state lives.
+
+## Pairing
+
+Zero clicks. The app runs as you, reads
+`~/Library/Application Support/Rheocles/token`, and is paired. A future
+Pteroprompter does the same on the same machine; on another machine it waits
+for v0.2's approve-on-the-box pairing.
+
+<Callout kind="trap" title="Two things Sonocles' NativePHP experiment learned">
+The scaffolded entitlements ship without `com.apple.security.device.audio-input`,
+and under the hardened runtime a missing entitlement means the app cannot
+prompt, cannot record, and never appears in Privacy at all. And the
+scaffolded `build/notarize.js` prints "done notarizing" after a caught
+failure. Both are checked in this repo's build; both are worth knowing if you
+build your own.
+</Callout>
+
+<Cards>
+	<Card title="The API" href="/docs/api">
+		What both apps are made of.
+	</Card>
+	<Card title="The menu bar app" href="/docs/menu-bar-app">
+		The reference for what parity means.
+	</Card>
+</Cards>

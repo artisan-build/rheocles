@@ -19,6 +19,8 @@ export default defineConfig({
 			// Dark blocks on a light page, as on sonocles.com. Fonts and colours
 			// are overridden in src/styles/code.css so the theme stays in one place.
 			themes: ['github-dark-dimmed'],
+			// Long lines wrap rather than scroll; a reference is read, not copied wholesale.
+			defaultProps: { wrap: true, preserveIndent: true },
 			styleOverrides: {
 				borderRadius: '10px',
 				codeFontFamily: "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace",

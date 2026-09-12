@@ -1,0 +1,161 @@
+---
+// One endpoint in the API reference: method chip and path, summary, request
+// fields, response example, errors, and the same command as a WebSocket
+// frame. Two columns at desktop (prose left, code right), one at phone width.
+import { Code } from 'astro-expressive-code/components';
+import type { Endpoint } from '../lib/api-spec';
+interface Props {
+	endpoint: Endpoint;
+}
+const { endpoint: e } = Astro.props;
+const slug = `${e.method}-${e.path}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const responseLang = e.method === 'WS' || e.path === '/events' ? 'txt' : 'json';
+---
+
+<section class="ep" id={slug}>
+	<h3 class="ep__head">
+		<span class:list={['ep__method', `ep__method--${e.method.toLowerCase()}`]}>{e.method}</span>
+		<code class="ep__path">{e.path}</code>
+	</h3>
+	<div class="ep__grid">
+		<div class="ep__prose">
+			<p class="ep__summary">{e.summary}</p>
+			{e.description && <p class="ep__desc" set:html={e.description.replace(/`([^`]+)`/g, '<code>$1</code>')} />}
+			{
+				e.request && (
+					<table class="ep__fields">
+						<thead><tr><th>field</th><th>type</th><th></th></tr></thead>
+						<tbody>
+							{e.request.map((f) => (
+								<tr>
+									<td><code>{f.name}</code>{f.required && <span class="req" title="required">*</span>}</td>
+									<td><code class="type">{f.type}</code></td>
+									<td>{f.note}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				)
+			}
+			{
+				e.errors && (
+					<dl class="ep__errors">
+						{e.errors.map((er) => (
+							<div><dt>{er.code}</dt><dd>{er.when}</dd></div>
+						))}
+					</dl>
+				)
+			}
+		</div>
+		<div class="ep__code">
+			{e.response && <Code code={e.response} lang={responseLang} title={e.method === 'WS' ? 'frames' : 'response'} />}
+			{e.responseNote && <p class="ep__note">{e.responseNote}</p>}
+			{e.ws && <Code code={e.ws} lang="json" title="over WebSocket" />}
+		</div>
+	</div>
+</section>
+
+<style>
+	.ep {
+		padding: 1.8rem 0 0.6rem;
+		border-top: 1px solid var(--limestone-line);
+	}
+	.ep__head {
+		display: flex;
+		align-items: center;
+		gap: 0.7rem;
+		font-family: var(--mono);
+		font-variation-settings: normal;
+		font-weight: 500;
+		font-size: 1.05rem;
+		letter-spacing: 0;
+		margin: 0 0 0.9rem;
+	}
+	.ep__head a {
+		color: inherit;
+		text-decoration: none;
+	}
+	.ep__method {
+		font-size: 0.66rem;
+		letter-spacing: 0.12em;
+		padding: 0.25em 0.6em;
+		border-radius: 5px;
+		color: var(--limestone);
+		background: var(--aegean);
+	}
+	.ep__method--post {
+		background: var(--ochre-ink);
+	}
+	.ep__method--ws {
+		background: var(--olive);
+	}
+	.ep__path {
+		background: transparent;
+		padding: 0;
+		font-size: 1em;
+	}
+	.ep__grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		gap: 1.4rem;
+		align-items: start;
+	}
+	.ep__summary {
+		font-weight: 500;
+		margin-bottom: 0.6rem;
+	}
+	.ep__desc,
+	.ep__note {
+		font-size: 0.9rem;
+		color: var(--ink-soft);
+	}
+	.ep__fields {
+		font-size: 0.86rem;
+		margin: 0.6rem 0 0.8rem;
+	}
+	.ep__fields td,
+	.ep__fields th {
+		padding: 0.45rem 0.5rem 0.45rem 0;
+	}
+	.ep__fields code {
+		font-size: 0.82em;
+	}
+	.ep__fields code.type {
+		background: transparent;
+		padding: 0;
+		color: var(--ink-faint);
+	}
+	.req {
+		color: var(--oxide);
+		margin-left: 0.15em;
+	}
+	.ep__errors {
+		margin: 0.4rem 0 0;
+		font-size: 0.86rem;
+	}
+	.ep__errors > div {
+		display: grid;
+		grid-template-columns: 3rem minmax(0, 1fr);
+		gap: 0.6rem;
+		padding: 0.3rem 0;
+	}
+	.ep__errors dt {
+		font-family: var(--mono);
+		color: var(--oxide);
+	}
+	.ep__errors dd {
+		margin: 0;
+		color: var(--ink-soft);
+	}
+	.ep__code :global(.expressive-code) {
+		margin: 0 0 0.8rem;
+	}
+	.ep__code :global(.expressive-code pre) {
+		font-size: 0.78rem;
+	}
+	@media (max-width: 900px) {
+		.ep__grid {
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+</style>
