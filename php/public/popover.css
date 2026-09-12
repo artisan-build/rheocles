@@ -34,7 +34,8 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; }
+html { background: var(--ground); }
 body {
   width: 344px; background: var(--ground); color: var(--ink);
   font: 11.5px/1.35 var(--body); -webkit-font-smoothing: antialiased;
@@ -64,6 +65,7 @@ header { display: flex; align-items: center; gap: 9px; padding: 11px 14px; flex:
 
 /* centre */
 main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.takebar .prose.script { color: var(--script); }
 .panel { padding: 12px 14px; background: var(--inset); min-height: 142px; display: flex; flex-direction: column; gap: 9px; }
 .panel[data-state="launching"] { justify-content: center; }
 .kicker-row { display: flex; align-items: baseline; gap: 8px; }
@@ -80,14 +82,60 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .down-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .path { font: 9px/1 var(--mono); color: var(--script); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
 
-/* GET / as a list — task 1's centre; the stream list replaces it (task 2) */
-.discovery { padding: 4px 0; overflow-y: auto; flex: 1; }
+/* the stream list — grouped by kind in the daemon's order, capped at the Swift list's 392 pt, scrolls beyond */
+.streams { padding: 4px 0; max-height: 392px; overflow-y: auto; scrollbar-width: thin; }
 .section { font: 500 9px/1 var(--mono); letter-spacing: 1.1px; text-transform: uppercase; color: var(--aegean); padding: 9px 14px 4px; }
-.field { display: flex; align-items: baseline; gap: 10px; padding: 0 14px; height: 24px; }
-.field b { font: 500 11.5px/1 var(--body); color: var(--ink); width: 92px; flex: none; }
-.field span { font: 9.5px/1 var(--mono); color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.field span.absent { color: var(--script); }
 .empty { font: 10.5px/1.4 var(--body); color: var(--script); padding: 10px 14px; }
+.stream { display: flex; align-items: center; gap: 9px; height: 30px; padding-right: 14px; }
+.stream .bar { width: 3px; align-self: stretch; background: transparent; flex: none; }
+.stream[data-armed="true"] .bar { background: var(--ochre); }
+.stream[data-writing="true"] .bar { background: var(--oxide); }
+.glyph { width: 14px; height: 14px; flex: none; fill: none; stroke: var(--ink-faint); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.stream[data-armed="true"] .glyph { stroke: var(--ochre-ink); }
+.stream .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.stream .name { font: 500 11.5px/1.2 var(--body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stream[data-armed="true"] .name { font-weight: 600; color: var(--ochre-ink); }
+.stream .sub { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.stream .detail { font: 9.5px/1.2 var(--mono); color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* twelve cells over the useful range; no reading is no cells and ·· */
+.meter { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.meter .cells { display: inline-flex; gap: 1.5px; }
+.meter .cells i { width: 4px; height: 8px; border-radius: 1px; background: var(--sink); }
+.meter .cells i[data-on="on"] { background: var(--ochre); }
+.meter .cells i[data-on="clip"] { background: var(--oxide); }
+.meter .db { font: 9px/1 var(--mono); color: var(--ink-faint); width: 22px; text-align: right; }
+.meter .db.absent { color: var(--script); }
+
+/* the eye: preview this stream, one at a time (task 4) */
+.eye { width: 22px; height: 17px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-faint); padding: 0; display: grid; place-items: center; cursor: default; flex: none; }
+.eye svg { width: 12px; height: 12px; }
+.eye[aria-pressed="true"] { color: var(--aegean); background: var(--wash); }
+
+/* the arm switch, from shapes: a capsule and a knob, ochre and nothing else */
+.switch { position: relative; width: 30px; height: 17px; border-radius: 999px; border: 1px solid var(--line); background: var(--sink); padding: 0; cursor: default; flex: none; transition: background .15s ease-out, border-color .15s ease-out; }
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--script); transition: left .15s ease-out; }
+.switch[aria-checked="true"] { background: var(--ochre); border-color: var(--ochre); }
+.switch[aria-checked="true"] .knob { left: 15px; background: var(--ground); }
+.switch:disabled { opacity: .55; }
+
+/* a grant that is missing, and the one click that fixes it */
+.nudge { padding: 6px 14px; display: flex; flex-direction: column; gap: 7px; }
+.nudge .actions { display: flex; gap: 8px; }
+.prose.soft { color: var(--ink-soft); }
+.prose.script { color: var(--script); }
+.prose.pad { padding: 8px 14px; }
+
+/* settings, in place of the list */
+.settings { padding: 4px 0; }
+.settings .row { padding: 0 0 10px; display: flex; flex-direction: column; gap: 6px; }
+.settings .row .prose { padding: 0 14px; }
+.settings .rule.inset { margin: 0 14px; }
+.check { display: flex; align-items: center; gap: 6px; padding: 0 14px; font: 11px/1.2 var(--body); color: var(--ink-soft); cursor: default; }
+.check input { position: absolute; opacity: 0; width: 0; height: 0; }
+.check .box { width: 13px; height: 13px; border-radius: 3px; border: 1px solid var(--script); background: var(--ground); flex: none; display: grid; place-items: center; }
+.check input:checked + .box { background: var(--aegean); border-color: var(--aegean); }
+.check input:checked + .box::after { content: ""; width: 3px; height: 6px; border: solid var(--ground); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
 
 /* the take bar — Record arrives with task 3; the bar keeps its place */
 .takebar { display: flex; align-items: center; gap: 10px; height: 46px; padding: 8px 14px; background: var(--inset); flex: none; }
@@ -113,4 +161,5 @@ footer { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; fl
 .btn.oxide { border-color: var(--oxide); color: var(--oxide); }
 .btn.oxide.filled { background: var(--oxide); color: var(--ground); }
 .btn:disabled { border-color: var(--script); color: var(--script); background: transparent; }
+.btn .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .btn:active:not(:disabled) { opacity: .8; }

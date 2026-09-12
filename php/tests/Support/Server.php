@@ -29,7 +29,11 @@ final class Server
     /** The stub, expecting `$token`. */
     public static function stub(int $port, string $token): self
     {
-        return self::spawn($port, [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__.'/../stubs/core.php'], ['STUB_TOKEN' => $token]);
+        $state = sys_get_temp_dir()."/rheo-stub-state-$port-".getmypid().'.json';
+        @unlink($state);
+
+        return self::spawn($port, [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__.'/../stubs/core.php'],
+            ['STUB_TOKEN' => $token, 'STUB_STATE' => $state]);
     }
 
     /** The real daemon, on spare ports, with its own token file and output root. */

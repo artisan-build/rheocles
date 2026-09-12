@@ -183,9 +183,20 @@ final class Daemon
         return $this->status === self::RUNNING;
     }
 
-    /** The Relaunch button: forget the crash-loop count and try again. */
+    /**
+     * The Relaunch button: forget the crash-loop count and try again. When
+     * our core is running this is a restart — Screen Recording takes effect
+     * on the daemon's next launch (PROTOCOL § GET /streams), and the nudge
+     * under an empty Displays section offers exactly that. A shared daemon
+     * is never restarted from here; the nudge says to relaunch it instead.
+     */
     public function relaunch(): void
     {
+        if ($this->ours && $this->status === self::RUNNING) {
+            Log::info('restarting rheocles-core (ours)');
+            ChildProcess::stop(self::ALIAS);
+            $this->sleep(0.5);
+        }
         $this->launches = [];
         $this->why = null;
         $this->status = self::LAUNCHING;
