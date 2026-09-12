@@ -1,5 +1,13 @@
+import AppKit
 import Foundation
 import RheoclesCore
+
+// Touch AppKit once, synchronously on the main thread at startup, so the
+// process has a window-server connection before any capture path needs one.
+// ScreenCaptureKit's window filters assert without it (S2), and doing it
+// lazily from an async MainActor hop on a cold daemon could deadlock the main
+// actor — the "leaked its continuation" a front end saw on ~1 launch in 2.
+_ = NSApplication.shared
 
 // rheocles-core — the headless daemon.
 //

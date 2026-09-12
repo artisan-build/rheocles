@@ -294,6 +294,16 @@ listing every stream's error. `409` if the take is not `recording`.
 **Record** — `POST /record` — is create followed by start in one call, with
 the same body and answer as create.
 
+**Daemon lifecycle.** On **SIGINT/SIGTERM** the daemon finalizes an active
+take — every writer closes and the manifest is written `incomplete` with
+reason `daemon stopped` — so a cleanly-stopped daemon never leaves a take
+saying `recording`. On **launch**, any manifest found `recording` or
+`created` on disk is from a daemon that died without finalizing it (a crash,
+a `SIGKILL`, a power cut); it is rewritten `incomplete` with reason
+`daemon died`. A recovered take is never served as the live take — a client
+that tries to `stop` or add a marker to it gets `409`, and `GET /takes/{id}`
+already shows it `incomplete`.
+
 **Read** — `GET /takes/{id}` answers the manifest at any time: live while
 recording, from disk afterwards. `GET /takes` lists recent takes newest
 first (the active one, then this process's finished ones, then whatever
@@ -373,6 +383,9 @@ recording never disturbs the take. One preview runs at a time.
 - **Video** (display, window, camera) → `image/jpeg`, longest side 640.
 - **Audio** (microphone, system audio) → `application/json`
   `{ "levelDb": <peak dBFS of a short sample> }`, for the popover's meter.
+  The level is read with the same format-aware path as the writer, so a
+  device's 24-in-32 / packed-24 / float layout reads correctly rather than as
+  full scale.
 
 `404` for an unknown stream; `503 no_frame` if the device delivered no frame
 (a camera with no signal). Over WebSocket the JPEG comes back as `base64`
@@ -386,7 +399,9 @@ an editor syncs them with no manifest (spec §4, §8).
 - **Video** (displays, windows, cameras) → QuickTime MOV, **HEVC** by
   default or **ProRes 422** (`settings.codec`, one setting for the whole
   take), written with a 1 s `movieFragmentInterval` so a crash leaves a
-  playable file, plus a **`tmcd` timecode track**.
+  playable file, plus a **`tmcd` timecode track**. The HEVC default is
+  **0.15 bits per pixel per frame** — the decided tier, measured visually
+  transparent versus ProRes 422 at 1080p and 4K (`docs/CAPTURE.md`).
 - **Audio** (microphones, system audio) → **Broadcast Wave**, 48 kHz 24-bit
   LPCM, separate files, with a `bext` chunk. Video files carry no audio.
 - **`timecode`** is the file's start timecode as `HH:MM:SS:FF` — the

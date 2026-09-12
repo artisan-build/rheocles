@@ -215,6 +215,26 @@ struct TakeTests {
         #expect(stopped.streams[1].error == "disk full" && stopped.streams[0].error == nil)
     }
 
+    @Test("A manifest reserve is written at create and freed at stop (full-disk safety net)")
+    func manifestReserve() async throws {
+        let w = try await world()
+        try await w.registry.arm("camera:fake")
+        let take = try await w.engine.create(.init()).take
+        let folder = w.root.appendingPathComponent(take.destination)
+        let reserve = folder.appendingPathComponent(".manifest.reserve")
+        // Present after create, 64 KB, so a full disk can be relieved to land
+        // the final manifest truthfully.
+        #expect(FileManager.default.fileExists(atPath: reserve.path))
+        let size =
+            (try FileManager.default.attributesOfItem(atPath: reserve.path)[.size] as? Int) ?? 0
+        #expect(size == 64 * 1024)
+        _ = try await w.engine.start(take.id)
+        _ = try await w.engine.stop(take.id)
+        #expect(
+            !FileManager.default.fileExists(atPath: reserve.path),
+            "reserve is released once the take is over")
+    }
+
     @Test("Manifests are readable by id after the fact, and listed newest first")
     func readBack() async throws {
         let w = try await world()
@@ -237,6 +257,48 @@ struct TakeTests {
             machine: .init(hostname: "x", machineId: "y"))
         #expect(await fresh.list().map(\.name) == ["b", "a"])
         #expect(try await fresh.manifest(a).name == "a")
+    }
+
+    @Test("shutdown finalises a recording take incomplete with 'daemon stopped'")
+    func shutdownFinalises() async throws {
+        let w = try await world()
+        try await w.registry.arm("camera:fake")
+        let id = try await w.engine.record(.init()).take.id
+        await w.engine.shutdown()
+        #expect(await w.engine.activeManifest == nil)
+        let take = try await w.engine.manifest(id)
+        #expect(take.state == .incomplete && take.reason == "daemon stopped")
+        #expect(take.streams.allSatisfy { $0.stopped != nil })
+        #expect(w.writers.made["camera:fake"]?.1.finished == true)
+    }
+
+    @Test("recoverStaleManifests rewrites a left-recording manifest to incomplete 'daemon died'")
+    func recovery() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rheo-recover-\(UUID().uuidString)", isDirectory: true)
+        let folder = root.appendingPathComponent("takes/x", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // A manifest a dead daemon left mid-recording.
+        var stale = Manifest(
+            id: "x", name: nil, state: .recording, reason: nil, created: Date(), started: Date(),
+            stopped: nil, outputRoot: root.path, destination: "takes/x", version: "0.1.0",
+            machine: .init(hostname: "h", machineId: "m"), streams: [], markers: [],
+            settings: .init(codec: .hevc, expectedDuration: nil))
+        try stale.write(to: folder.appendingPathComponent("manifest.json"))
+
+        TakeEngine.recoverStaleManifests(in: root)
+
+        let recovered = try Manifest.decode(
+            Data(contentsOf: folder.appendingPathComponent("manifest.json")))
+        #expect(recovered.state == .incomplete && recovered.reason == "daemon died")
+        // A created-but-unstarted take is recovered too.
+        stale.state = .created
+        try stale.write(to: folder.appendingPathComponent("manifest.json"))
+        TakeEngine.recoverStaleManifests(in: root)
+        #expect(
+            try Manifest.decode(Data(contentsOf: folder.appendingPathComponent("manifest.json")))
+                .state
+                == .incomplete)
     }
 
     @Test("Manifest JSON round-trips with ISO 8601 UTC dates and sorted keys")

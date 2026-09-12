@@ -148,6 +148,70 @@ public actor TakeEngine {
         }
     }
 
+    /// Finalise the active take for a clean daemon shutdown (SIGINT/SIGTERM):
+    /// every writer closes, the manifest is written `incomplete` with reason
+    /// "daemon stopped", so an interrupted take is never left saying
+    /// `recording` on disk. Idempotent.
+    public func shutdown() async {
+        stopStatusTicker()
+        guard var current = live else { return }
+        switch current.manifest.state {
+        case .recording:
+            let end = Self.now()
+            for index in current.manifest.streams.indices {
+                guard let writer = current.writers[current.manifest.streams[index].id] else {
+                    continue
+                }
+                if let session = await registry.session(for: current.manifest.streams[index].id) {
+                    session.sink = nil
+                }
+                finalize(
+                    &current.manifest.streams[index], writer: writer, at: end,
+                    cueOffset: current.manifest.offset(of: end) ?? 0)
+                _ = await writer.finish()
+            }
+            current.writers.removeAll()
+            current.manifest.stopped = end
+            current.manifest.state = .incomplete
+            current.manifest.reason = "daemon stopped"
+        case .created:
+            current.manifest.state = .incomplete
+            current.manifest.reason = "daemon stopped before start"
+        default:
+            break
+        }
+        Self.writeManifest(current.manifest, folder: current.folder)
+        try? FileManager.default.removeItem(
+            at: current.folder.appendingPathComponent(Self.reserveName))
+        onChange(current.manifest)
+        live = nil
+    }
+
+    /// On launch, any manifest left `recording` or `created` is from a daemon
+    /// that died without finalising it (a crash, a SIGKILL). Rewrite each to
+    /// `incomplete` reason "daemon died", so a recovered take is never served
+    /// as if it were live — a front end would get 409 trying to stop it.
+    /// Plain file I/O, safe to run synchronously before the actor exists.
+    public static func recoverStaleManifests(in root: URL) {
+        let fm = FileManager.default
+        guard
+            let enumerator = fm.enumerator(
+                at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+        else { return }
+        for case let url as URL in enumerator {
+            if enumerator.level > 4 { enumerator.skipDescendants(); continue }
+            guard url.lastPathComponent == "manifest.json", let data = try? Data(contentsOf: url),
+                var manifest = try? Manifest.decode(data),
+                manifest.state == .recording || manifest.state == .created
+            else { continue }
+            manifest.state = .incomplete
+            manifest.reason = "daemon died"
+            try? manifest.write(to: url)
+            try? fm.removeItem(
+                at: url.deletingLastPathComponent().appendingPathComponent(reserveName))
+        }
+    }
+
     /// The manifest of the active take, if any, refreshed with each writer's
     /// current frame count, drift and timecode — the manifest is live while
     /// recording (spec §11), not frozen at the cue.
@@ -187,7 +251,7 @@ public actor TakeEngine {
                 var superseded = current.manifest
                 superseded.state = .incomplete
                 superseded.reason = "superseded before start"
-                try? superseded.write(to: current.folder.appendingPathComponent("manifest.json"))
+                Self.writeManifest(superseded, folder: current.folder)
                 onChange(superseded)
                 live = nil
             default:
@@ -261,6 +325,8 @@ public actor TakeEngine {
 
         do {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            // A 64 KB reserve, freed if a full disk blocks the final manifest.
+            try? Data(count: 64 * 1024).write(to: folder.appendingPathComponent(Self.reserveName))
             try manifest.write(to: manifestURL)
         } catch {
             throw APIError(
@@ -304,7 +370,7 @@ public actor TakeEngine {
             }
         }
         live = current
-        try? current.manifest.write(to: current.folder.appendingPathComponent("manifest.json"))
+        Self.writeManifest(current.manifest, folder: current.folder)
         onChange(current.manifest)
         startStatusTicker()
         return current.manifest
@@ -338,7 +404,10 @@ public actor TakeEngine {
             current.manifest.state = .incomplete
             current.manifest.reason = failed.joined(separator: "; ")
         }
-        try? current.manifest.write(to: current.folder.appendingPathComponent("manifest.json"))
+        Self.writeManifest(current.manifest, folder: current.folder)
+        // The take is over; the reserve has done its job.
+        try? FileManager.default.removeItem(
+            at: current.folder.appendingPathComponent(Self.reserveName))
         live = nil
         recent.insert(current.manifest, at: 0)
         if recent.count > 50 { recent.removeLast() }
@@ -449,8 +518,27 @@ public actor TakeEngine {
     }
 
     private func persist(_ current: Live) {
-        try? current.manifest.write(to: current.folder.appendingPathComponent("manifest.json"))
+        Self.writeManifest(current.manifest, folder: current.folder)
         onChange(current.manifest)
+    }
+
+    /// The manifest is the take: it must reach disk truthfully even when a
+    /// writer just filled the volume. The atomic temp+rename and the in-place
+    /// fallback both need free bytes, and a full disk has none — and the
+    /// `incomplete` manifest, carrying error text, is larger than the
+    /// `recording` one it replaces. So each take folder holds a small reserve
+    /// file, written at create; when a manifest write fails, we free the
+    /// reserve and try once more, which is enough for the final state to land.
+    static let reserveName = ".manifest.reserve"
+
+    static func writeManifest(_ manifest: Manifest, folder: URL) {
+        let url = folder.appendingPathComponent("manifest.json")
+        do {
+            try manifest.write(to: url)
+        } catch {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(reserveName))
+            try? manifest.write(to: url)
+        }
     }
 
     public func record(_ request: CreateRequest) async throws -> Created {

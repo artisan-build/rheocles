@@ -112,6 +112,9 @@ public final class AudioWriter: Writer, @unchecked Sendable {
     }
 
     /// 24-bit little-endian packed frames from whatever arrived.
+    ///
+    /// Internal so the preview sampler can reuse it — a hand-rolled copy got
+    /// the Scarlett's 24-in-32 alignment wrong and read peak as full scale.
     static func pack(_ bytes: UnsafeRawBufferPointer, asbd: AudioStreamBasicDescription) -> Data? {
         let isFloat = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0
         let isBigEndian = asbd.mFormatFlags & kAudioFormatFlagIsBigEndian != 0

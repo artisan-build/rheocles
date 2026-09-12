@@ -19,7 +19,8 @@ public struct ScreenSource: StreamSource {
         // A process that has never touched AppKit has no window-server
         // connection, and SCContentFilter for a window asserts without one
         // (S2). Cheap, idempotent, and required before any SCK call.
-        _ = await MainActor.run { NSApplication.shared }
+        // The window-server connection is established once at daemon startup
+        // (rheocles-core's main); no per-call AppKit hop is needed.
 
         guard
             let content = try? await SCShareableContent.excludingDesktopWindows(

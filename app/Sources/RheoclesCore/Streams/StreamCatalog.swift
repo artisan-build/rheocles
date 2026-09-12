@@ -85,7 +85,13 @@ public struct MicrophoneSource: StreamSource {
     public func streams() async -> [StreamInfo] {
         AVCaptureDevice.DiscoverySession(
             deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified
-        ).devices.map { device in
+        ).devices.filter { device in
+            // Our own system-audio tap surfaces as a private aggregate device
+            // named "Rheocles system audio" while armed; it is not a real
+            // input and must not be offered as a second microphone.
+            !device.localizedName.hasPrefix("Rheocles system audio")
+                && !device.uniqueID.contains("build.artisan.rheocles.systemaudio")
+        }.map { device in
             let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(
                 device.activeFormat.formatDescription)
             return StreamInfo(

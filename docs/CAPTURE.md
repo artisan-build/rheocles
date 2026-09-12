@@ -29,19 +29,24 @@ single alternative?
 
 **Answer.** At **0.15 bits per pixel per frame** the HEVC files are
 transparent at both 1080p and 4K on the demanding real content measured
-here, with headroom — 4K reaches transparency by ~0.12 bpp. The engine's
-provisional 0.15 bpp is confirmed as the default; a per-resolution
-refinement (4K at 0.12 bpp for ~20 % smaller files at equal perceptual
-quality) is noted below as a future option.
+here, with headroom — 4K reaches transparency by ~0.12 bpp. **0.15 bpp is the
+decided global HEVC default** (agreed with Len after this measurement), a
+single knob for both resolutions; a per-resolution refinement (4K at 0.12 bpp
+for ~20 % smaller files at equal perceptual quality) is noted below as a
+future option.
 
-Expressed as bits per pixel per frame so the tier is independent of frame
-rate; the megabit figures below are that tier at 30 fps (double them for
-60 fps):
+The tier is bits per pixel per frame so it is independent of frame rate.
+Two megabit columns below: **nominal** is the arithmetic target
+`0.15 × width × height × fps` (what the disk pre-flight reserves), and
+**measured** is what `hevc_videotoolbox` actually produced on the demanding
+motion source — the encoder undershoots the average-bitrate target by
+~15–20 % on this content, so the pre-flight's use of the nominal figure is
+conservative (it never under-reserves).
 
-| resolution | default tier | ≈ 30 fps | ≈ 60 fps |
+| resolution | tier | nominal @30 / @60 | measured @30 |
 |---|---|---|---|
-| 1080p | 0.15 bpp | 8 Mbps | 16 Mbps |
-| 4K (3840×2160) | 0.15 bpp (0.12 usable) | 12 Mbps (10) | 25 Mbps (20) |
+| 1080p | 0.15 bpp | 9.3 / 18.7 Mbps | ~8 Mbps |
+| 4K (3840×2160) | 0.15 bpp | 37.3 / 74.6 Mbps | ~30 Mbps |
 
 ### Source
 
@@ -169,6 +174,16 @@ the single lossless alternative.
 
 ## Disk pre-flight estimates
 
-The pre-flight uses the same figures: HEVC **0.15 bpp** (1080p30 ≈ 9 Mbps,
-4K60 ≈ 50 Mbps) and ProRes 422 ≈ 2.4 bpp (1080p30 ≈ 147 Mbps). Confirmed by
-the measurement above.
+`TakeEngine.estimateBytes` reserves at the **nominal** tier — HEVC
+**0.15 bpp** and ProRes 422 **2.4 bpp** — times `min(fps, 60)` and the
+expected duration:
+
+| | 1080p30 | 1080p60 | 4K30 | 4K60 |
+|---|---|---|---|---|
+| HEVC 0.15 bpp | 9.3 Mbps | 18.7 | 37.3 | **74.6** |
+| ProRes 2.4 bpp | 149 Mbps | 299 | 597 | 1194 |
+
+The pre-flight deliberately uses the nominal target, not the measured
+~15–20 % lower actual output, so `507 insufficient_storage` decisions err on
+the side of caution rather than letting a take start and then run out of
+disk mid-write.

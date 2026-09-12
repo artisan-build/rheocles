@@ -67,6 +67,10 @@ public final class Server: Sendable {
             ws.broadcast(event)
         }
         self.settings = settings
+        // Recover any take a previous daemon left mid-recording on disk before
+        // serving anything: mark it incomplete "daemon died" so it is never
+        // treated as the live take.
+        TakeEngine.recoverStaleManifests(in: settings.outputRoot)
         let registry = Registry(
             catalog: configuration.catalog, factory: configuration.sessionFactory
         ) { stream in
@@ -259,13 +263,11 @@ public final class Server: Sendable {
         let takes = self.takes
         let done = DispatchSemaphore(value: 0)
         Task {
-            if let active = await takes.activeManifest, active.state == .recording {
-                _ = try? await takes.stop(active.id)
-            }
+            await takes.shutdown()
             await armed.disarmAll()
             done.signal()
         }
-        _ = done.wait(timeout: .now() + 5)
+        _ = done.wait(timeout: .now() + 20)  // finishing many large writers can take a few seconds
         http.stop()
         ws.stop()
     }

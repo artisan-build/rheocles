@@ -112,9 +112,7 @@ final class ScreenSession: NSObject, StreamSession, SCStreamDelegate, SCStreamOu
     }
 
     func start() async throws {
-        // A process that has never touched AppKit has no window-server
-        // connection, and a window filter asserts without one (S2).
-        _ = await MainActor.run { NSApplication.shared }
+        // The window-server connection is established at daemon startup.
         guard CGPreflightScreenCaptureAccess() else {
             // The prompt is the system's; asking again is the only way to ask.
             _ = CGRequestScreenCaptureAccess()

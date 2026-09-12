@@ -100,28 +100,38 @@ final class OneShot: FrameSink, @unchecked Sendable {
                 frame = sampleBuffer
                 finishLocked()
             }
-        } else if let block = CMSampleBufferGetDataBuffer(sampleBuffer) {
-            updatePeak(block)
+        } else if let format = CMSampleBufferGetFormatDescription(sampleBuffer),
+            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee,
+            let block = CMSampleBufferGetDataBuffer(sampleBuffer)
+        {
+            updatePeak(block, asbd: asbd)
         }
         lock.unlock()
     }
 
-    private func updatePeak(_ block: CMBlockBuffer) {
+    /// Peak from whatever audio format the device delivered, via the same
+    /// format-aware packer the writer uses (24-in-32 aligned-high, packed 24,
+    /// or Float32) — a fixed-stride copy misread the Scarlett as full scale.
+    private func updatePeak(_ block: CMBlockBuffer, asbd: AudioStreamBasicDescription) {
         var length = 0
         var pointer: UnsafeMutablePointer<CChar>?
         guard
             CMBlockBufferGetDataPointer(
                 block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length,
-                dataPointerOut: &pointer) == noErr, let pointer, length >= 4
+                dataPointerOut: &pointer) == noErr, let pointer, length > 0
         else { return }
-        pointer.withMemoryRebound(to: UInt8.self, capacity: length) { bytes in
+        guard
+            let packed = AudioWriter.pack(
+                UnsafeRawBufferPointer(start: pointer, count: length), asbd: asbd)
+        else { return }
+        packed.withUnsafeBytes { raw in
             var i = 0
-            while i + 4 <= length {
-                let v = Int32(bytes[i + 1]) | Int32(bytes[i + 2]) << 8 | Int32(bytes[i + 3]) << 16
+            while i + 3 <= raw.count {
+                let v = Int32(raw[i]) | Int32(raw[i + 1]) << 8 | Int32(raw[i + 2]) << 16
                 let s = v >= 0x800000 ? v - 0x1000000 : v
                 let a = s < 0 ? -s : s
                 if a > peak { peak = a }
-                i += 4
+                i += 3
             }
         }
     }
@@ -155,9 +165,13 @@ final class OneShot: FrameSink, @unchecked Sendable {
     }
 
     func wait(timeout seconds: TimeInterval) async -> CMSampleBuffer? {
-        let timer = Task { [weak self] in
+        // Strong self: the timer must outlive any early release of the OneShot
+        // so `timeout()` always runs and the continuation is always resumed
+        // (a weak self that went nil would leak the continuation). Cancelled
+        // the instant the continuation resumes, so the retain is momentary.
+        let timer = Task {
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-            self?.timeout()
+            self.timeout()
         }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             enqueue(continuation)

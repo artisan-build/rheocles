@@ -126,8 +126,11 @@ struct PreviewTests {
         let result = try await service.preview("microphone:fake")
         #expect(result.contentType == "application/json")
         let level = try JSONDecoder().decode([String: Double].self, from: result.body)
-        #expect(level["levelDb"] != nil)
-        #expect((level["levelDb"] ?? 0) > -120, "the synthetic tone registers")
+        let db = try #require(level["levelDb"])
+        // 0.5 FS aligned-high → about -6 dBFS. A format-unaware read misread
+        // the alignment as full scale (0 dBFS); assert a sane range, not just
+        // "> -120", so that regression is caught.
+        #expect(db > -12 && db < -3, "0.5 FS should read ~-6 dBFS, got \(db)")
     }
 
     @Test("An unknown stream is 404")
