@@ -1,0 +1,54 @@
+name: Deploy site
+
+# Build the site and push it to Cloudflare Pages on every push to main that
+# touches site/. Direct Upload via Wrangler — the same command as `make deploy`,
+# so what CI does and what a human does cannot drift apart.
+#
+# Unlike Sonocles' site this one is Astro, so there is a build step; the
+# install/build/deploy shape is ext-ffmpeg's. `pages_build_output_dir` in
+# site/wrangler.jsonc points at Astro's dist/.
+#
+# Requires repo secrets: CLOUDFLARE_API_TOKEN (Pages: Edit), CLOUDFLARE_ACCOUNT_ID.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
+
+# One in-flight deploy at a time; newer pushes supersede.
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Deploy to Cloudflare Pages
+        run: pnpm exec wrangler pages deploy --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

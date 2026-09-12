@@ -1,0 +1,282 @@
+name: Release
+
+# Tag a version, get an app. `git tag v0.1.0 && git push --tags` builds,
+# packages and attaches a DMG to a GitHub Release, so nobody has to install a
+# Swift toolchain to try a menu bar utility.
+#
+# SIGNING, AND WHY IT MATTERS MORE HERE THAN USUALLY
+#
+# This app needs the microphone, and macOS keys that permission to the app's
+# code signature. An ad-hoc signature changes on every build, so an ad-hoc
+# release is a different app to TCC every time — the permission does not carry
+# over and the prompt returns. It also will not pass Gatekeeper on a download.
+#
+# So the workflow signs properly when the secrets are present and degrades
+# loudly when they are not. Set these to get a distributable build:
+#
+#   APPLE_CERT_P12_BASE64  base64 of a Developer ID Application .p12
+#   APPLE_CERT_PASSWORD    the password for that .p12
+#
+# And these to notarize, so Gatekeeper opens it without a right-click:
+#
+#   APPLE_API_KEY_P8       base64 of an App Store Connect .p8 private key
+#   APPLE_API_KEY_ID       that key's ID
+#   APPLE_API_ISSUER_ID    the issuer UUID
+#
+# These names match artisan-build/ballast-cli deliberately. Both repos sign
+# with the same Developer ID and notarize through the same App Store Connect
+# key, so one set of organization secrets can serve both. Renaming here was
+# cheaper than renaming in a pipeline that already ships.
+#
+# There is no signing-identity secret. The identity is read back out of the
+# throwaway keychain after import, because it is not secret — it is stamped
+# into every binary we sign — and one less secret is one less thing to keep
+# in sync across repos.
+#
+# Produce the first one with:
+#   security find-identity -v -p codesigning          # confirm the identity
+#   # export it from Keychain Access as Certificates.p12, then:
+#   base64 -i Certificates.p12 | pbcopy
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version to build, e.g. v0.1.0'
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # macos-26 for the SDK. See the note in tests.yml.
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      # Full history, not the default depth-1. bundle.sh derives
+      # CFBundleVersion from `git rev-list --count HEAD`, and on a shallow
+      # clone that does not fail — it cheerfully returns 1, so v0.1.1 shipped
+      # with the same build number as v0.1.0. A wrong answer, not an error.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: v
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test --package-path app
+
+      # Which optional secrets exist, as step outputs. `if:` cannot read a
+      # step's own `env:`, so gating directly on a secret there produces a
+      # workflow GitHub refuses to parse — this is the pattern that works.
+      - name: Check for signing secrets
+        id: have
+        env:
+          CERT: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          NOTARY: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -n "$CERT" ]; then echo "cert=true" >> "$GITHUB_OUTPUT"; else echo "cert=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -n "$NOTARY" ]; then echo "notary=true" >> "$GITHUB_OUTPUT"; else echo "notary=false" >> "$GITHUB_OUTPUT"; fi
+
+      # Import the Developer ID into a throwaway keychain. Skipped without
+      # secrets, in which case bundle.sh falls back to an ad-hoc signature.
+      - name: Import signing certificate
+        id: signing
+        if: steps.have.outputs.cert == 'true'
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          PASSPHRASE="$(uuidgen)"
+          security create-keychain -p "$PASSPHRASE" "$KEYCHAIN"
+          security set-keychain-settings -lut 900 "$KEYCHAIN"
+          security unlock-keychain -p "$PASSPHRASE" "$KEYCHAIN"
+          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$PASSPHRASE" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | grep "Developer ID Application" \
+            | head -1 \
+            | sed -E 's/.*"(.*)".*/\1/')"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error title=No Developer ID::The .p12 imported but contains no Developer ID Application identity."
+            exit 1
+          fi
+          echo "Signing as: $IDENTITY"
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build and bundle
+        env:
+          SIGN_ID: ${{ steps.signing.outputs.identity || '-' }}
+          # The tag is the version. bundle.sh strips the leading v and stamps
+          # it into Info.plist, so a Homebrew cask and the app agree.
+          VERSION: ${{ steps.v.outputs.tag }}
+        run: ./app/Scripts/bundle.sh
+
+      - name: Warn if unsigned
+        if: steps.have.outputs.cert != 'true'
+        run: |
+          echo "::warning title=Ad-hoc signature::No APPLE_CERT_P12_BASE64 secret, so this build is ad-hoc signed. It will not pass Gatekeeper, and macOS will treat every rebuild as a different app for microphone permission."
+
+      - name: Notarize the app
+        if: steps.have.outputs.cert == 'true' && steps.have.outputs.notary == 'true'
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          echo "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/key.p8"
+          ditto -c -k --keepParent dist/Rheocles.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$RUNNER_TEMP/key.p8" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --wait
+          # Staple, so the app opens offline without a Gatekeeper round trip.
+          xcrun stapler staple dist/Rheocles.app
+          rm -f "$RUNNER_TEMP/key.p8"
+
+      # Asset names carry no version, on purpose. GitHub's
+      # /releases/latest/download/<name> redirect only resolves when the name is
+      # stable, and a download link on the site that has to be edited for every
+      # release is a link that will eventually point at something old. The
+      # release itself carries the version.
+      - name: Package
+        run: |
+          mkdir -p dist/dmg
+          cp -R dist/Rheocles.app dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname "Rheocles" -srcfolder dist/dmg \
+            -ov -format UDZO dist/Rheocles.dmg
+
+      # The disk image needs its own trip through the notary service. Gatekeeper
+      # checks it when the image is opened, which happens before the user has
+      # seen anything at all — no window, no icon — so a warning here is worse
+      # than one at first launch. A stapled app inside an unnotarized image does
+      # not help: the block lands at mount time.
+      #
+      # Sign first, then notarize, then staple, in that order. Signing rewrites
+      # the image and would invalidate a ticket stapled beforehand. The
+      # signature is not strictly required — Apple will notarize an unsigned
+      # image — but without one `spctl` cannot assess the image at all and
+      # reports "Insufficient Context" rather than a verdict, which makes the
+      # result impossible to verify.
+      - name: Notarize the disk image
+        if: steps.have.outputs.cert == 'true' && steps.have.outputs.notary == 'true'
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          SIGN_ID: ${{ steps.signing.outputs.identity }}
+        run: |
+          codesign --force --timestamp --sign "$SIGN_ID" dist/Rheocles.dmg
+          echo "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/key.p8"
+          xcrun notarytool submit dist/Rheocles.dmg \
+            --key "$RUNNER_TEMP/key.p8" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple dist/Rheocles.dmg
+          rm -f "$RUNNER_TEMP/key.p8"
+          spctl -a -vvv -t open --context context:primary-signature dist/Rheocles.dmg
+
+      # Checksums come last: stapling rewrites both artifacts, so hashing any
+      # earlier publishes digests that do not match what people download.
+      - name: Checksums
+        run: |
+          ditto -c -k --keepParent dist/Rheocles.app dist/Rheocles.zip
+          shasum -a 256 dist/Rheocles.dmg dist/Rheocles.zip > dist/checksums.txt
+          cat dist/checksums.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Rheocles-${{ steps.v.outputs.tag }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/checksums.txt
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Notes are built line by line into a file. A heredoc or a multi-line
+        # shell string here is a trap: a blank line at column zero closes the
+        # YAML block scalar, and the workflow becomes unparseable in a way that
+        # reports only as "run failed" with no logs.
+        run: |
+          VER="${{ steps.v.outputs.tag }}"
+          {
+            echo "Apple Silicon, macOS 14 or later. Models download on first run (~219 MB)."
+            echo ""
+            echo "Always-current download:"
+            echo "https://github.com/artisan-build/rheocles/releases/latest/download/Rheocles.dmg"
+            if [ "${{ steps.have.outputs.cert }}" != "true" ]; then
+              echo ""
+              echo "**This build is ad-hoc signed.** macOS will refuse to open it normally — right-click the app and choose Open, and expect the microphone prompt again after every update."
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$VER" \
+            --title "Rheocles $VER" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            dist/*.dmg dist/*.zip dist/checksums.txt
+
+      # The cask pins a version and a sha256, so an un-bumped tap keeps
+      # advertising the previous release — and installs it, since the checksum
+      # still matches that older DMG. Nothing fails loudly; people just get old
+      # software from a command the website tells them to run.
+      - name: Check for the tap token
+        id: brew
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -n "$TAP_TOKEN" ]; then
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Cask not bumped::No HOMEBREW_TAP_TOKEN secret, so artisan-build/homebrew-tap still advertises the previous version. brew install --cask artisan-build/tap/rheocles will not get this release."
+          fi
+
+      # Gated on the build actually being signed AND notarized, not merely on
+      # having a token. Homebrew quarantines cask-installed apps, so pointing
+      # the cask at an ad-hoc build would publish something Gatekeeper refuses
+      # to open — worse than leaving the cask stale.
+      - name: Bump the Homebrew cask
+        if: startsWith(github.ref, 'refs/tags/') && steps.brew.outputs.bump == 'true' && steps.have.outputs.cert == 'true' && steps.have.outputs.notary == 'true'
+        env:
+          VER: ${{ steps.v.outputs.tag }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          SHA="$(shasum -a 256 dist/Rheocles.dmg | awk '{print $1}')"
+          # The tap is public, so clone over plain https; only the push is
+          # authenticated, via http.extraheader so the token never lands in a
+          # URL, a remote, or the reflog.
+          git clone --depth 1 https://github.com/artisan-build/homebrew-tap.git "$RUNNER_TEMP/tap"
+          ./.github/scripts/bump-cask.sh "$VER" "$SHA" "$RUNNER_TEMP/tap/Casks/rheocles.rb"
+          cd "$RUNNER_TEMP/tap"
+          git add Casks/rheocles.rb
+          if git diff --cached --quiet; then
+            echo "cask already at $VER"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore(rheocles): $VER" -m "Bumped by the rheocles release pipeline."
+          AUTH="$(printf 'x-access-token:%s' "$TAP_TOKEN" | base64 | tr -d '\n')"
+          git -c http.extraheader="AUTHORIZATION: basic $AUTH" push origin HEAD

@@ -1,0 +1,35 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', '.github/workflows/tests.yml']
+  pull_request:
+    paths: ['app/**', '.github/workflows/tests.yml']
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # macos-26 for the SDK, not the OS floor. The package targets macOS 14,
+    # but the Apple baseline engine needs macOS 26 declarations to compile at
+    # all — on an older runner it is conditionally compiled out and never
+    # gets checked.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show toolchain
+        run: swift --version
+
+      # Only the pure targets run here. Anything touching capture needs a
+      # microphone and a TCC grant, neither of which exists on a runner — and a
+      # test that silently passes because it heard nothing would be worse than
+      # no test at all.
+      - name: Test
+        run: swift test --package-path app
+
+      - name: Lint
+        run: xcrun swift-format lint --recursive app/Sources app/Tests
