@@ -11,6 +11,8 @@ use App\Rheocles\Token;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Native\Desktop\Facades\App;
+use Native\Desktop\Facades\Clipboard;
+use Native\Desktop\Dialog;
 use Native\Desktop\Facades\MenuBar;
 use Native\Desktop\Facades\Shell;
 
@@ -75,17 +77,13 @@ Route::post('/api/streams/{id}/arm', fn (Request $request, string $id) => $forwa
 
 /*
  * Record: create and start in one — the popover's one button (spec §7).
- * The name is the user's; the codec is the app's preference and travels
- * with every Record (spec §8, one setting for the whole take).
+ * The name is the user's; the codec is the daemon's default (its settings),
+ * so no codec is sent — one setting for both front ends.
  */
 Route::post('/api/record', fn (Request $request) => $forward(function (Client $c) use ($request) {
     $name = trim((string) $request->input('name', ''));
-    $body = ['codec' => Preferences::all()['codec']];
-    if ($name !== '') {
-        $body['name'] = $name;
-    }
 
-    return $c->record($body);
+    return $c->record($name === '' ? [] : ['name' => $name]);
 }, 201));
 
 Route::post('/api/takes/{id}/stop', fn (string $id) => $forward(fn (Client $c) => $c->stop($id)));
@@ -103,7 +101,52 @@ Route::post('/api/takes/{id}/markers', fn (Request $request, string $id) => $for
     return $c->mark($id, $label);
 }));
 
-/* The app's own settings: show windows now, codec with the takes. */
+/* The daemon's settings (spec §12): output root and default codec. */
+Route::get('/api/settings', fn () => $forward(fn (Client $c) => $c->settings()));
+Route::patch('/api/settings', fn (Request $request) => $forward(
+    fn (Client $c) => $c->updateSettings(array_intersect_key($request->all(), ['outputRoot' => 1, 'codec' => 1]))
+));
+
+/* Change… : a native folder chooser, then PATCH. Cancel changes nothing. */
+Route::post('/api/settings/choose-root', function () use ($forward) {
+    $dialog = Dialog::new()->title('Output root')->button('Use as output root')->folders();
+    $current = Client::fromConfig()->settings()['outputRoot'] ?? null;
+    if (is_string($current)) {
+        $dialog = $dialog->defaultPath($current);
+    }
+    $chosen = $dialog->open();
+    $path = is_array($chosen) ? ($chosen[0] ?? null) : $chosen;
+    if (! is_string($path) || $path === '') {
+        return response()->json(['chosen' => null]);
+    }
+
+    return $forward(fn (Client $c) => $c->updateSettings(['outputRoot' => $path]));
+});
+
+Route::post('/api/settings/reveal', function () {
+    $root = Client::fromConfig()->settings()['outputRoot'] ?? null;
+    abort_unless(is_string($root), 503);
+    Shell::showInFolder($root);
+
+    return response()->json(['revealed' => $root]);
+});
+
+/*
+ * The pairing code. Copy goes through the native clipboard; rotate is the
+ * daemon's call — it rewrites the file and the old token dies at once, for
+ * every client including this one, which reads the file again on its next
+ * page (the page reloads) and in the watcher on its next 401.
+ */
+Route::post('/api/token/copy', function () {
+    $token = Token::read();
+    abort_unless($token !== null, 503);
+    Clipboard::text($token);
+
+    return response()->json(['copied' => true]);
+});
+Route::post('/api/token/rotate', fn () => $forward(fn (Client $c) => ['token' => $c->rotateToken()]));
+
+/* The app's own settings: show windows. */
 Route::get('/api/preferences', fn () => response()->json(Preferences::all()));
 Route::post('/api/preferences', fn (Request $request) => response()->json(Preferences::update($request->all())));
 

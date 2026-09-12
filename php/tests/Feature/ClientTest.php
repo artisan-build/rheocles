@@ -155,6 +155,90 @@ it('arms the built-in microphone, records a take, and leaves a manifest and a fi
     $this->client->arm($mic['id'], false);
 });
 
+it('reads and changes the daemon settings', function () {
+    $before = $this->client->settings();
+    expect($before)->toBe(['codec' => 'hevc', 'outputRoot' => $this->dir.'/out']);
+
+    expect($this->client->updateSettings(['codec' => 'prores'])['codec'])->toBe('prores');
+    $root = $this->dir.'/elsewhere';
+    expect($this->client->updateSettings(['outputRoot' => $root])['outputRoot'])->toBe($root)
+        ->and($this->client->discovery()['outputRoot'])->toBe($root);  // GET / reports the same root
+
+    // A relative root is refused in the protocol's shape.
+    expect(fn () => $this->client->updateSettings(['outputRoot' => 'relative']))->toThrow(Rejected::class);
+});
+
+it('rotates the token: the old one dies at once, the file has the new one', function () {
+    $old = $this->token;
+    $new = $this->client->rotateToken();
+    expect($new)->not->toBe($old)->and(strlen($new))->toBe(64)
+        ->and($this->client->token)->toBe($new)
+        ->and(trim(file_get_contents($this->tokenFile)))->toBe($new);
+    expect(fn () => (new Client('127.0.0.1', $this->http, $old))->discovery())->toThrow(Unauthorized::class);
+    expect($this->client->discovery()['name'])->toBe('Rheocles');
+});
+
+/*
+ * Preview, each kind on its own daemon: the current core leaks a Swift
+ * continuation ("SWIFT TASK CONTINUATION MISUSE") and never answers when a
+ * display preview follows a microphone preview, and sometimes on the first
+ * device call after launch. Engine's bug; the third test names it.
+ */
+function hungPreview(Unreachable $e, int $port): never
+{
+    $log = (string) @file_get_contents(sys_get_temp_dir()."/rheo-test-server-$port.log");
+    test()->fail(str_contains($log, 'CONTINUATION MISUSE')
+        ? "rheocles-core hung on GET /preview and leaked a continuation (Engine bug) — {$e->getMessage()}\n$log"
+        : "the daemon did not answer: {$e->getMessage()}\n$log");
+}
+
+it('previews video as one JPEG frame on demand', function () {
+    $list = $this->client->streams();
+    if (($list['permissions']['screen'] ?? null) !== 'authorized' || ! ($display = collect($list['streams'])->firstWhere('kind', 'display'))) {
+        $this->markTestSkipped('needs a display and the Screen Recording grant');
+    }
+    try {
+        $frame = $this->client->preview($display['id']);
+    } catch (Unreachable $e) {
+        hungPreview($e, $this->http);
+    }
+    expect($frame['contentType'])->toStartWith('image/jpeg')
+        ->and(substr($frame['body'], 0, 3))->toBe("\xFF\xD8\xFF")
+        ->and(strlen($frame['body']))->toBeGreaterThan(1000);
+    expect(fn () => $this->client->preview('display:nope'))->toThrow(Rejected::class);
+});
+
+it('previews audio as a level', function () {
+    $list = $this->client->streams();
+    if (($list['permissions']['microphone'] ?? null) !== 'authorized' || ! ($mic = collect($list['streams'])->firstWhere('id', 'microphone:BuiltInMicrophoneDevice'))) {
+        $this->markTestSkipped('needs the built-in microphone, authorized');
+    }
+    try {
+        $sample = $this->client->preview($mic['id']);
+    } catch (Unreachable $e) {
+        hungPreview($e, $this->http);
+    }
+    expect($sample['contentType'])->toStartWith('application/json');
+    $level = json_decode($sample['body'], true)['levelDb'] ?? null;
+    expect($level)->toBeNumeric()->toBeLessThanOrEqual(0);  // silence is -120, an int
+});
+
+it('previews a display after a microphone (Engine: leaked continuation, 3 runs in 3)', function () {
+    $list = $this->client->streams();
+    $mic = collect($list['streams'])->firstWhere('id', 'microphone:BuiltInMicrophoneDevice');
+    $display = collect($list['streams'])->firstWhere('kind', 'display');
+    if (($list['permissions']['microphone'] ?? null) !== 'authorized' || ($list['permissions']['screen'] ?? null) !== 'authorized' || ! $mic || ! $display) {
+        $this->markTestSkipped('needs the built-in microphone and a display, both authorized');
+    }
+    try {
+        $this->client->preview($mic['id']);
+        $frame = $this->client->preview($display['id']);
+    } catch (Unreachable $e) {
+        hungPreview($e, $this->http);
+    }
+    expect($frame['contentType'])->toStartWith('image/jpeg');
+});
+
 it('reads the event stream and yields null when the daemon is quiet', function () {
     $events = EventStream::read('127.0.0.1', $this->http, $this->token, idle: 0.3);
     $first = $events->current();  // `: connected` is a comment; nothing said → idle

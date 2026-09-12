@@ -27,17 +27,17 @@ final class Server
     }
 
     /** The stub, expecting `$token`. */
-    public static function stub(int $port, string $token): self
+    public static function stub(int $port, string $token, ?string $tokenFile = null): self
     {
         $state = sys_get_temp_dir()."/rheo-stub-state-$port-".getmypid().'.json';
         @unlink($state);
 
         return self::spawn($port, [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__.'/../stubs/core.php'],
-            ['STUB_TOKEN' => $token, 'STUB_STATE' => $state]);
+            ['STUB_TOKEN' => $token, 'STUB_STATE' => $state, 'STUB_TOKEN_FILE' => $tokenFile ?? '']);
     }
 
     /** The real daemon, on spare ports, with its own token file and output root. */
-    public static function core(int $httpPort, int $wsPort, string $tokenFile, string $outputRoot): self
+    public static function core(int $httpPort, int $wsPort, string $tokenFile, string $outputRoot, bool $immediate = false): self
     {
         $binary = self::coreBinary();
         if ($binary === null) {
@@ -49,11 +49,20 @@ final class Server
         // ~/Library/Application Support/Rheocles/settings.json — the user's
         // real one, which every front end's daemon reads — would come away
         // pointing at a test's temp directory.
-        return self::spawn($httpPort, [
+        $server = self::spawn($httpPort, [
             $binary, '--http-port', (string) $httpPort, '--ws-port', (string) $wsPort,
             '--token-file', $tokenFile, '--output-root', $outputRoot,
             '--settings-file', dirname($tokenFile).'/settings.json',
         ]);
+        // The port answers before CoreAudio has settled: a device call in
+        // the first second leaks a continuation in the daemon about one run
+        // in three (see ClientTest "hangs"). The tests of this client wait;
+        // the one test of that bug does not.
+        if (! $immediate) {
+            usleep(1_500_000);
+        }
+
+        return $server;
     }
 
     public static function coreBinary(): ?string

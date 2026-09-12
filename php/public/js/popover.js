@@ -6,7 +6,7 @@
  */
 import {
   decodeEvent, reduce, initial, setStreams, headline, sections, detail, writingIds, bytes, abbreviate,
-  isRecording, isOver, elapsed, clock, lateJoined, finishedLine,
+  isRecording, isOver, elapsed, clock, lateJoined, finishedLine, meterCells, maskToken,
 } from './state.js'
 
 const R = window.RHEO
@@ -29,6 +29,16 @@ let showSettings = false
 let takeBusy = false
 /** Ticks once a second while a take is recording, so the elapsed time moves. */
 let ticker = null
+/** The one stream being previewed, if any (spec §12: one at a time). */
+let previewing = null
+let previewTimer = null
+let previewFrame = null   // an object URL for the last JPEG
+let previewError = null
+/** The pairing code shown in full, or masked; Rotate armed for a second click. */
+let tokenShown = false
+let rotateArmed = false
+let rotateTimer = null
+let settingsError = ''
 
 const PULSE = 3000
 
@@ -105,7 +115,10 @@ function renderStreams() {
   const groups = sections(state.streams, preferences.showWindows, state.permissions, daemon.ours)
   for (const g of groups) {
     list.append(el('div', 'section', g.heading))
-    for (const s of g.members) list.append(row(s, writing.includes(s.id)))
+    for (const s of g.members) {
+      list.append(row(s, writing.includes(s.id)))
+      if (previewing === s.id && s.capabilities && s.capabilities.video) list.append(previewPane())
+    }
     if (g.nudge) list.append(nudgeView(g.nudge))
   }
   if (state.streams.length === 0 && !state.permissions) {
@@ -131,17 +144,21 @@ function row(s, writing) {
   text.append(el('div', 'name', s.name))
   const sub = el('div', 'sub')
   sub.append(el('span', 'detail', detail(s)))
-  if (s.armed && s.capabilities && s.capabilities.audio) sub.append(meter(null))
+  const audio = !!(s.capabilities && s.capabilities.audio)
+  // Levels flow only while armed (or sampled while previewing); before the
+  // first reading the meter is empty and the number is absent.
+  if (audio && (s.armed || previewing === s.id)) sub.append(meter(s.id, state.levels[s.id]))
   text.append(sub)
   r.append(text)
 
-  if (s.capabilities && s.capabilities.video) {
-    const eye = el('button', 'eye')
-    eye.setAttribute('aria-label', 'Preview')
-    eye.title = 'Preview'
-    eye.innerHTML = EYE
-    r.append(eye)  // Preview on demand arrives with task 4; the eye keeps its place.
-  }
+  // The eye (video) or the ear (audio): preview this stream, one at a time.
+  const on = previewing === s.id
+  const btn = el('button', 'eye')
+  btn.setAttribute('aria-label', on ? 'Stop preview' : 'Preview')
+  btn.setAttribute('aria-pressed', String(on))
+  btn.innerHTML = audio ? EAR : EYE
+  btn.addEventListener('click', () => togglePreview(s.id))
+  r.append(btn)
 
   const sw = el('button', 'switch')
   sw.setAttribute('role', 'switch')
@@ -158,20 +175,49 @@ function row(s, writing) {
  * Twelve cells over the useful range. No reading yet is no cells and `··`,
  * never an empty bar pretending to be silence. Levels arrive with task 4.
  */
-function meter(db) {
+function meter(id, db) {
   const m = el('span', 'meter')
+  m.dataset.id = id
   const cells = el('span', 'cells')
-  const filled = db == null ? 0 : Math.max(0, Math.min(12, Math.floor(((db + 60) / 60) * 12)))
-  for (let i = 0; i < 12; i++) {
-    const c = el('i')
-    if (i < filled) c.dataset.on = i >= 11 ? 'clip' : 'on'
-    cells.append(c)
-  }
-  m.append(cells)
-  const n = el('span', 'db', db == null ? '··' : String(Math.round(db)))
-  if (db == null) n.classList.add('absent')
-  m.append(n)
+  for (let i = 0; i < 12; i++) cells.append(el('i'))
+  m.append(cells, el('span', 'db'))
+  setMeter(m, db)
   return m
+}
+
+function setMeter(m, db) {
+  const filled = meterCells(db)
+  m.querySelectorAll('.cells i').forEach((c, i) => {
+    if (i < filled) c.dataset.on = i >= 11 ? 'clip' : 'on'
+    else delete c.dataset.on
+  })
+  const n = m.querySelector('.db')
+  n.textContent = db == null ? '··' : String(Math.round(db))
+  n.classList.toggle('absent', db == null)
+}
+
+/** `levels` arrive ~4×/s while recording: move the meters, not the list. */
+function updateMeters() {
+  document.querySelectorAll('.meter[data-id]').forEach(m => setMeter(m, state.levels[m.dataset.id]))
+}
+
+/**
+ * The preview frame, under the row it belongs to. 16:9 at the popover's
+ * width; a frame of another shape letterboxes on the code-block ground.
+ */
+function previewPane() {
+  const pane = el('div', 'preview')
+  if (previewFrame) {
+    const img = el('img')
+    img.src = previewFrame
+    img.alt = ''
+    pane.append(img)
+  } else if (previewError) {
+    pane.append(el('span', 'preview-error', previewError))
+  } else {
+    pane.append(el('span', 'preview-wait', 'waiting for a frame'))
+  }
+  return pane
 }
 
 /** A grant that is missing, and the one click that fixes it. */
@@ -191,25 +237,85 @@ function nudgeView(n) {
   return v
 }
 
-/** Settings, in place of the list. Show windows now; the rest with task 4. */
+/**
+ * Settings, in place of the list (spec §12): output root, codec, show
+ * windows, the bearer token as a pairing code. Every row says whose setting
+ * it is: the output root, the codec and the token are the daemon's,
+ * changed over PATCH /settings and POST /token/rotate and shown as the
+ * daemon last answered; show windows is the app's. A refusal — the root
+ * cannot move under an active take — is shown in the daemon's words.
+ */
 function renderSettings() {
   const box = $('settings')
   box.replaceChildren()
+  const st = state.settings
 
-  const windows = el('div', 'row')
-  windows.append(el('div', 'section', 'Windows'))
+  const root = section('Output root')
+  const rootRow = el('div', 'setting-row')
+  const rootText = el('span', 'mono-value', st ? abbreviate(st.outputRoot, R.home) : '··')
+  if (!st) rootText.classList.add('absent')
+  rootRow.append(rootText, el('span', 'spacer'))
+  const change = el('button', 'btn', 'Change…')
+  change.disabled = !st
+  change.addEventListener('click', chooseRoot)
+  const reveal = el('button', 'btn', 'Reveal')
+  reveal.disabled = !st
+  reveal.addEventListener('click', () => php('POST', '/api/settings/reveal'))
+  rootRow.append(change, reveal)
+  root.append(rootRow, note('Where new takes land. Cannot move while a take is active.'))
+  box.append(root, rule())
+
+  const codec = section('Codec')
+  codec.append(segmented([['hevc', 'HEVC'], ['prores', 'ProRes 422']], st ? st.codec : null, v => updateSettings({ codec: v })))
+  codec.append(note("The daemon's default for every take. Video only; audio is always Broadcast Wave."))
+  box.append(codec, rule())
+
+  const windows = section('Windows')
   const label = el('label', 'check')
   const cb = el('input')
   cb.type = 'checkbox'
   cb.checked = !!preferences.showWindows
   cb.addEventListener('change', () => setPreference({ showWindows: cb.checked }))
   label.append(cb, el('span', 'box'), el('span', 'text', 'Show windows in the stream list'))
-  windows.append(label)
-  windows.append(el('p', 'prose', 'Long and volatile, so hidden unless asked for.'))
-  box.append(windows)
+  windows.append(label, note('Long and volatile, so hidden unless asked for.'))
+  box.append(windows, rule())
 
-  box.append(el('div', 'rule inset'))
-  box.append(el('p', 'prose script pad', 'Output root, codec and the pairing code arrive with task 4.'))
+  const pairing = section('Pairing code')
+  const tokRow = el('div', 'setting-row')
+  const tok = el('span', 'mono-value token', R.token ? (tokenShown ? R.token : maskToken(R.token)) : '··')
+  if (tokenShown) tok.classList.add('full')
+  if (!R.token) tok.classList.add('absent')
+  tokRow.append(tok, el('span', 'spacer'))
+  const show = el('button', 'btn', tokenShown ? 'Hide' : 'Show')
+  show.addEventListener('click', () => { tokenShown = !tokenShown; render() })
+  const copy = el('button', 'btn', 'Copy')
+  copy.addEventListener('click', () => php('POST', '/api/token/copy'))
+  const rotate = el('button', rotateArmed ? 'btn oxide filled' : 'btn oxide', rotateArmed ? 'Rotate now' : 'Rotate')
+  rotate.addEventListener('click', rotateToken)
+  tokRow.append(show, copy, rotate)
+  pairing.append(tokRow, note(rotateArmed
+    ? 'Click again to rotate. Every other paired client loses access until it reads the new token from the file.'
+    : `The bearer token, from ${abbreviate(R.tokenFile, R.home)}. Rotating invalidates the old one at once.`))
+  box.append(pairing)
+
+  if (settingsError) box.append(el('p', 'settings-error', settingsError))
+}
+
+const section = title => { const d = el('div', 'row'); d.append(el('div', 'section', title)); return d }
+const note = text => el('p', 'prose', text)
+const rule = () => el('div', 'rule inset')
+
+/** A two-way choice drawn from shapes: the site's pill, split. */
+function segmented(options, selected, onPick) {
+  const g = el('div', 'segmented')
+  for (const [value, label] of options) {
+    const b = el('button', 'seg', label)
+    b.setAttribute('aria-pressed', String(value === selected))
+    b.disabled = selected == null
+    b.addEventListener('click', () => { if (value !== selected) onPick(value) })
+    g.append(b)
+  }
+  return g
 }
 
 /**
@@ -315,7 +421,7 @@ async function pulse() {
     // rendered before that has no events URL. Once, start over with one.
     if (!R.token) { location.reload(); return }
     pulseError = ''
-    await Promise.all([readDiscovery(), readStreams(), discoverTake()])
+    await Promise.all([readDiscovery(), readStreams(), discoverTake(), readSettings()])
     listen()
   } else {
     discovery = null
@@ -345,6 +451,16 @@ async function readStreams() {
     pulseError = `GET /streams → ${r.status} ${body.code || ''}: ${body.error || ''}`
   } catch (e) {
     pulseError = `GET /streams → unreachable (${e.message})`
+  }
+}
+
+/** `GET /settings`, the daemon's; `settings` events keep it current between pulses. */
+async function readSettings() {
+  try {
+    const r = await core('/settings')
+    if (r.ok) state = { ...state, settings: await r.json() }
+  } catch {
+    // Reported by the other reads.
   }
 }
 
@@ -381,11 +497,12 @@ function listen() {
   source.onmessage = e => {
     const event = decodeEvent(e.data)
     if (!event) return
-    // `levels` arrives ~4×/s while recording and changes nothing here yet
-    // (task 4); only a state that moved is worth a render.
+    // Only a state that moved is worth a render; `levels` (~4×/s while
+    // recording) move the meters in place and nothing else.
     const next = reduce(state, event)
     if (next === state) return
     state = next
+    if (event.event === 'levels') { updateMeters(); return }
     render()
   }
   source.onerror = () => {
@@ -470,6 +587,120 @@ async function mark() {
   render()
 }
 
+// MARK: - preview
+
+/**
+ * Preview on demand, one stream at a time (spec §12): GET /preview/{id}
+ * polled while the pane is open, and nothing at all when it is not — a
+ * wall of thumbnails would be a wall of capture sessions. Video answers a
+ * JPEG (longest side 640); audio answers `{ levelDb }`, a short sample's
+ * peak, which feeds the row's meter so a microphone can be checked before
+ * anything is armed. A refusal is shown in the daemon's words.
+ */
+const PREVIEW_INTERVAL = 250
+
+function togglePreview(id) {
+  if (previewing === id) stopPreview()
+  else startPreview(id)
+  render()
+}
+
+function startPreview(id) {
+  stopPreview()
+  previewing = id
+  previewError = null
+  const poll = async () => {
+    if (previewing !== id) return
+    let delay = PREVIEW_INTERVAL
+    try {
+      const r = await core(`/preview/${id}`)
+      if (previewing !== id) return
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        previewError = `GET /preview/${id} → ${r.status} ${body.code || ''}: ${body.error || ''}`
+        delay = 2000  // a refusal will not change in 250 ms
+        render()
+      } else if ((r.headers.get('content-type') || '').startsWith('application/json')) {
+        const sample = await r.json()
+        state = { ...state, levels: { ...state.levels, [id]: sample.levelDb } }
+        previewError = null
+        updateMeters()
+      } else {
+        const blob = await r.blob()
+        const url = URL.createObjectURL(blob)
+        const first = !previewFrame
+        if (previewFrame) URL.revokeObjectURL(previewFrame)
+        previewFrame = url
+        previewError = null
+        if (first) render()
+        else { const img = document.querySelector('.preview img'); if (img) img.src = url }
+      }
+    } catch (e) {
+      previewError = `GET /preview/${id} → unreachable`
+      delay = 2000
+      render()
+    }
+    previewTimer = setTimeout(poll, delay)
+  }
+  poll()
+}
+
+function stopPreview() {
+  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
+  if (previewing && !isRecording(state)) {
+    // The sampled level is stale the moment sampling stops.
+    const levels = { ...state.levels }
+    delete levels[previewing]
+    state = { ...state, levels }
+  }
+  previewing = null
+  if (previewFrame) { URL.revokeObjectURL(previewFrame); previewFrame = null }
+  previewError = null
+}
+
+// MARK: - settings
+
+async function updateSettings(changes) {
+  settingsError = ''
+  const r = await php('PATCH', '/api/settings', changes)
+  if (r.ok) state = { ...state, settings: r.body }
+  else settingsError = `PATCH /settings → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  render()
+}
+
+/** Change…: a native folder chooser, then PATCH. Cancel changes nothing. */
+async function chooseRoot() {
+  settingsError = ''
+  const r = await php('POST', '/api/settings/choose-root')
+  if (r.ok && r.body && r.body.outputRoot) state = { ...state, settings: r.body }
+  else if (!r.ok) settingsError = `PATCH /settings → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  render()
+}
+
+/**
+ * POST /token/rotate: the daemon rewrites its file and the old token is
+ * dead for every request after the answer — including this page's, which
+ * reloads to read the file again; the watcher does the same on its next
+ * 401. Every other paired client has to read the file again; that is what
+ * rotation is for, and why it takes two clicks.
+ */
+async function rotateToken() {
+  if (!rotateArmed) {
+    rotateArmed = true
+    clearTimeout(rotateTimer)
+    rotateTimer = setTimeout(() => { rotateArmed = false; render() }, 6000)
+    render()
+    return
+  }
+  rotateArmed = false
+  clearTimeout(rotateTimer)
+  settingsError = ''
+  const r = await php('POST', '/api/token/rotate')
+  if (r.ok && r.body.token) { unlisten(); location.reload(); return }
+  settingsError = `POST /token/rotate → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  render()
+}
+
 async function setPreference(values) {
   const r = await php('POST', '/api/preferences', values)
   if (r.ok) preferences = r.body
@@ -487,7 +718,7 @@ $('relaunch').addEventListener('click', async () => {
   daemon = { ...daemon, status: 'launching', why: null }
   render()
 })
-$('gear').addEventListener('click', () => { showSettings = !showSettings; render() })
+$('gear').addEventListener('click', () => { showSettings = !showSettings; if (showSettings) stopPreview(); render() })
 // ⌘R reloads the page — the menu bar window is not in NativePHP's window
 // table, so nothing else can, and a stale page otherwise needs an app restart.
 document.addEventListener('keydown', e => { if (e.metaKey && e.key === 'r') location.reload() })
@@ -502,6 +733,7 @@ const ICONS = {
   systemAudio: '<path d="M3 9.5v5h4l5 4v-13l-5 4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
 }
 const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12s4-7 10.5-7 10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg>'
+const EAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5a6 6 0 0 1 12 0c0 3-2 4-2.5 6-.4 1.6-1 3-3 3s-2.5-1.5-2.5-2.5"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-1.5 2-1.5 3.5"/></svg>'
 
 function glyph(kind) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg')

@@ -34,7 +34,7 @@ PHP carries clicks and the pulse. This is Sonocles' load-bearing decision
 | `app/Rheocles/EventStream.php` | `GET /events` as PHP reads it — the watcher's copy, not the popover's |
 | `app/Rheocles/IconState.php` | what the icon says, from what the daemon says |
 | `app/Console/Commands/Watch.php` | `rheo:watch` |
-| `app/Rheocles/Preferences.php` | show windows and codec, in NativePHP's `Settings` |
+| `app/Rheocles/Preferences.php` | show windows, in NativePHP's `Settings`; the codec and the root are the daemon's |
 | `resources/views/menubar.blade.php`, `public/popover.css`, `public/js/` | the popover; `state.js` is the pure part |
 | `resources/menubar/` | the icon, every state, from `bin/make-icons.swift` |
 | `nativephp/electron/build/entitlements.mac.plist` | camera + audio-input, which NativePHP does not scaffold |
@@ -88,10 +88,14 @@ php vendor/bin/pest      # PHP
 npx vitest run           # the popover's state module
 ```
 
-The lifecycle runs against a stub core (`tests/stubs/core.php` on PHP's
-built-in server); the client and the SSE reader run against the real
-`rheocles-core` binary on spare ports with their own token file and output
-root. Both need nothing running beforehand and leave nothing behind.
+The lifecycle and every popover route run against a stub core
+(`tests/stubs/core.php` on PHP's built-in server: streams, arming, takes,
+markers, settings, token rotation, preview); the client and the SSE reader
+run against the real `rheocles-core` binary on spare ports with their own
+token file, settings file and output root — a real take with the manifest
+on disk, settings, rotation, preview. Both need nothing running beforehand
+and leave nothing behind. Tests that name an Engine bug (`(Engine: …)` in
+the name) are meant to be red until the daemon is fixed.
 
 ## Packaging
 

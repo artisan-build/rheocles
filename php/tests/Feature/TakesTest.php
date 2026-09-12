@@ -15,8 +15,7 @@ beforeEach(function () {
     file_put_contents($this->tokenFile, "stub-token\n");
     config(['rheocles.token_file' => $this->tokenFile, 'rheocles.http_port' => $this->port]);
     $this->stub = Server::stub($this->port, 'stub-token');
-    $this->store = new ArrayObject(['codec' => 'prores']);
-    Settings::shouldReceive('get')->andReturnUsing(fn ($k, $d = null) => $this->store[$k] ?? $d);
+    Settings::shouldReceive('get')->andReturnUsing(fn ($k, $d = null) => $d);
 });
 
 afterEach(function () {
@@ -30,14 +29,14 @@ it('refuses to record with nothing armed, in the daemon words', function () {
         ->assertJson(['code' => 'bad_request']);
 });
 
-it('records, marks and stops a take, with the name and the codec preference', function () {
+it('records, marks and stops a take, with the name and the daemon default codec', function () {
     $this->postJson('/api/streams/microphone:stub/arm', ['armed' => true])->assertOk();
 
     $r = $this->postJson('/api/record', ['name' => '  Episode 12 '])
         ->assertStatus(201)
         ->assertJsonPath('take.state', 'recording')
         ->assertJsonPath('take.name', 'Episode 12')
-        ->assertJsonPath('take.settings.codec', 'prores')
+        ->assertJsonPath('take.settings.codec', 'hevc')
         ->assertJsonPath('take.streams.0.id', 'microphone:stub')
         ->assertJsonPath('take.streams.0.codec', 'pcm_s24le');
     $id = $r->json('take.id');

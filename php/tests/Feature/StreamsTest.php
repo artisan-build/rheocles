@@ -59,17 +59,16 @@ it('reports an unreachable daemon as 503 unreachable', function () {
         ->assertJson(['code' => 'unreachable']);
 });
 
-it('keeps show windows and codec in NativePHP settings', function () {
+it('keeps show windows in NativePHP settings; the codec is the daemon default now', function () {
     $store = new ArrayObject;
     Settings::shouldReceive('get')->andReturnUsing(fn ($k, $d = null) => $store[$k] ?? $d);
     Settings::shouldReceive('set')->andReturnUsing(function ($k, $v) use ($store) {
         $store[$k] = $v;
     });
 
-    $this->getJson('/api/preferences')->assertOk()->assertExactJson(['showWindows' => false, 'codec' => 'hevc']);
+    $this->getJson('/api/preferences')->assertOk()->assertExactJson(['showWindows' => false]);
     $this->postJson('/api/preferences', ['showWindows' => true, 'codec' => 'prores', 'other' => 'ignored'])
-        ->assertOk()->assertExactJson(['showWindows' => true, 'codec' => 'prores']);
-    $this->postJson('/api/preferences', ['codec' => 'mp3'])->assertOk()->assertJson(['codec' => 'prores']);
+        ->assertOk()->assertExactJson(['showWindows' => true]);
 });
 
 it('opens only the three Privacy panes', function () {
