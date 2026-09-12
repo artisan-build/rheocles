@@ -52,6 +52,18 @@ struct DispatcherTests {
         #expect(String(decoding: response.body, as: UTF8.self) == #"{"id":"abc"}"#)
     }
 
+    @Test("Path parameters are percent-decoded, and a bare id still works")
+    func percentDecoding() async throws {
+        // encodeURIComponent turns a stream id's colon into %3A.
+        let encoded = await dispatcher().dispatch(
+            Request(method: "POST", path: "/takes/camera%3A0x2300fd9009c/start"))
+        #expect(String(decoding: encoded.body, as: UTF8.self) == #"{"id":"camera:0x2300fd9009c"}"#)
+        // A bare colon is unchanged by decoding.
+        let bare = await dispatcher().dispatch(
+            Request(method: "POST", path: "/takes/camera:0x2300/start"))
+        #expect(String(decoding: bare.body, as: UTF8.self) == #"{"id":"camera:0x2300"}"#)
+    }
+
     @Test("An unknown path is 404 and a known path with the wrong method is 405")
     func misses() async {
         #expect(await dispatcher().dispatch(Request(method: "GET", path: "/nope")).status == 404)

@@ -142,7 +142,13 @@ public struct Route: Sendable, Hashable, CustomStringConvertible {
         var params: [String: String] = [:]
         for (w, h) in zip(want, have) {
             if w.hasPrefix("{") && w.hasSuffix("}") {
-                params[String(w.dropFirst().dropLast())] = String(h)
+                // Percent-decode the captured value: a stream id's colon comes
+                // over the wire as %3A from `encodeURIComponent`, and a bare
+                // colon must keep working too (decoding a value with no escapes
+                // returns it unchanged). Fall back to the raw segment if the
+                // encoding is malformed rather than dropping the route.
+                params[String(w.dropFirst().dropLast())] =
+                    String(h).removingPercentEncoding ?? String(h)
             } else if w != h {
                 return nil
             }

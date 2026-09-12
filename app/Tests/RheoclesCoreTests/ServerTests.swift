@@ -201,6 +201,48 @@ struct ServerTests {
         return ((response as! HTTPURLResponse).statusCode, data)
     }
 
+    @Test("A percent-encoded stream id works on arm and preview, HTTP and WebSocket")
+    func encodedStreamId() async throws {
+        let server = try running()
+        defer { server.stop() }
+        // "camera:fake" as encodeURIComponent would send it.
+        let encoded = "camera%3Afake"
+        let (armStatus, armBody) = try await post(
+            server, "/streams/\(encoded)/arm", #"{"armed": true}"#)
+        #expect(armStatus == 200)
+        #expect(try JSONDecoder().decode(StreamInfo.self, from: armBody).id == "camera:fake")
+
+        let (previewStatus, previewType, _) = try await request(
+            server, "GET", "/preview/\(encoded)")
+        #expect(previewStatus == 200 && previewType.hasPrefix("image/jpeg"))
+
+        // Over WebSocket too — the path comes from the frame.
+        let task = socket(server)
+        _ = try await roundTrip(task, #"{"auth": "\#(server.token)"}"#)
+        let reply = try await roundTrip(
+            task,
+            #"{"id": 1, "method": "POST", "path": "/streams/camera%3Afake/arm", "body": {"armed": false}}"#
+        )
+        #expect(reply["status"] == .number(200))
+        guard case .object(let body)? = reply["body"] else { Issue.record("no body"); return }
+        #expect(body["id"] == .string("camera:fake"))
+        task.cancel(with: .normalClosure, reason: nil)
+    }
+
+    /// A GET/DELETE-style request with a content type check, reused by the
+    /// encoded-id and preview tests.
+    private func request(
+        _ server: Server, _ method: String, _ path: String
+    ) async throws -> (Int, String, Data) {
+        var request = URLRequest(
+            url: URL(string: "http://127.0.0.1:\(server.configuration.httpPort)\(path)")!)
+        request.httpMethod = method
+        request.setValue("Bearer \(server.token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let http = response as! HTTPURLResponse
+        return (http.statusCode, http.value(forHTTPHeaderField: "Content-Type") ?? "", data)
+    }
+
     @Test("GET /preview returns JPEG bytes over HTTP and base64 over WebSocket")
     func previewImage() async throws {
         let server = try running()

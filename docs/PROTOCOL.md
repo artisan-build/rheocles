@@ -129,7 +129,10 @@ the list is stable between calls even as devices come and go.
   unique id; displays their CoreGraphics UUID, which survives reconnects
   where the display number does not; windows their window number, which
   survives nothing and is not meant to. Clients hold ids; the manifest
-  records `id`, `name` and `model` together (spec §5).
+  records `id`, `name` and `model` together (spec §5). An id in a path
+  segment (`POST /streams/{id}/arm`, `GET /preview/{id}`) may be sent bare or
+  percent-encoded — the colon as `%3A`, as `encodeURIComponent` produces —
+  and the daemon decodes it either way, on both transports.
 - **`kind`** is one of `display`, `window`, `camera`, `microphone`,
   `systemAudio`.
 - **`capabilities.video`** is native pixels and the highest advertised rate.
