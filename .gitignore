@@ -1,0 +1,21 @@
+.build/
+.swiftpm/
+*.xcodeproj
+.DS_Store
+dist/
+
+# Signing material. The Developer ID .p12, the App Store Connect .p8, and the
+# password for the .p12 all live here so they are in one findable place rather
+# than scattered through ~/Documents. None of it may ever be committed: the
+# .p12 holds the private key that signs releases as Artisan Build, and .env
+# holds the password that opens it. CI does not read these — it reads the
+# repository secrets of the same names.
+.signing/
+.env
+.env.*
+
+node_modules/
+site/dist/
+site/.astro/
+.wrangler/
+php/vendor/

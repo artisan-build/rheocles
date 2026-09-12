@@ -1,0 +1,3 @@
+# Rheocles HTTP API — OpenAPI
+# Owned by Engine. Hand-authored; CI validates live responses against it.
+openapi: 3.1.0

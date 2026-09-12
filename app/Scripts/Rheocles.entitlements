@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Required. Under the hardened runtime the microphone is gated by this
+      entitlement *before* TCC is ever consulted: without it the process is
+      refused at the runtime level, so no prompt appears and the app never shows
+      up in System Settings > Privacy & Security > Microphone at all.
+
+      That failure is silent and looks nothing like a permissions problem —
+      AVAudioEngine starts, sockets bind, status reports listening, and not one
+      word is ever transcribed. NSMicrophoneUsageDescription in Info.plist is
+      necessary but not sufficient; both have to be present.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!--
+      Camera, same gate as above: entitlement here *and*
+      NSCameraUsageDescription in Info.plist, or the app never appears under
+      Privacy & Security > Camera. See spec §4, "Permissions — verify each,
+      assume none". That table also lists system audio as "verify" for both
+      the Info.plist key and the entitlement — Engine owns confirming what
+      Core Audio taps need under the hardened runtime and adding it here.
+      Screen and window capture need no entitlement; ScreenCaptureKit raises
+      the TCC prompt itself.
+    -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+</dict>
+</plist>
