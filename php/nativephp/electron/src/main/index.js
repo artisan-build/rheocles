@@ -1,15 +1,8 @@
+// First, before the plugin reads app.getPath('userData'): see userData.js.
+import './userData.js';
 import NativePHP from '#plugin';
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
-
-/*
- * Electron's user data defaults to ~/Library/Application Support/<product
- * name> — and the product name is Rheocles, which is the daemon's own
- * directory (spec §11: the token file, settings.json). Chromium caches and
- * cookies do not belong beside the token, and the Swift app keeps nothing
- * there either. Keyed by bundle id instead, before anything reads the path.
- */
-app.setPath('userData', path.join(app.getPath('appData'), 'build.artisan.rheocles.php'));
 import { createSplash } from './splash.js';
 // Inherit User's PATH in Process & ChildProcess
 import fixPath from 'fix-path';
