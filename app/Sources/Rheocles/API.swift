@@ -65,6 +65,36 @@ struct API: Sendable {
             as Data
     }
 
+    /// A GET whose answer is not JSON — a preview frame. Errors still come
+    /// back in the JSON error shape and are thrown as such.
+    func bytes(_ path: String) async throws -> (Data, contentType: String?) {
+        var request = URLRequest(url: base.appending(path: path))
+        if let token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await Self.session.data(for: request)
+        } catch {
+            throw Failure.unreachable(error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw Failure.malformed("not an HTTP response")
+        }
+        switch http.statusCode {
+        case 200..<300:
+            return (data, http.value(forHTTPHeaderField: "Content-Type"))
+        case 401:
+            throw Failure.unauthorized
+        default:
+            let body = try? JSONDecoder().decode(ErrorBody.self, from: data)
+            throw Failure.rejected(
+                status: http.statusCode, code: body?.code ?? "unknown",
+                message: body?.error ?? String(decoding: data, as: UTF8.self))
+        }
+    }
+
     /// The event stream's URL. `EventSource`-style clients cannot set a
     /// header, so the token goes in the query (PROTOCOL § Authentication).
     var eventsURL: URL? {

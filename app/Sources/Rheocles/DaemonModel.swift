@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import Observation
@@ -61,6 +62,21 @@ final class DaemonModel {
     /// in the popover moves.
     private(set) var now = Date()
 
+    /// Audio levels by stream id, dBFS, from `levels` events. Absent until
+    /// the daemon has said — an unmeasured level is not silence.
+    var levels: [String: Double] = [:]
+    /// The one stream being previewed, if any (spec §12: one at a time).
+    var previewing: String?
+    var previewFrame: NSImage?
+    var previewError: String?
+    var previewTask: Task<Void, Never>?
+    /// Settings panel open in place of the list.
+    var showSettings = false
+    /// The pairing code shown in full, or masked.
+    var tokenShown = false
+    var markerLabel = ""
+    var markerError: String?
+
     /// Where the daemon is and how it is launched. The app uses the
     /// defaults; tests point this at a stub on a spare port.
     struct Configuration {
@@ -107,7 +123,9 @@ final class DaemonModel {
     static func staged(
         _ status: Status, discovery: Discovery? = nil, ours: Bool = true,
         streams: [StreamInfo] = [], permissions: Permissions? = nil, showWindows: Bool = false,
-        armError: String? = nil, take: Manifest? = nil, takeName: String = ""
+        armError: String? = nil, take: Manifest? = nil, takeName: String = "",
+        levels: [String: Double] = [:], previewing: String? = nil, previewFrame: NSImage? = nil,
+        previewError: String? = nil, showSettings: Bool = false, tokenShown: Bool = false
     ) -> DaemonModel {
         let model = DaemonModel()
         model.status = status
@@ -119,6 +137,13 @@ final class DaemonModel {
         model.armError = armError
         model.take = take
         model.takeName = takeName
+        model.levels = levels
+        model.previewing = previewing
+        model.previewFrame = previewFrame
+        model.previewError = previewError
+        model.showSettings = showSettings
+        model.tokenShown = tokenShown
+        model.api.token = "3f9a1c77e2b04d5f8a6c1e2d9b7f4a0c5d6e7f8091a2b3c4d5e6f70819a2b3c4"
         if case .down(let why) = status { model.lastError = why }
         return model
     }
@@ -387,7 +412,7 @@ final class DaemonModel {
         }
     }
 
-    private func handle(_ message: EventStream.Message) {
+    func handle(_ message: EventStream.Message) {
         switch message.kind {
         case "stream":
             // The StreamInfo as it now is; replace it in place so the switch
@@ -412,7 +437,25 @@ final class DaemonModel {
             } else {
                 Task { await discoverActiveTake() }
             }
-        case "levels", "drift", "join", "leave", "marker", "error":
+        case "levels":
+            // Planned (step 6); read leniently until the shape is pinned:
+            // either { levels: { id: dB } } or { stream: id, db | peak: dB }.
+            if let map = message.json["levels"] as? [String: Any] {
+                for (id, value) in map {
+                    if let db = value as? Double {
+                        levels[id] = db
+                    } else if let inner = value as? [String: Any],
+                        let db = (inner["db"] ?? inner["peak"]) as? Double
+                    {
+                        levels[id] = db
+                    }
+                }
+            } else if let id = message.json["stream"] as? String,
+                let db = (message.json["db"] ?? message.json["peak"]) as? Double
+            {
+                levels[id] = db
+            }
+        case "drift", "join", "leave", "marker", "error":
             // Planned (step 6). Until their shapes land, any of them means
             // the take changed: re-read it.
             Task { await discoverActiveTake() }

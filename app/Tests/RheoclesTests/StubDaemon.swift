@@ -16,7 +16,10 @@ import Foundation
 /// already there.
 enum StubDaemon {
     static let script: String = """
-        import http.server, json, os, sys, time
+        import base64, http.server, json, os, sys, time
+        # A 2x2 PNG, so /preview answers with a real image.
+        PNG = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP4z8DwHwyBFJgFZAAAWyMJ8Q0d0goAAAAASUVORK5CYII=")
         args = sys.argv[1:]
         def opt(name, default=None):
             return args[args.index(name) + 1] if name in args else default
@@ -64,6 +67,13 @@ enum StubDaemon {
                         "camera": "authorized", "microphone": "authorized", "screen": "authorized"}})
                 elif path == "/takes":
                     self.send_json(200, [])
+                elif path == "/preview/camera:stub":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/png")
+                    self.send_header("Content-Length", str(len(PNG)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(PNG)
                 elif path == "/events":
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")

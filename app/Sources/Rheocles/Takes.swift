@@ -52,6 +52,31 @@ extension Manifest {
 extension DaemonModel {
     struct RecordBody: Encodable {
         var name: String?
+        var codec: Manifest.Codec?
+    }
+
+    struct MarkerBody: Encodable {
+        var label: String
+    }
+
+    /// `POST /takes/{id}/markers` while recording (spec §10): Rheocles
+    /// stamps `t` from its own clock; the label is ours and it never reads
+    /// it. The manifest is re-read so the count is the daemon's.
+    func mark() {
+        guard let take, take.isRecording else { return }
+        let label = markerLabel.trimmingCharacters(in: .whitespaces)
+        let sent = label.isEmpty ? "marker \(take.markers.count + 1)" : label
+        markerError = nil
+        Task {
+            do {
+                try await api.post("/takes/\(take.id)/markers", MarkerBody(label: sent))
+                Log.info("marker \"\(sent)\" on \(take.id)")
+                markerLabel = ""
+                await refreshTake(id: take.id)
+            } catch {
+                markerError = "POST /takes/\(take.id)/markers → \(error)"
+            }
+        }
     }
 
     /// Record: create and start in one — the popover's one button (spec §7).
@@ -63,7 +88,7 @@ extension DaemonModel {
         Task {
             do {
                 let created: TakeEngine.Created = try await api.post(
-                    "/record", RecordBody(name: name.isEmpty ? nil : name),
+                    "/record", RecordBody(name: name.isEmpty ? nil : name, codec: codec),
                     decoder: Manifest.wireDecoder)
                 Log.info("recording take \(created.take.id)")
                 for warning in created.warnings { Log.info("take warning: \(warning)") }

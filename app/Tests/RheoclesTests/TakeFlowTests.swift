@@ -40,7 +40,7 @@ struct TakeFlowTests {
         }
     }
 
-    private func engine() throws -> (Server, DaemonModel) {
+    func engine() throws -> (Server, DaemonModel) {
         let port = StubDaemon.freePort()
         let scratch = StubDaemon.scratch()
         var server = Server.Configuration()
