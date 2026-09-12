@@ -20,6 +20,10 @@
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <!-- Not storage/framework/views: NativePHP seeds the app's data directory from
+             storage/ at every launch, and a view Pest compiled there would shadow a
+             newer source until the next test run. -->
+        <env name="VIEW_COMPILED_PATH" value="/tmp/rheocles-php-tests/views"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>

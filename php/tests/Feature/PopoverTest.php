@@ -1,12 +1,19 @@
 <?php
 
 use App\Rheocles\Daemon;
+use Native\Desktop\Facades\Settings;
 
 /*
  * The popover's routes: the page and the daemon's published state. What
  * the page shows comes from GET /; PHP hands it the daemon's address, the
  * token for the event stream, and the watcher's word on the lifecycle.
  */
+
+beforeEach(function () {
+    // The page reads the app's preferences through NativePHP's Settings,
+    // which is Electron's; here it is a map.
+    Settings::shouldReceive('get')->andReturnUsing(fn ($k, $d = null) => $d);
+});
 
 afterEach(fn () => @unlink(Daemon::stateFile()));
 

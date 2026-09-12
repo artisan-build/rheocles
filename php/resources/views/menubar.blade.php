@@ -47,11 +47,15 @@
     </div>
   </section>
 
-  {{-- Running: GET / as a list (task 1); the stream list takes this place in task 2. --}}
+  {{-- Running: every stream with its arm switch, or the settings in its place; the take bar; GET / as a strip. --}}
   <section id="panel-running" hidden>
-    <div class="discovery" id="discovery"></div>
+    <div class="streams" id="streams"></div>
+    <div class="settings" id="settings" hidden></div>
     <div class="rule"></div>
-    <div class="takebar"><span class="prose" style="color:var(--script)">Arm a stream to record.</span></div>
+    <div class="takebar">
+      <button class="btn oxide" id="record" disabled><i class="dot"></i>Record</button>
+      <span class="prose script" id="takebar-note">Arm a stream to record.</span>
+    </div>
     <div class="strip">
       <div class="row"><i class="dot"></i><span class="bone" id="strip-version">rheocles-core ··</span><span>·</span><span id="strip-owner">··</span><span>·</span><span id="strip-free" class="absent">free ··</span></div>
       <div class="row root"><span>→</span><span id="strip-root">··</span></div>
@@ -78,6 +82,7 @@
     events: @json($events),
     token: @json($token),
     daemon: @json($daemon),
+    preferences: @json($preferences),
     home: @json(\App\Rheocles\Home::path()),
   };
 </script>

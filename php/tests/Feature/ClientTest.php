@@ -66,6 +66,15 @@ it('carries the protocol error shape on a refusal', function () {
     }
 });
 
+it('puts stream ids on the path verbatim — the daemon does not decode %3A', function () {
+    try {
+        $this->client->arm('display:nope', true);
+        $this->fail('expected a refusal');
+    } catch (Rejected $e) {
+        expect($e->status)->toBe(404)->and($e->error)->toContain('display:nope')->not->toContain('%3A');
+    }
+});
+
 it('lists streams with permissions, and recent takes', function () {
     $list = $this->client->streams();
     expect($list)->toHaveKeys(['streams', 'permissions'])

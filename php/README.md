@@ -34,7 +34,8 @@ PHP carries clicks and the pulse. This is Sonocles' load-bearing decision
 | `app/Rheocles/EventStream.php` | `GET /events` as PHP reads it — the watcher's copy, not the popover's |
 | `app/Rheocles/IconState.php` | what the icon says, from what the daemon says |
 | `app/Console/Commands/Watch.php` | `rheo:watch` |
-| `resources/views/menubar.blade.php`, `public/popover.css`, `public/js/` | the popover |
+| `app/Rheocles/Preferences.php` | show windows and codec, in NativePHP's `Settings` |
+| `resources/views/menubar.blade.php`, `public/popover.css`, `public/js/` | the popover; `state.js` is the pure part |
 | `resources/menubar/` | the icon, every state, from `bin/make-icons.swift` |
 | `nativephp/electron/build/entitlements.mac.plist` | camera + audio-input, which NativePHP does not scaffold |
 | `nativephp/electron/electron-builder.mjs` | the three usage strings, `LSUIElement` |
@@ -49,8 +50,17 @@ composer install
 (cd nativephp/electron && npm run plugin:build)    # see note
 swift build --package-path ../app -c release       # the core
 bin/sync-sidecar.sh                                # copy it into extras/
-php artisan native:run                             # the app, on the desktop
+bin/dev-run.sh                                     # the app, on the desktop
+bin/dev-stop.sh                                    # …and off again
 ```
+
+`dev-run.sh` is `native:run -v` in the background with its output in a file
+(without `-v` there is none), after clearing compiled views — NativePHP
+seeds the app's data directory from `storage/` at every launch, and a stale
+compiled view there shadows the source. `dev-stop.sh` stops the app through
+Electron so its children go with it; killing `native:run` instead leaves
+Electron writing to a closed stdout, one `EPIPE` per line. ⌘R in the
+popover reloads its page.
 
 **`plugin:build` is not optional.** NativePHP 2.3.0 publishes an
 `electron-plugin/dist` missing `server/pdfPageSize.js`; without rebuilding
@@ -70,7 +80,8 @@ daemon (`shared` in the strip); start this one alone and it launches its own
 ## Tests
 
 ```bash
-php vendor/bin/pest
+php vendor/bin/pest      # PHP
+npx vitest run           # the popover's state module
 ```
 
 The lifecycle runs against a stub core (`tests/stubs/core.php` on PHP's

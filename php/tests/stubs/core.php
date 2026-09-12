@@ -29,8 +29,58 @@ if ($path === '/') {
     ]);
     exit;
 }
+/*
+ * Streams, with armed state kept in STUB_STATE (a JSON file) so a POST
+ * changes what the next GET says — the built-in server is one process per
+ * request. Three streams, one per shape: a display, a camera the stub
+ * refuses (403, as macOS would), a microphone.
+ */
+$stateFile = getenv('STUB_STATE') ?: sys_get_temp_dir().'/rheo-stub-state.json';
+$armed = is_file($stateFile) ? (json_decode((string) file_get_contents($stateFile), true) ?: []) : [];
+$streams = [
+    ['id' => 'display:STUB-1', 'kind' => 'display', 'name' => 'Stub Display', 'model' => 'vendor 1 model 1',
+        'capabilities' => ['video' => ['width' => 1920, 'height' => 1080, 'maxFrameRate' => 60]]],
+    ['id' => 'camera:stub', 'kind' => 'camera', 'name' => 'Stub Camera', 'model' => 'UVC Stub',
+        'capabilities' => ['video' => ['width' => 1280, 'height' => 720, 'maxFrameRate' => 30]]],
+    ['id' => 'microphone:stub', 'kind' => 'microphone', 'name' => 'Stub Mic', 'model' => 'Stub:1:1',
+        'capabilities' => ['audio' => ['sampleRate' => 48000, 'channels' => 2]]],
+];
+$withState = function (array $s) use (&$armed) {
+    $s['armed'] = (bool) ($armed[$s['id']] ?? false);
+    if ($s['armed']) {
+        $s['active'] = $s['capabilities'];
+        $s['framesSeen'] = 0;
+    }
+
+    return $s;
+};
 if ($path === '/streams') {
-    echo json_encode(['streams' => [], 'permissions' => ['camera' => 'authorized', 'microphone' => 'authorized', 'screen' => 'authorized']]);
+    echo json_encode(['streams' => array_map($withState, $streams),
+        'permissions' => ['camera' => 'denied', 'microphone' => 'authorized', 'screen' => 'authorized']]);
+    exit;
+}
+if (preg_match('~^/streams/([^/]+)/arm$~', $path, $m) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id = rawurldecode($m[1]);
+    $body = json_decode((string) file_get_contents('php://input'), true);
+    if (! is_array($body) || ! array_key_exists('armed', $body) || ! is_bool($body['armed'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'body must be { "armed": true|false }', 'code' => 'bad_request']);
+        exit;
+    }
+    $found = array_values(array_filter($streams, fn ($s) => $s['id'] === $id));
+    if ($found === []) {
+        http_response_code(404);
+        echo json_encode(['error' => "no such stream: $id", 'code' => 'not_found']);
+        exit;
+    }
+    if ($id === 'camera:stub' && $body['armed']) {
+        http_response_code(403);
+        echo json_encode(['error' => 'camera access denied by macOS', 'code' => 'permission_denied']);
+        exit;
+    }
+    $armed[$id] = $body['armed'];
+    file_put_contents($stateFile, json_encode($armed));
+    echo json_encode($withState($found[0]));
     exit;
 }
 if ($path === '/takes') {

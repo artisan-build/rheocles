@@ -61,10 +61,14 @@ final class Client
         return $this->get('/streams');
     }
 
-    /** `POST /streams/{id}/arm` — device live or not; never stamps. */
+    /**
+     * `POST /streams/{id}/arm` — device live or not; never stamps. Ids are
+     * URL-safe by contract (`<kind>:<identifier>`, PROTOCOL § GET /streams)
+     * and go on the path verbatim: the daemon does not decode `%3A`.
+     */
     public function arm(string $id, bool $armed): array
     {
-        return $this->post('/streams/'.rawurlencode($id).'/arm', ['armed' => $armed]);
+        return $this->post("/streams/$id/arm", ['armed' => $armed]);
     }
 
     /** `POST /record` — create and start in one; the popover's button. */
@@ -75,13 +79,13 @@ final class Client
 
     public function stop(string $takeId): array
     {
-        return $this->post('/takes/'.rawurlencode($takeId).'/stop', (object) []);
+        return $this->post("/takes/$takeId/stop", (object) []);
     }
 
     /** `GET /takes/{id}` — the manifest, live while recording. */
     public function take(string $id): array
     {
-        return $this->get('/takes/'.rawurlencode($id));
+        return $this->get("/takes/$id");
     }
 
     /** `GET /takes` — recent takes, newest first. */
@@ -92,7 +96,7 @@ final class Client
 
     public function mark(string $takeId, string $label): array
     {
-        return $this->post('/takes/'.rawurlencode($takeId).'/markers', ['label' => $label]);
+        return $this->post("/takes/$takeId/markers", ['label' => $label]);
     }
 
     // MARK: transport
