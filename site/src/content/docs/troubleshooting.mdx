@@ -1,7 +1,6 @@
 ---
 title: Troubleshooting
 description: The things that go wrong, what they look like, and what they mean. Most of them are macOS telling you something quietly.
-draft: true
 ---
 import Callout from '../../components/Callout.astro';
 
@@ -139,11 +138,15 @@ By design. A screen delivers a frame only when its content changes, so its
 cadence is the content's and drift means nothing. `drift` is reported for
 cameras and microphones, whose devices have clocks of their own.
 
-## The manifest says `recording` and nothing is running
+## The manifest says `incomplete`, reason `daemon stopped` or `daemon died`
 
-The daemon died mid-take. The files are fragmented MOVs and play to their
-last fragment; the manifest has every stream's `started` and `timecode`. Nothing needs reconstructing — but nothing will mark
-the take `complete` either, and the state is the honest one.
+`daemon stopped`: the daemon was asked to quit mid-take and finalised it
+first — every writer closed, the manifest written. `daemon died`: it went
+without finalising — a crash, a `kill -9`, a power cut — and the next launch
+found the manifest still saying `recording` and marked it. Either way the
+files are fragmented MOVs that play to their last fragment and WAVs that
+read, and the manifest has every stream's `started` and `timecode`. Nothing
+needs reconstructing, and nothing pretends the take finished.
 
 ## Requests answer `401`
 

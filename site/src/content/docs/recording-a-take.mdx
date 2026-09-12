@@ -190,7 +190,9 @@ Every MOV is written with a one-second movie fragment interval, so a process
 that dies mid-take leaves a file that plays up to the last fragment; every
 WAV has its RIFF sizes patched every second, so it reads. The manifest is
 rewritten atomically — temp file, then rename — on every state change, so it
-is never half-written. This is proven, not hoped: `kill -9` mid-take
+is never half-written; and because a full disk is the one failure that could
+stop the *final* manifest landing, every take folder holds a 64 KB reserve
+that is freed for exactly that write. This is proven, not hoped: `kill -9` mid-take
 recovers every MOV, leaves every WAV readable, and the manifest says
 `recording` because that is the truth. A dead process leaves playable files
 and a truthful manifest; that is a design constraint, not a recovery

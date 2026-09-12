@@ -17,7 +17,7 @@ Nothing in the list is on until you arm it.
 | `display` | every screen, and screen-like devices such as the Elgato Prompter | ScreenCaptureKit |
 | `window` | an individual window | ScreenCaptureKit, a different filter |
 | `camera` | every video device, including Continuity Camera and external UVC | AVFoundation |
-| `microphone` | every audio input device | AVFoundation |
+| `microphone` | every audio input device — except the private aggregate our own system-audio tap creates, which is filtered out so it is never offered as a second mic | AVFoundation |
 | `systemAudio` | what the machine is playing, as one stream | a Core Audio tap |
 
 ```json title="GET /streams"
