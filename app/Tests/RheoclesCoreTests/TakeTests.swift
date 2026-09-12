@@ -316,6 +316,23 @@ struct TakeTests {
         #expect(try Manifest.decode(data) == m)
     }
 
+    @Test("API responses stamp dates with milliseconds, not truncated to the second")
+    func apiDatesHaveMilliseconds() throws {
+        // Response.encoder is what the API and the `take` event use; it must
+        // match the on-disk manifest's fractional seconds so a marker t plus
+        // `started` lands on a frame (Ptero saw seconds-only over the API).
+        let m = Manifest(
+            id: "x", name: nil, state: .recording, reason: nil,
+            created: Date(timeIntervalSince1970: 1_800_000_000.5),
+            started: Date(timeIntervalSince1970: 1_800_000_000.5), stopped: nil, outputRoot: "/r",
+            destination: "takes/x", version: "0.1.0", machine: .init(hostname: "h", machineId: "m"),
+            streams: [], markers: [], settings: .init(codec: .hevc, expectedDuration: nil))
+        let body = String(decoding: Response(json: m).body, as: UTF8.self)
+        #expect(body.contains(#""created":"2027-01-15T08:00:00.500Z""#))
+        #expect(body.contains(#""started":"2027-01-15T08:00:00.500Z""#))
+        #expect(!body.contains(#""created":"2027-01-15T08:00:00Z""#), "not truncated to the second")
+    }
+
     @Test("Names become file-safe slugs")
     func slugs() {
         #expect(TakeEngine.slugify("Elgato 4K X") == "elgato-4k-x")

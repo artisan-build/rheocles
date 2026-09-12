@@ -60,11 +60,17 @@ public struct Response: Sendable {
     }
 
     /// Sorted keys so responses are stable across runs — the contract test
-    /// and any client diffing two payloads rely on that.
+    /// and any client diffing two payloads rely on that. Dates carry
+    /// milliseconds (ISO 8601 with fractional seconds), the same as the
+    /// on-disk manifest, so a marker `t` plus a take's `started` lands on a
+    /// frame — the default `.iso8601` strategy truncated to the second.
     static let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        e.dateEncodingStrategy = .iso8601
+        e.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(Manifest.iso8601.string(from: date))
+        }
         return e
     }()
 }
