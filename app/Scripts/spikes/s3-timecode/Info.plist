@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>build.artisan.rheocles.spike.s3</string>
+	<key>CFBundleName</key>
+	<string>S3</string>
+	<key>CFBundleExecutable</key>
+	<string>s3</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSBackgroundOnly</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Rheocles spike S3 records the microphone to a Broadcast Wave file to test timecode sync.</string>
+</dict>
+</plist>
