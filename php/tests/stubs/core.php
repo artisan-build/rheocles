@@ -47,6 +47,9 @@ $streams = [
 ];
 $withState = function (array $s) use (&$armed) {
     $s['armed'] = (bool) ($armed[$s['id']] ?? false);
+    if (! is_bool($s['armed'])) {
+        $s['armed'] = false;
+    }
     if ($s['armed']) {
         $s['active'] = $s['capabilities'];
         $s['framesSeen'] = 0;
@@ -83,8 +86,98 @@ if (preg_match('~^/streams/([^/]+)/arm$~', $path, $m) && $_SERVER['REQUEST_METHO
     echo json_encode($withState($found[0]));
     exit;
 }
+/*
+ * Takes: one at a time, kept in the same state file. /record snapshots the
+ * armed set and answers a manifest that is recording; /stop completes it;
+ * /markers appends { t, label }. Enough shape for the popover's routes and
+ * the icon; the real thing is exercised against the binary in ClientTest.
+ */
+$take = $armed['__take'] ?? null;
+$saveTake = function (?array $t) use (&$armed, $stateFile) {
+    $armed['__take'] = $t;
+    file_put_contents($stateFile, json_encode($armed));
+};
+$manifest = fn (array $t) => $t;
+if ($path === '/record' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $body = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    if ($take && $take['state'] === 'recording') {
+        http_response_code(409);
+        echo json_encode(['error' => "a take is recording: {$take['id']}", 'code' => 'take_active']);
+        exit;
+    }
+    $set = array_values(array_filter(array_map($withState, $streams), fn ($s) => $s['armed'] && $s['id'] !== '__take'));
+    if ($set === []) {
+        http_response_code(400);
+        echo json_encode(['error' => 'no streams are armed', 'code' => 'bad_request']);
+        exit;
+    }
+    $now = gmdate('Y-m-d\TH:i:s').'.000Z';
+    $take = [
+        'id' => gmdate('Ymd\THis').'-stub', 'state' => 'recording', 'created' => $now, 'started' => $now,
+        'outputRoot' => '/tmp/rheocles-stub', 'destination' => 'takes/stub', 'version' => 'stub',
+        'machine' => ['hostname' => 'stub.local', 'machineId' => '00000000-0000-0000-0000-000000000000'],
+        'streams' => array_map(fn ($s) => [
+            'id' => $s['id'], 'kind' => $s['kind'], 'name' => $s['name'], 'model' => $s['model'],
+            'path' => strtolower(str_replace(' ', '-', $s['name'])).(isset($s['capabilities']['video']) ? '.mov' : '.wav'),
+            'codec' => isset($s['capabilities']['video']) ? ($body['codec'] ?? 'hevc') : 'pcm_s24le',
+            'format' => $s['capabilities'], 'started' => $now, 'framesWritten' => 0,
+            'events' => [['t' => 0, 'type' => 'join']],
+        ], $set),
+        'markers' => [], 'settings' => ['codec' => $body['codec'] ?? 'hevc'],
+    ];
+    if (isset($body['name'])) {
+        $take['name'] = $body['name'];
+    }
+    $saveTake($take);
+    http_response_code(201);
+    echo json_encode(['take' => $take, 'warnings' => []]);
+    exit;
+}
+if (preg_match('~^/takes/([^/]+)/(stop|markers)$~', $path, $m) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (! $take || $take['id'] !== rawurldecode($m[1])) {
+        http_response_code(404);
+        echo json_encode(['error' => 'no such take', 'code' => 'not_found']);
+        exit;
+    }
+    if ($take['state'] !== 'recording') {
+        http_response_code(409);
+        echo json_encode(['error' => 'the take is not recording', 'code' => 'conflict']);
+        exit;
+    }
+    if ($m[2] === 'markers') {
+        $body = json_decode((string) file_get_contents('php://input'), true) ?: [];
+        if (trim((string) ($body['label'] ?? '')) === '') {
+            http_response_code(400);
+            echo json_encode(['error' => 'label required', 'code' => 'bad_request']);
+            exit;
+        }
+        $take['markers'][] = ['t' => round(count($take['markers']) * 1.5 + 0.5, 3), 'label' => $body['label']];
+    } else {
+        $take['state'] = 'complete';
+        $take['stopped'] = gmdate('Y-m-d\TH:i:s').'.000Z';
+        foreach ($take['streams'] as &$s) {
+            $s['stopped'] = $take['stopped'];
+            $s['framesWritten'] = 96000;
+            $s['events'][] = ['t' => 2, 'type' => 'leave'];
+        }
+        unset($s);
+    }
+    $saveTake($take);
+    echo json_encode($take);
+    exit;
+}
+if (preg_match('~^/takes/([^/]+)$~', $path, $m)) {
+    if (! $take || $take['id'] !== rawurldecode($m[1])) {
+        http_response_code(404);
+        echo json_encode(['error' => 'no such take', 'code' => 'not_found']);
+        exit;
+    }
+    echo json_encode($take);
+    exit;
+}
 if ($path === '/takes') {
-    echo json_encode([]);
+    echo json_encode($take ? [['id' => $take['id'], 'name' => $take['name'] ?? null, 'state' => $take['state'],
+        'created' => $take['created'], 'destination' => $take['destination'], 'streams' => count($take['streams'])]] : []);
     exit;
 }
 http_response_code(404);

@@ -13,11 +13,12 @@
 <header>
   {{-- The mark: strokes struck from one bar. site/src/components/Mark.astro's geometry, verbatim. --}}
   <svg class="mark" id="mark" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" aria-hidden="true">
-    <path d="M5 4 V28" />
-    <path d="M5 8.5 C 12 8, 20 9.2, 28 8.5" />
-    <path d="M5 14 C 11 13.6, 17 14.6, 22 14" />
-    <path d="M5 19.5 C 13 19, 19 20.2, 26 19.5" />
-    <path d="M5 25 C 10 24.7, 14 25.4, 18 25" />
+    <path id="mark-bar" d="M5 4 V28" />
+    <circle id="mark-dot" cx="5" cy="30.2" r="2.3" fill="currentColor" stroke="none" hidden />
+    <path class="stroke" d="M5 8.5 C 12 8, 20 9.2, 28 8.5" data-late="M13 8.5 C 18 8.3, 22 9.2, 28 8.5" data-cue="M5 8.5 C 12 8, 20 9.2, 28 8.5" />
+    <path class="stroke" d="M5 14 C 11 13.6, 17 14.6, 22 14" data-late="M13 14 C 16 13.8, 19 14.6, 22 14" data-cue="M5 14 C 11 13.6, 17 14.6, 22 14" />
+    <path class="stroke" d="M5 19.5 C 13 19, 19 20.2, 26 19.5" data-late="M13 19.5 C 17 19.2, 21 20.2, 26 19.5" data-cue="M5 19.5 C 13 19, 19 20.2, 26 19.5" />
+    <path class="stroke" d="M5 25 C 10 24.7, 14 25.4, 18 25" data-late="M13 25 C 15 24.9, 16.5 25.4, 18 25" data-cue="M5 25 C 10 24.7, 14 25.4, 18 25" />
   </svg>
   <span class="wordmark">Rheocles</span>
   <span class="say">REE-oh-kleez</span>
@@ -52,9 +53,26 @@
     <div class="streams" id="streams"></div>
     <div class="settings" id="settings" hidden></div>
     <div class="rule"></div>
-    <div class="takebar">
-      <button class="btn oxide" id="record" disabled><i class="dot"></i>Record</button>
-      <span class="prose script" id="takebar-note">Arm a stream to record.</span>
+    {{-- Record or Stop, the take's name, and the time since the cue (spec §12); markers while recording. --}}
+    <div class="takebar" id="takebar">
+      <div class="take-controls">
+        <button class="btn oxide" id="record" disabled><i class="dot"></i>Record</button>
+        <button class="btn oxide filled" id="stop" hidden><i class="square"></i>Stop</button>
+        <span class="prose script" id="takebar-note" hidden>Arm a stream to record.</span>
+        <input class="field" id="take-name" type="text" placeholder="take name" autocomplete="off" spellcheck="false" hidden>
+        <span class="live" id="live" hidden>
+          <span class="take-name" id="live-name">··</span>
+          <span class="elapsed" id="live-elapsed">··:··</span>
+          <span class="writing" id="live-writing">0 writing</span>
+        </span>
+        <span class="finished" id="finished" hidden><i class="dot"></i><span id="finished-text"></span></span>
+      </div>
+      <div class="take-markers" id="markers" hidden>
+        <input class="field" id="marker-label" type="text" placeholder="marker label" autocomplete="off" spellcheck="false">
+        <button class="btn" id="mark-button"><svg viewBox="0 0 24 24" fill="currentColor" width="8" height="8" aria-hidden="true"><path d="M4 2v20h2v-8h13l-3-5 3-5H6V2z"/></svg>Mark</button>
+        <span class="spacer"></span>
+        <span class="count" id="marker-count">no markers</span>
+      </div>
     </div>
     <div class="strip">
       <div class="row"><i class="dot"></i><span class="bone" id="strip-version">rheocles-core ··</span><span>·</span><span id="strip-owner">··</span><span>·</span><span id="strip-free" class="absent">free ··</span></div>

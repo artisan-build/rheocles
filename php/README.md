@@ -73,6 +73,10 @@ The packaged app uses the protocol's 7447/7448. Logs: the core's output goes
 to `~/Library/Logs/Rheocles/rheocles-core-php.log`; Laravel's to the app's
 storage under `~/Library/Application Support/`.
 
+`bin/sync-sidecar.sh` removes the old binary before copying: overwriting a
+Mach-O in place on Apple Silicon leaves the kernel's signature cache stale
+and the next launch is `Killed: 9` with nothing in any log.
+
 Two front ends, one core: start the Swift app first and this one adopts its
 daemon (`shared` in the strip); start this one alone and it launches its own
 (`ours`). Quit only ever stops ours.

@@ -53,9 +53,9 @@ Route::post('/daemon/relaunch', function () {
  * Commands, one per protocol route, answered in the protocol's own shape
  * (status and { error, code }) so the page shows the daemon's words.
  */
-$forward = function (\Closure $call) {
+$forward = function (\Closure $call, int $status = 200) {
     try {
-        return response()->json($call(Client::fromConfig()));
+        return response()->json($call(Client::fromConfig()), $status);
     } catch (Failure $e) {
         // Not `App\Rheocles\…` unqualified: `use …\Facades\App` above makes
         // that resolve under the facade's namespace, silently and to nothing.
@@ -72,6 +72,36 @@ Route::get('/api/discovery', fn () => $forward(fn (Client $c) => $c->discovery()
 Route::post('/api/streams/{id}/arm', fn (Request $request, string $id) => $forward(
     fn (Client $c) => $c->arm($id, $request->boolean('armed'))
 ));
+
+/*
+ * Record: create and start in one — the popover's one button (spec §7).
+ * The name is the user's; the codec is the app's preference and travels
+ * with every Record (spec §8, one setting for the whole take).
+ */
+Route::post('/api/record', fn (Request $request) => $forward(function (Client $c) use ($request) {
+    $name = trim((string) $request->input('name', ''));
+    $body = ['codec' => Preferences::all()['codec']];
+    if ($name !== '') {
+        $body['name'] = $name;
+    }
+
+    return $c->record($body);
+}, 201));
+
+Route::post('/api/takes/{id}/stop', fn (string $id) => $forward(fn (Client $c) => $c->stop($id)));
+
+/*
+ * A marker is a label and the daemon's clock (spec §10): Rheocles knows
+ * when, the client knows what. An empty label is named for its number.
+ */
+Route::post('/api/takes/{id}/markers', fn (Request $request, string $id) => $forward(function (Client $c) use ($request, $id) {
+    $label = trim((string) $request->input('label', ''));
+    if ($label === '') {
+        $label = 'marker '.((int) $request->input('count', 0) + 1);
+    }
+
+    return $c->mark($id, $label);
+}));
 
 /* The app's own settings: show windows now, codec with the takes. */
 Route::get('/api/preferences', fn () => response()->json(Preferences::all()));
