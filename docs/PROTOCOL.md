@@ -4,11 +4,11 @@ Every command is reachable over both transports, and every event reaches
 both. One command table, two encoders: this document describes the table
 once and the two encodings once.
 
-**Status:** current with the code through task 4 step 5 (`GET /`, auth,
-framing, streams, arm/disarm, takes, real writers, the `stream` and `take`
-events). Takes record real files: HEVC or ProRes MOV with a time-of-day
-`tmcd` track and 1 s fragments, Broadcast Wave audio with a `bext`
-`TimeReference`. Sections marked *planned* describe what the next steps add and are
+**Status:** current with the code through task 4 step 6 — everything below
+except `GET /preview/{stream}` (step 7). Takes record real files (HEVC or
+ProRes MOV with a time-of-day `tmcd` track and 1 s fragments, Broadcast Wave
+audio with a `bext` `TimeReference`); join/leave/markers, live `levels`,
+`drift`, `stalled`, `settings` and `token/rotate` are live. Sections marked *planned* describe what the next steps add and are
 what the front ends build against; they change here before they change in
 the code.
 
@@ -58,9 +58,12 @@ next request.
 | `POST /record` | create + start, the one-click form | step 4 |
 | `GET /takes/{id}` | the manifest, live while recording | step 4 |
 | `GET /takes` | recent takes, newest first | step 4 |
-| `POST /takes/{id}/join` | `{ "stream": id }` — arms if needed, starts that stream's writer now | *planned*, step 6 |
-| `POST /takes/{id}/leave` | `{ "stream": id }` — finalizes that file; the stream stays armed | *planned*, step 6 |
-| `POST /takes/{id}/markers` | `{ "label": "…" }` → `{ "t": seconds from the cue, "label" }` | *planned*, step 6 |
+| `POST /takes/{id}/join` | `{ "stream": id }` — arms if needed, starts that stream's writer now | step 6 |
+| `POST /takes/{id}/leave` | `{ "stream": id }` — finalizes that file; the stream stays armed | step 6 |
+| `POST /takes/{id}/markers` | `{ "label": "…" }` → the manifest with the marker appended | step 6 |
+| `GET /settings` | the daemon's output root and default codec | step 6 |
+| `PATCH /settings` | `{ "outputRoot"?, "codec"? }` — change either | step 6 |
+| `POST /token/rotate` | `{}` → `{ "token" }` — new token, old one dead after the response | step 6 |
 | `GET /preview/{stream}` | one low-rate preview frame; one stream at a time | *planned*, step 7 |
 
 Paths in every response are relative to the output root, which `GET /`
@@ -300,6 +303,58 @@ the output root holds, up to 50):
     "created": "2026-09-12T04:04:33.235Z", "destination": "takes/2026-09-11/210433-episode-12", "streams": 5 } ]
 ```
 
+### Join, leave, markers (spec §6, §10)
+
+While a take is `recording`:
+
+- **`POST /takes/{id}/join` `{ "stream": id }`** starts that stream's writer
+  now and adds its file to the manifest, stamped with the time it actually
+  began: a stream that joins four minutes in is stamped four minutes in, and
+  an editor places it there. Join **arms the stream first if it is cold** —
+  one call gets a cold stream into a running take. A stream that was in the
+  create snapshot keeps its reserved path; a brand-new one gets a fresh name.
+  `409` if the stream is already recording in the take.
+- **`POST /takes/{id}/leave` `{ "stream": id }`** finalizes that stream's
+  file and marks it complete; the stream **stays armed** and the take
+  continues for the others. `409` if the stream is not recording in the take.
+- **`POST /takes/{id}/markers` `{ "label": "…" }`** appends `{ t, label }` to
+  the manifest, `t` in seconds from the cue. Rheocles owns the clock and
+  stamps `t`; the client owns the label and Rheocles never interprets it.
+  An empty label is `400`.
+
+All three answer the updated manifest and are `409` outside a recording take.
+Late joining is for saving CPU on a heavy stream you already know will not
+need edit flexibility — arm everything you might want, record, and cut in the
+edit. A script that toggles streams in and out mid-take has misunderstood the
+tool.
+
+### Settings (spec §12)
+
+Daemon-owned defaults, persisted to
+`~/Library/Application Support/Rheocles/settings.json`.
+
+```json
+GET /settings            → { "outputRoot": "/Users/gopher/Movies/Rheocles", "codec": "hevc" }
+PATCH /settings { "codec": "prores" }              → the full settings
+PATCH /settings { "outputRoot": "/Volumes/SSD/Takes" } → the full settings
+```
+
+`outputRoot` must be an absolute path, and it **cannot move while a take is
+active** (`created` or `recording`) — its files are already reserved beneath
+the old root — so that `PATCH` is `409`. `codec` is `hevc` or `prores`. Every
+change emits a `settings` event. `GET /` reports the same output root.
+
+### Token rotation
+
+```json
+POST /token/rotate {}    → { "token": "9f3c…64 hex" }
+```
+
+Rewrites the token file and invalidates the old token for **every request
+after this response** on both transports (a WebSocket that authenticated with
+the old token stays up but must re-`auth` with the new one for later
+commands). The pairing UI shows the new token; nothing else changes.
+
 ### Files and clocks
 
 Every armed stream lands as its own file, started on the cue and stamped so
@@ -399,11 +454,18 @@ Every event has an `event` key naming its kind and no `id`.
 | event | since | carries |
 |---|---|---|
 | `stream` | step 3 | `stream`: the `StreamInfo` as it now is, on every change of armed state |
-| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) |
-| `levels`, `drift`, `join`, `leave`, `marker`, `error` | *planned*, step 6 | shapes land here before step 6 ships |
+| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) — carries join/leave events and markers |
+| `levels` | step 6 | `take` id and `streams: [{ id, levelDb?, framesWritten, drift? }]`, ~4×/s while recording — meters and a live drift readout. `levelDb` is peak dBFS since the last event, audio only |
+| `marker` | step 6 | `take` id and the `{ t, label }` just added |
+| `stalled` | step 6 | `stream`: an armed or recording stream that stopped delivering frames (a camera with the lid closed) |
+| `settings` | step 6 | `settings`: the new `{ outputRoot, codec }` |
 
 ```json
-{ "event": "stream", "stream": { "id": "microphone:…", "kind": "microphone", "armed": true, "active": { … }, "framesSeen": 0, … } }
+{ "event": "stream",   "stream": { "id": "microphone:…", "kind": "microphone", "armed": true, "active": { … }, "framesSeen": 0, … } }
+{ "event": "levels",   "take": "20260912T045007-5kqn", "streams": [ { "id": "microphone:…", "levelDb": -18.3, "framesWritten": 96000, "drift": 0 } ] }
+{ "event": "marker",   "take": "20260912T045007-5kqn", "marker": { "t": 2.042, "label": "chapter 1" } }
+{ "event": "stalled",  "stream": { "id": "camera:…", "kind": "camera", "armed": true, "active": { … }, "framesSeen": 0, … } }
+{ "event": "settings", "settings": { "outputRoot": "/Users/gopher/Movies/Rheocles", "codec": "prores" } }
 ```
 
 ## Consuming it

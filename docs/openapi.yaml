@@ -18,6 +18,18 @@ security:
 # Events, as delivered on GET /events (SSE `data:` lines) and to every
 # authenticated WebSocket client — the same bytes on both.
 x-events:
+  - event: levels
+    description: Per-stream peak level (audio, dBFS), frames written and drift, ~4x/s while recording.
+    example: { event: levels, take: 20260912T045007-5kqn, streams: [ { id: 'microphone:BuiltInMicrophoneDevice', levelDb: -18.3, framesWritten: 96000, drift: 0 } ] }
+  - event: marker
+    description: A marker was added to the active take.
+    example: { event: marker, take: 20260912T045007-5kqn, marker: { t: 2.042, label: chapter 1 } }
+  - event: stalled
+    description: An armed or recording stream stopped delivering frames.
+    example: { event: stalled, stream: { id: 'camera:0x2300000fd9009c', kind: camera, name: Elgato 4K X, model: UVC Camera VendorID_4057 ProductID_156, capabilities: { video: { width: 3840, height: 2160, maxFrameRate: 30 } }, armed: true, active: { video: { width: 1280, height: 720, maxFrameRate: 30 } }, framesSeen: 0 } }
+  - event: settings
+    description: The daemon's settings changed.
+    example: { event: settings, settings: { outputRoot: /Users/gopher/Movies/Rheocles, codec: prores } }
   - event: take
     description: A take changed state — created, recording, complete or incomplete. Carries the manifest.
     example: { event: take, take: { id: 20260912T040433-fd9q, name: Episode 12, state: recording, created: '2026-09-12T04:04:33.235Z', started: '2026-09-12T04:04:33.347Z', outputRoot: /Users/gopher/Movies/Rheocles, destination: takes/2026-09-11/210433-episode-12, version: 0.1.0, machine: { hostname: lens-macbook-pro.local, machineId: CD3B7EE5-5E6C-5155-854A-72E4728555F7 }, streams: [], markers: [], settings: { codec: hevc } } }
@@ -267,6 +279,183 @@ paths:
       x-ws:
         request: { id: 9, method: POST, path: /record, body: { name: quick } }
         response: { id: 9, status: 201, body: { take: { id: 20260912T040500-k2pm, state: recording }, warnings: [] } }
+  /takes/{id}/join:
+    post:
+      operationId: joinStream
+      summary: Start one stream's writer inside a running take, arming it first if cold. Stamped with the time it began.
+      parameters:
+        - $ref: '#/components/parameters/takeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamRef'
+      responses:
+        '200':
+          description: The manifest with the joined stream.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The take is not recording, or the stream is already recording in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 10, method: POST, path: /takes/20260912T045007-5kqn/join, body: { stream: 'microphone:BuiltInMicrophoneDevice' } }
+        response: { id: 10, status: 200, body: { id: 20260912T045007-5kqn, state: recording } }
+  /takes/{id}/leave:
+    post:
+      operationId: leaveStream
+      summary: Finalize one stream's file; the stream stays armed and the take continues for the others.
+      parameters:
+        - $ref: '#/components/parameters/takeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamRef'
+      responses:
+        '200':
+          description: The manifest with that stream finalized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The take is not recording, or the stream is not recording in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 11, method: POST, path: /takes/20260912T045007-5kqn/leave, body: { stream: 'microphone:BuiltInMicrophoneDevice' } }
+        response: { id: 11, status: 200, body: { id: 20260912T045007-5kqn, state: recording } }
+  /takes/{id}/markers:
+    post:
+      operationId: addMarker
+      summary: Append a marker at the current cue offset. Rheocles stamps when; the client says what.
+      parameters:
+        - $ref: '#/components/parameters/takeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              additionalProperties: false
+              properties:
+                label:
+                  type: string
+      responses:
+        '200':
+          description: The manifest with the marker appended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The take is not recording.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 12, method: POST, path: /takes/20260912T045007-5kqn/markers, body: { label: chapter 1 } }
+        response: { id: 12, status: 200, body: { id: 20260912T045007-5kqn, markers: [ { t: 2.042, label: chapter 1 } ] } }
+  /settings:
+    get:
+      operationId: getSettings
+      summary: The daemon's output root and default codec.
+      responses:
+        '200':
+          description: Settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      x-ws:
+        request: { id: 13, method: GET, path: /settings }
+        response: { id: 13, status: 200, body: { outputRoot: /Users/gopher/Movies/Rheocles, codec: hevc } }
+    patch:
+      operationId: patchSettings
+      summary: Change the output root and/or default codec. The root cannot move while a take is active.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                outputRoot:
+                  type: string
+                  description: Absolute path.
+                codec:
+                  type: string
+                  enum: [hevc, prores]
+      responses:
+        '200':
+          description: The full settings after the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The output root cannot change while a take is active.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 14, method: PATCH, path: /settings, body: { codec: prores } }
+        response: { id: 14, status: 200, body: { outputRoot: /Users/gopher/Movies/Rheocles, codec: prores } }
+  /token/rotate:
+    post:
+      operationId: rotateToken
+      summary: Issue a new bearer token; the old one stops working after this response.
+      responses:
+        '200':
+          description: The new token.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                additionalProperties: false
+                properties:
+                  token:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      x-ws:
+        request: { id: 15, method: POST, path: /token/rotate }
+        response: { id: 15, status: 200, body: { token: 9f3c00112233445566778899aabbccddeeff00112233445566778899aabbccdd } }
 components:
   parameters:
     takeId:
@@ -640,6 +829,24 @@ components:
                 enum: [join, leave]
         error:
           type: string
+    StreamRef:
+      type: object
+      required: [stream]
+      additionalProperties: false
+      properties:
+        stream:
+          type: string
+    Settings:
+      type: object
+      required: [outputRoot, codec]
+      additionalProperties: false
+      properties:
+        outputRoot:
+          type: string
+          description: Absolute path new takes land under.
+        codec:
+          type: string
+          enum: [hevc, prores]
     Discovery:
       type: object
       required: [name, version, hostname, machineId, outputRoot, auth, ports]

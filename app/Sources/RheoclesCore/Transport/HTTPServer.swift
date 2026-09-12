@@ -159,7 +159,7 @@ public final class HTTPServer: Transport, @unchecked Sendable {
             [
                 "HTTP/1.1 \(status) \(reason)", "Content-Type: application/json",
                 "Content-Length: \(body?.count ?? 0)", "Access-Control-Allow-Origin: *",
-                "Access-Control-Allow-Methods: GET, POST, OPTIONS",
+                "Access-Control-Allow-Methods: GET, POST, PATCH, OPTIONS",
                 "Access-Control-Allow-Headers: Authorization, Content-Type",
             ].joined(separator: "\r\n") + "\r\n" + extra + "Connection: close\r\n\r\n"
         var payload = Data(head.utf8)

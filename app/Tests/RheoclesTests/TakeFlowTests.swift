@@ -56,6 +56,9 @@ struct TakeFlowTests {
             Permissions(camera: .authorized, microphone: .authorized, screen: .authorized)
         }
         server.tokenStore = TokenStore(fileURL: scratch.appendingPathComponent("token"))
+        // Isolate settings from the real ~/Library file (step 6 added GET/PATCH
+        // /settings backed by settings.json); shared, it pollutes parallel tests.
+        server.settingsFileURL = scratch.appendingPathComponent("settings.json")
         server.outputRoot = scratch.appendingPathComponent("out", isDirectory: true)
         let daemon = try Server(configuration: server)
         try daemon.start()

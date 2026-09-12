@@ -27,6 +27,7 @@ public final class AudioWriter: Writer, @unchecked Sendable {
     private var firstPTS: Double?
     private var lastPTS: Double?
     private var lastPatch = Date.distantPast
+    private var peak: Int32 = 0
     private var failure: String?
     private var finished = false
 
@@ -105,6 +106,7 @@ public final class AudioWriter: Writer, @unchecked Sendable {
         dataBytes += packed.count
         let frameCount = packed.count / (3 * channels)
         samplesWritten += frameCount
+        updatePeak(packed)
         lastPTS = pts + Double(frameCount) / sampleRate
         if Date().timeIntervalSince(lastPatch) > 1 { patchSizes() }
     }
@@ -248,6 +250,31 @@ public final class AudioWriter: Writer, @unchecked Sendable {
             try handle.seekToEnd()
         } catch {
             failure = "write failed: \(error)"
+        }
+    }
+
+    /// Peak absolute sample in `packed` (24-bit LE), tracked for the meter.
+    private func updatePeak(_ packed: Data) {
+        packed.withUnsafeBytes { raw in
+            var i = 0
+            let n = raw.count
+            while i + 3 <= n {
+                let v = Int32(raw[i]) | Int32(raw[i + 1]) << 8 | Int32(raw[i + 2]) << 16
+                let s = v >= 0x800000 ? v - 0x1000000 : v
+                let a = s < 0 ? -s : s
+                if a > peak { peak = a }
+                i += 3
+            }
+        }
+    }
+
+    public func sampleLevelDb() -> Double? {
+        lock.withLock {
+            guard firstDate != nil else { return nil }
+            let p = peak
+            peak = 0
+            guard p > 0 else { return -120.0 }
+            return (20 * log10(Double(p) / 8_388_607.0) * 10).rounded() / 10
         }
     }
 

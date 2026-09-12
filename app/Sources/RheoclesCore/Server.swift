@@ -12,6 +12,8 @@ public final class Server: Sendable {
         public var wsPort = Rheocles.defaultWebSocketPort
         public var outputRoot = Rheocles.defaultOutputRoot
         public var tokenStore = TokenStore.standard
+        public var settingsFileURL =
+            Rheocles.applicationSupport.appendingPathComponent("settings.json")
         /// Where streams come from. The daemon uses the real devices; tests
         /// hand in a fake.
         public var catalog: any StreamSource = DeviceCatalog.standard
@@ -35,11 +37,16 @@ public final class Server: Sendable {
 
     public let registry: Registry
     public let takes: TakeEngine
+    public let settings: Settings
+    private let auth: BearerAuth
+    private let tokenStore: TokenStore
 
     public init(configuration: Configuration = Configuration()) throws {
         self.configuration = configuration
         token = try configuration.tokenStore.loadOrCreate()
         let auth = BearerAuth(token: token)
+        self.auth = auth
+        self.tokenStore = configuration.tokenStore
         // The transports exist before the dispatcher so the registry can
         // broadcast through them; the dispatcher only needs them by reference.
         let router = Router()
@@ -47,6 +54,15 @@ public final class Server: Sendable {
             host: configuration.host, port: configuration.httpPort, dispatcher: router, auth: auth)
         let ws = try WebSocketServer(
             host: configuration.host, port: configuration.wsPort, dispatcher: router, auth: auth)
+        let settings = Settings(
+            fileURL: configuration.settingsFileURL,
+            defaults: .init(outputRoot: configuration.outputRoot.path, codec: .hevc)
+        ) { values in
+            let event = Event.settings(values)
+            http.broadcast(event)
+            ws.broadcast(event)
+        }
+        self.settings = settings
         let registry = Registry(
             catalog: configuration.catalog, factory: configuration.sessionFactory
         ) { stream in
@@ -55,7 +71,7 @@ public final class Server: Sendable {
             ws.broadcast(event)
         }
         let takes = TakeEngine(
-            registry: registry, outputRoot: configuration.outputRoot,
+            registry: registry, outputRoot: { settings.outputRoot },
             writerFactory: configuration.writerFactory,
             machine: .init(
                 hostname: ProcessInfo.processInfo.hostName, machineId: Discovery.machineIdentifier()
@@ -65,13 +81,19 @@ public final class Server: Sendable {
             let event = Event.take(manifest)
             http.broadcast(event)
             ws.broadcast(event)
+        } onEvent: { event in
+            http.broadcast(event)
+            ws.broadcast(event)
         }
         self.http = http
         self.ws = ws
         self.registry = registry
         self.takes = takes
         dispatcher = Dispatcher(
-            Server.routes(configuration: configuration, registry: registry, takes: takes))
+            Server.routes(
+                registry: registry, takes: takes, settings: settings, auth: auth,
+                tokenStore: configuration.tokenStore, permissions: configuration.permissions,
+                httpPort: configuration.httpPort, wsPort: configuration.wsPort))
         router.dispatcher = dispatcher
     }
 
@@ -95,22 +117,39 @@ public final class Server: Sendable {
         }
     }
 
+    /// `POST /takes/{id}/join` and `/leave`.
+    public struct StreamRef: Codable, Sendable {
+        public var stream: String
+        public init(stream: String) { self.stream = stream }
+    }
+
+    /// `POST /takes/{id}/markers`.
+    public struct MarkerRequest: Codable, Sendable {
+        public var label: String
+        public init(label: String) { self.label = label }
+    }
+
+    /// `PATCH /settings`.
+    public struct SettingsPatch: Codable, Sendable {
+        public var outputRoot: String?
+        public var codec: Manifest.Codec?
+    }
+
     /// The command table. Order is the order `commands` lists them in.
-    static func routes(configuration: Configuration, registry: Registry, takes: TakeEngine)
-        -> [Command]
-    {
+    static func routes(
+        registry: Registry, takes: TakeEngine, settings: Settings, auth: BearerAuth,
+        tokenStore: TokenStore, permissions: @escaping @Sendable () -> Permissions,
+        httpPort: UInt16, wsPort: UInt16
+    ) -> [Command] {
         [
             Command("GET", "/") { _ in
                 Response(
                     json: Discovery.current(
-                        outputRoot: configuration.outputRoot,
-                        httpPort: configuration.httpPort, wsPort: configuration.wsPort))
+                        outputRoot: settings.outputRoot, httpPort: httpPort, wsPort: wsPort))
             },
             Command("GET", "/streams") { _ in
                 Response(
-                    json: StreamList(
-                        streams: await registry.streams(),
-                        permissions: configuration.permissions()))
+                    json: StreamList(streams: await registry.streams(), permissions: permissions()))
             },
             Command("POST", "/streams/{id}/arm") { request in
                 let body = try request.decode(ArmRequest.self)
@@ -141,6 +180,51 @@ public final class Server: Sendable {
                     request.body == nil
                     ? TakeEngine.CreateRequest() : try request.decode(TakeEngine.CreateRequest.self)
                 return Response(status: 201, json: try await takes.record(body))
+            },
+            Command("POST", "/takes/{id}/join") { request in
+                let body = try request.decode(StreamRef.self)
+                return Response(
+                    json: try await takes.join(request.params["id"] ?? "", stream: body.stream))
+            },
+            Command("POST", "/takes/{id}/leave") { request in
+                let body = try request.decode(StreamRef.self)
+                return Response(
+                    json: try await takes.leave(request.params["id"] ?? "", stream: body.stream))
+            },
+            Command("POST", "/takes/{id}/markers") { request in
+                let body = try request.decode(MarkerRequest.self)
+                guard !body.label.isEmpty else {
+                    throw APIError.badRequest("a marker label is required")
+                }
+                return Response(
+                    json: try await takes.addMarker(request.params["id"] ?? "", label: body.label))
+            },
+            Command("GET", "/settings") { _ in
+                Response(json: settings.values)
+            },
+            Command("PATCH", "/settings") { request in
+                let patch = try request.decode(SettingsPatch.self)
+                if let root = patch.outputRoot {
+                    // The output root cannot move under a live take: a take's
+                    // files are already reserved beneath the old root.
+                    if let active = await takes.activeManifest,
+                        active.state == .created || active.state == .recording
+                    {
+                        throw APIError.conflict(
+                            "cannot change the output root while take \(active.id) is active")
+                    }
+                    guard root.hasPrefix("/") else {
+                        throw APIError.badRequest("outputRoot must be an absolute path")
+                    }
+                    settings.update(outputRoot: root)
+                }
+                if let codec = patch.codec { settings.update(codec: codec) }
+                return Response(json: settings.values)
+            },
+            Command("POST", "/token/rotate") { _ in
+                let new = try tokenStore.rotate()
+                auth.update(to: new)
+                return Response(json: ["token": new])
             },
         ]
     }

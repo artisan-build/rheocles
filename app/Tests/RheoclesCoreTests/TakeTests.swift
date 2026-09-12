@@ -40,6 +40,7 @@ final class FakeWriterFactory: WriterFactory, @unchecked Sendable {
 @Suite("Takes")
 struct TakeTests {
     struct World {
+        // accessible to JoinLeaveTests
         let root: URL
         let registry: Registry
         let sessions: FakeFactory
@@ -48,7 +49,7 @@ struct TakeTests {
         let events: OSAllocatedUnfairLockBox<[String]>
     }
 
-    private func world(freeBytes: Int64? = 1 << 40) async throws -> World {
+    func world(freeBytes: Int64? = 1 << 40) async throws -> World {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("rheocles-takes-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -57,7 +58,7 @@ struct TakeTests {
         let writers = FakeWriterFactory()
         let events = OSAllocatedUnfairLockBox<[String]>([])
         let engine = TakeEngine(
-            registry: registry, outputRoot: root, writerFactory: writers,
+            registry: registry, outputRoot: { root }, writerFactory: writers,
             machine: .init(hostname: "test.local", machineId: "TEST"), freeBytes: { _ in freeBytes }
         ) { manifest in events.withLock { $0.append("\(manifest.id):\(manifest.state.rawValue)") } }
         return World(
@@ -231,7 +232,7 @@ struct TakeTests {
 
         // A fresh engine over the same root finds them on disk.
         let fresh = TakeEngine(
-            registry: w.registry, outputRoot: w.root, writerFactory: w.writers,
+            registry: w.registry, outputRoot: { w.root }, writerFactory: w.writers,
             machine: .init(hostname: "x", machineId: "y"))
         #expect(await fresh.list().map(\.name) == ["b", "a"])
         #expect(try await fresh.manifest(a).name == "a")

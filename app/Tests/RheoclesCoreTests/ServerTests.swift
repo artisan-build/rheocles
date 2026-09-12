@@ -40,6 +40,7 @@ struct ServerTests {
             let dir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("rheocles-tests-\(UUID().uuidString)", isDirectory: true)
             configuration.tokenStore = TokenStore(fileURL: dir.appendingPathComponent("token"))
+            configuration.settingsFileURL = dir.appendingPathComponent("settings.json")
             configuration.outputRoot = dir
             do {
                 let server = try Server(configuration: configuration)
@@ -185,6 +186,99 @@ struct ServerTests {
         #expect(
             try Manifest.decoder.decode(TakeEngine.Created.self, from: d6).take.state == .recording)
         task.cancel(with: .normalClosure, reason: nil)
+    }
+
+    private func patch(_ server: Server, _ path: String, _ json: String) async throws -> (Int, Data)
+    {
+        var request = URLRequest(
+            url: URL(string: "http://127.0.0.1:\(server.configuration.httpPort)\(path)")!)
+        request.httpMethod = "PATCH"
+        request.httpBody = Data(json.utf8)
+        request.setValue("Bearer \(server.token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return ((response as! HTTPURLResponse).statusCode, data)
+    }
+
+    @Test("Settings: GET, PATCH codec and root, root refused while a take is active")
+    func settings() async throws {
+        let server = try running()
+        defer { server.stop() }
+        let (s0, d0) = try await get(server, "/settings", token: server.token)
+        #expect(s0 == 200)
+        #expect(try JSONDecoder().decode(Settings.Values.self, from: d0).codec == .hevc)
+
+        let (s1, d1) = try await patch(server, "/settings", #"{"codec": "prores"}"#)
+        #expect(s1 == 200)
+        #expect(try JSONDecoder().decode(Settings.Values.self, from: d1).codec == .prores)
+
+        let newRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString
+        ).path
+        #expect(try await patch(server, "/settings", #"{"outputRoot": "\#(newRoot)"}"#).0 == 200)
+        #expect(server.settings.outputRoot.path == newRoot)
+        #expect(try await patch(server, "/settings", #"{"outputRoot": "relative"}"#).0 == 400)
+
+        // A take is active → the root cannot move.
+        _ = try await post(server, "/streams/camera:fake/arm", #"{"armed": true}"#)
+        _ = try await post(server, "/record", "{}")
+        #expect(try await patch(server, "/settings", #"{"outputRoot": "/tmp/x"}"#).0 == 409)
+    }
+
+    @Test("Token rotation returns a new token and invalidates the old one")
+    func tokenRotate() async throws {
+        let server = try running()
+        defer { server.stop() }
+        let old = server.token
+        let (status, data) = try await post(server, "/token/rotate", "")
+        #expect(status == 200)
+        let new = try JSONDecoder().decode([String: String].self, from: data)["token"]
+        #expect(new != nil && new != old)
+        #expect(try await get(server, "/", token: old).0 == 401, "old token no longer works")
+        #expect(try await get(server, "/", token: new).0 == 200)
+    }
+
+    @Test("Join, leave and markers over HTTP, and a levels event on SSE while recording")
+    func joinLeaveMarkers() async throws {
+        let server = try running()
+        defer { server.stop() }
+        #expect(try await post(server, "/streams/camera:fake/arm", #"{"armed": true}"#).0 == 200)
+        let recordResponse = try await post(server, "/record", "{}")
+        #expect(
+            recordResponse.0 == 201, "record: \(String(decoding: recordResponse.1, as: UTF8.self))")
+        let created = try Manifest.decoder.decode(TakeEngine.Created.self, from: recordResponse.1)
+        let id = created.take.id
+
+        // SSE, authenticated by query as a browser would.
+        let url = URL(
+            string:
+                "http://127.0.0.1:\(server.configuration.httpPort)/events?access_token=\(server.token)"
+        )!
+        let (bytes, _) = try await URLSession.shared.bytes(from: url)
+
+        let joined = try Manifest.decode(
+            try await post(server, "/takes/\(id)/join", #"{"stream": "microphone:fake"}"#).1)
+        #expect(joined.streams.contains { $0.id == "microphone:fake" })
+        let marked = try Manifest.decode(
+            try await post(server, "/takes/\(id)/markers", #"{"label": "cue"}"#).1)
+        #expect(marked.markers.first?.label == "cue")
+        #expect(try await post(server, "/takes/\(id)/markers", #"{"label": ""}"#).0 == 400)
+        let left = try Manifest.decode(
+            try await post(server, "/takes/\(id)/leave", #"{"stream": "microphone:fake"}"#).1)
+        #expect(left.streams.first { $0.id == "microphone:fake" }?.events.last?.type == .leave)
+
+        // A levels or marker event should arrive on the stream.
+        var sawEvent = false
+        for try await line in bytes.lines where line.hasPrefix("data: ") {
+            let event = try JSONDecoder().decode(
+                [String: JSONValue].self, from: Data(line.dropFirst(6).utf8))
+            if event["event"] == .string("levels") || event["event"] == .string("marker") {
+                sawEvent = true
+                break
+            }
+        }
+        #expect(sawEvent)
+        _ = try await post(server, "/takes/\(id)/stop", "")
     }
 
     @Test("Arming is announced on SSE and on WebSocket")

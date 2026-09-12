@@ -17,6 +17,13 @@ public protocol Writer: FrameSink {
     func finish() async -> String?
 }
 
+extension Writer {
+    /// Peak level since the last call, in dBFS, for audio streams; nil for
+    /// video and before any samples. Reading resets the peak, so the `levels`
+    /// event shows the loudest moment of each interval.
+    public func sampleLevelDb() -> Double? { nil }
+}
+
 public protocol WriterFactory: Sendable {
     /// A writer for this stream's file at this absolute URL.
     func makeWriter(

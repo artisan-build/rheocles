@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// The bearer token, provisioned to a file so same-machine apps pair with
 /// zero clicks (spec §11).
@@ -82,18 +83,26 @@ public struct TokenStore: Sendable {
 /// same token as an `access_token` query parameter (RFC 6750 §2.3) or as the
 /// first WebSocket message. Loopback only, so the URL form costs nothing a
 /// local page could not already see in the header form.
-public struct BearerAuth: Sendable {
-    private let token: String
+public final class BearerAuth: Sendable {
+    /// Behind a lock so a rotation takes effect for every later request on
+    /// both transports at once (spec §11: rotation invalidates the old one).
+    private let token: OSAllocatedUnfairLock<String>
 
     public init(token: String) {
-        self.token = token
+        self.token = OSAllocatedUnfairLock(initialState: token)
+    }
+
+    /// Replace the token; every request after this compares against the new
+    /// one. In-flight responses already sent are unaffected.
+    public func update(to newToken: String) {
+        token.withLock { $0 = newToken }
     }
 
     /// Compare a candidate token in constant time.
     public func matches(token candidate: String?) -> Bool {
         guard let candidate else { return false }
         let a = Array(candidate.utf8)
-        let b = Array(token.utf8)
+        let b = Array(token.withLock { $0 }.utf8)
         guard a.count == b.count, !b.isEmpty else { return false }
         var difference: UInt8 = 0
         for i in 0..<a.count { difference |= a[i] ^ b[i] }

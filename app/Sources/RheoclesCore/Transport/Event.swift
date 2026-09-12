@@ -15,6 +15,27 @@ public enum Event {
         encode(["event": "take", "take": manifest])
     }
 
+    /// A marker was added.
+    public static func marker(takeID: String, marker: Manifest.Marker) -> String {
+        encode(["event": "marker", "take": takeID, "marker": marker])
+    }
+
+    /// Per-stream levels, drift and frame counts while recording. Emitted a
+    /// few times a second; a client renders meters and a drift readout.
+    public static func levels(takeID: String, streams: [StreamStatus]) -> String {
+        encode(["event": "levels", "take": takeID, "streams": streams])
+    }
+
+    /// An armed or recording stream stopped delivering frames.
+    public static func stalled(_ stream: StreamInfo) -> String {
+        encode(["event": "stalled", "stream": stream])
+    }
+
+    /// The daemon's settings changed.
+    public static func settings(_ values: Settings.Values) -> String {
+        encode(["event": "settings", "settings": values])
+    }
+
     private static func encode(_ fields: [String: any Encodable & Sendable]) -> String {
         struct Box: Encodable {
             let fields: [String: any Encodable & Sendable]
@@ -39,5 +60,21 @@ public enum Event {
         }
         let data = (try? Response.encoder.encode(Box(fields: fields))) ?? Data("{}".utf8)
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// One stream's live status inside a `levels` event.
+public struct StreamStatus: Codable, Sendable, Equatable {
+    public let id: String
+    /// Peak level in dBFS since the last event, for audio streams; nil for video.
+    public let levelDb: Double?
+    public let framesWritten: Int
+    public let drift: Double?
+
+    public init(id: String, levelDb: Double?, framesWritten: Int, drift: Double?) {
+        self.id = id
+        self.levelDb = levelDb
+        self.framesWritten = framesWritten
+        self.drift = drift
     }
 }
