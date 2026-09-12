@@ -1,0 +1,118 @@
+---
+title: The API
+description: One command set, two transports. HTTP with server-sent events on 7447, WebSocket on 7448, a bearer token on both, loopback only.
+draft: true
+---
+import Callout from '../../components/Callout.astro';
+import Cards from '../../components/Cards.astro';
+import Card from '../../components/Card.astro';
+
+Everything the menu bar app can do, the API can do, and the app does it
+through the API. If it can be clicked it can be called — that is the first
+principle in the spec, and it is what lets Pteroprompter and the NativePHP
+app drive the same daemon the popover does.
+
+## Two transports, as equals
+
+| | endpoint | direction |
+|---|---|---|
+| HTTP + SSE | `http://127.0.0.1:7447` · events on `GET /events` | request/response, plus one-way push |
+| WebSocket | `ws://127.0.0.1:7448` | full duplex |
+
+They are not alternatives and neither is the real one. One command set, one
+dispatcher, two framings: anything possible on one is possible on the other,
+and both are up whenever the daemon is. The ports are chosen only to stay
+clear of Sonocles' 7357 and 7358 on the same machine.
+
+```js title="both, at once"
+const es = new EventSource('http://127.0.0.1:7447/events')   // browsers, curl, anything
+const ws = new WebSocket('ws://127.0.0.1:7448/')             // one socket, commands and events
+```
+
+## Authentication
+
+A bearer token, always required, on every transport.
+
+```
+Authorization: Bearer <token>
+```
+
+The token is provisioned to `~/Library/Application Support/Rheocles/token`,
+mode `0600`, so any app running as you reads it and is paired with zero
+clicks. It is also shown in the popover's settings as a pairing code, for
+anything that cannot read the file, and can be rotated there; rotation
+invalidates the old token for everyone at once.
+
+<Callout kind="note" title="Why a token on loopback">
+The threat is not the network. It is a web page in your browser making
+requests to `localhost:7447` — which any page can do — and switching on a
+camera. A token is the defence against that; encryption is not, which is why
+the MVP has one and not the other.
+</Callout>
+
+**Loopback only in the MVP.** The bind address and a certificate module are
+designed in, so LAN is an addition rather than a rewrite: v0.2 is TLS with a
+self-signed certificate and approve-on-the-box pairing — Rheocles announces
+on Bonjour, the capture box shows *Allow Len's MacBook?*, one click pins the
+certificate and issues a token. Sonocles is being retrofitted to the same
+shape; one pairing design, two apps.
+
+<Callout kind="trap" title="EventSource and the header">
+A browser `EventSource` cannot set an `Authorization` header. How the token
+travels on `GET /events` from a browser — a query parameter, or `fetch` with
+a readable stream — is Engine's to pin in the reference. Native clients,
+`curl`, and the WebSocket set the header.
+</Callout>
+
+## The command set
+
+| | |
+|---|---|
+| `GET /` | discovery: hostname, machine id, version, output root, free space, auth mode |
+| `GET /streams` | every stream with armed state |
+| `POST /streams/{id}/arm` | `{ armed }` — never stamps |
+| `POST /takes` | create: reserve paths, write the manifest. Not recording |
+| `POST /takes/{id}/start` | the cue |
+| `POST /takes/{id}/stop` | finalise |
+| `POST /takes/{id}/join` | `{ stream }` — arms if needed, starts the writer |
+| `POST /takes/{id}/leave` | `{ stream }` — finalises that file, stays armed |
+| `POST /takes/{id}/markers` | `{ label }` |
+| `GET /takes/{id}` | the manifest, live while recording |
+| `GET /takes` | recent takes |
+| `POST /record` | create and start, the one-click form |
+| `GET /events` | SSE: state, levels, drift, joins, errors |
+| `GET /preview/{stream}` | low-rate preview frames; one at a time |
+| `WS /` | everything above, full duplex |
+
+Every one of these, with request fields, response examples, errors and the
+WebSocket frame, is on the [API reference](/docs/api/reference).
+
+## Conventions
+
+- **Paths are relative to the output root.** The root is one field on
+  `GET /`. Clients store relative paths.
+- **Ids are the handle.** A take id, a stream id. Paths are what you get
+  back when you ask.
+- **Absence is `null`.** An unmeasured drift, a level with no signal yet. Never
+  zero by default.
+- **Errors are JSON** with an `error` code, a `message` for humans, and the
+  HTTP `status` repeated in the body so the WebSocket carries the same shape.
+- **Same destination twice is a `409`.** Rheocles never silently suffixes.
+
+## The reference is generated
+
+`docs/openapi.yaml` is hand-authored by the engine's owner and is a
+first-class artifact: CI runs the real daemon and validates its live responses
+against the file, so "current with the code" is enforced rather than hoped.
+The [reference page](/docs/api/reference) is built from that file at deploy
+time — not copied from it — so it cannot drift either. It is also what a
+Saloon SDK is generated from.
+
+<Cards>
+	<Card title="API reference" href="/docs/api/reference">
+		Every route, both transports, generated.
+	</Card>
+	<Card title="Recording a take" href="/docs/recording-a-take">
+		The calls in the order you make them.
+	</Card>
+</Cards>

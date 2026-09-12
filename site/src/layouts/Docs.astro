@@ -13,15 +13,16 @@ interface Props {
 	draft?: boolean;
 	existing: Set<string>;
 	headings?: MarkdownHeading[];
+	wide?: boolean; // let the article use the full column (the API reference)
 }
-const { id, title, description, draft = false, headings = [] } = Astro.props;
+const { id, title, description, draft = false, headings = [], wide = false } = Astro.props;
 const existing = new Set([...Astro.props.existing, ...staticDocs]);
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 const { prev, next } = neighbours(id, existing);
 ---
 
 <Base title={`${title} — Rheocles docs`} description={description}>
-	<div class="wrap wrap--wide docs">
+	<div class:list={['wrap', 'wrap--wide', 'docs', { 'docs--wide': wide }]}>
 		<aside class="sidebar">
 			<p class="kicker">Docs</p>
 			<nav aria-label="Documentation">
@@ -44,7 +45,7 @@ const { prev, next } = neighbours(id, existing);
 				</ul>
 			</nav>
 		</aside>
-		<article class="article" data-pagefind-body>
+		<article class:list={['article', { 'article--wide': wide }]} data-pagefind-body>
 			{
 				draft && (
 					<p class="draft" role="note">
@@ -137,6 +138,12 @@ const { prev, next } = neighbours(id, existing);
 	.article {
 		max-width: var(--page);
 		min-width: 0;
+	}
+	.docs--wide {
+		width: min(100% - 2 * var(--gutter), 1360px);
+	}
+	.article--wide {
+		max-width: none;
 	}
 	.article h1 {
 		font-size: clamp(2rem, 4.5vw, 2.6rem);
