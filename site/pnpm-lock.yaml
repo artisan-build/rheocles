@@ -20,6 +20,9 @@ importers:
       astro-pagefind:
         specifier: ^2.0.1
         version: 2.0.1(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3))
+      sharp:
+        specifier: ^0.35.4
+        version: 0.35.4
     devDependencies:
       wrangler:
         specifier: ^4.131.1

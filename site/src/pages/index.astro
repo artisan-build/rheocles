@@ -6,6 +6,9 @@ import Base from '../layouts/Base.astro';
 import Section from '../components/Section.astro';
 import Plate from '../components/Plate.astro';
 import CueDiagram from '../components/CueDiagram.astro';
+import heroPlate from '../assets/plates/hero.png';
+import stonePlate from '../assets/plates/stone.png';
+import rigPlate from '../assets/plates/rig.png';
 
 const manifest = `{
   "take": { "id": "tk_7f3a", "name": "ep12", "state": "recording",
@@ -76,7 +79,9 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 	<div class="wrap">
 		<Plate
 			name="Rhea and the cradles"
-			ratio="3 / 2"
+			src={heroPlate}
+			loading="eager"
+			alt="Rhea, in a blue flounced dress, stands behind a bench of six cradles with one finger raised to count in; six infants watch her hand. Kronos sulks in a doorway at the left."
 			caption="<strong>The whole product, basically.</strong> Six children, six cradles, one hand raised. Nobody gets swallowed."
 		/>
 		<CueDiagram />
@@ -252,7 +257,8 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 			</div>
 			<Plate
 				name="Rhea and the stone"
-				ratio="1 / 1"
+				src={stonePlate}
+				alt="Rhea hands a swaddled rock to a delighted Kronos, straight-faced. A small baby peeks out from behind her skirt."
 				class="name__plate"
 				caption="<strong>The stone.</strong> Kronos swallowed his children so there would only ever be one of him. Rhea handed him a rock in a blanket and kept the sixth one separate. Roughly our position on compositing."
 			/>
@@ -267,7 +273,8 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		</p>
 		<Plate
 			name="the rig"
-			ratio="3 / 2"
+			src={rigPlate}
+			alt="Rhea reclines on a couch with a cup; six infants in a row of cradles each hold a small tablet. The sixth cradle sits a little apart on a green footstool, its baby waving."
 			caption="<strong>Nobody in this picture is being swallowed.</strong> Which is, in fairness, the goal."
 		/>
 	</Section>
