@@ -310,6 +310,7 @@ struct PillButton: View {
             .padding(.vertical, compact ? 2.5 : 5)
             .background(Capsule().fill(filled ? colour : .clear))
             .overlay(Capsule().strokeBorder(colour, lineWidth: filled ? 0 : 1.2))
+            .fixedSize()
         }
         .buttonStyle(.plain)
     }
