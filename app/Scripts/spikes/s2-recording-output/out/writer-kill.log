@@ -1,0 +1,18 @@
+[19:18:18.403] pid 63797 mode=writer seconds=60.0 out=/Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/writer-kill.mov bundle=build.artisan.rheocles.spike.s2
+[19:18:18.423] screen capture preflight: true
+[19:18:18.465] display 2 3840x2160 pt @1.0x -> 3840x2160 px, 30 fps cap
+[19:18:18.582] capture started
+[19:18:18.727] AVAssetWriter started -> /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/writer-kill.mov 3840x2160 hevc movieFragmentInterval=1.0s
+[19:18:19.650] t=1 fileSize=1667149 frames=32 written=32
+[19:18:20.713] t=2 fileSize=2782322 frames=63 written=63
+[19:18:21.754] t=3 fileSize=3761772 frames=93 written=93
+[19:18:22.787] t=4 fileSize=5006609 frames=123 written=123
+[19:18:23.854] t=5 fileSize=6420542 frames=154 written=154
+[19:18:24.910] t=6 fileSize=7674646 frames=185 written=185
+[19:18:25.977] t=7 fileSize=8920451 frames=216 written=216
+[19:18:27.028] t=8 fileSize=10183147 frames=247 written=247
+[19:18:28.080] t=9 fileSize=11438682 frames=278 written=278
+[19:18:29.144] t=10 fileSize=12682738 frames=308 written=308
+[19:18:30.202] t=11 fileSize=14987609 frames=339 written=339
+[19:18:31.269] t=12 fileSize=16239691 frames=370 written=370
+--- kill -9 63797 at 19:18:31 (file size now 16287591)

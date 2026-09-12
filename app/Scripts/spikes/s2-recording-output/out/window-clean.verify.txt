@@ -1,0 +1,32 @@
+=== window-clean: 13319591 bytes
+--- boxes:
+           0  ftyp             20
+          20  wide              8
+          28  mdat       13307015
+    13307043  moov          12548
+counts: {'ftyp': 1, 'wide': 1, 'mdat': 1, 'moov': 1}
+fragmented: no | has moov: yes
+--- ffprobe:
+codec_name=hevc
+width=1852
+height=1684
+r_frame_rate=600/1
+nb_frames=584
+format_name=mov,mp4,m4a,3gp,3g2,mj2
+duration=20.165000
+size=13319591
+--- ffmpeg full decode:
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 13 >= 13
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 84 >= 84
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 199 >= 199
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 201 >= 201
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 294 >= 294
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 376 >= 376
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 436 >= 436
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 440 >= 440
+[null @ 0xada804500] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 513 >= 513
+decode ok
+--- AVAsset:
+[19:20:18.411] AVAsset /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/window-clean.mov: playable=true duration=20.167s tracks=1
+[19:20:18.412]   track 1 vide 1852x1684 nominalFps=28.961071 range=0.000..20.167
+[19:20:19.679]   AVAssetReader decoded 584 frames, last pts=20.132s status=2 (2 completed, 3 failed) error=none

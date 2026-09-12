@@ -1,0 +1,28 @@
+[19:19:55.953] pid 65831 mode=writer seconds=20.0 out=/Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/window-clean.mov bundle=build.artisan.rheocles.spike.s2
+[19:19:55.958] screen capture preflight: true
+[19:19:56.009] window 9565 'Solo' of Solo frame=(41.0, 39.0, 1852.0, 1684.0)
+[19:19:56.011] content (41.0, 39.0, 1852.0, 1684.0) @1.0x -> 1852x1684 px, 30 fps cap
+[19:19:56.200] capture started
+[19:19:56.574] AVAssetWriter started -> /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/window-clean.mov 1852x1684 hevc movieFragmentInterval=1.0s
+[19:19:57.236] t=1 fileSize=629925 frames=25 written=25
+[19:19:58.303] t=2 fileSize=1148823 frames=56 written=56
+[19:19:59.366] t=3 fileSize=2074411 frames=87 written=87
+[19:20:00.436] t=4 fileSize=2780386 frames=118 written=118
+[19:20:01.477] t=5 fileSize=3344865 frames=149 written=149
+[19:20:02.544] t=6 fileSize=4038745 frames=180 written=180
+[19:20:03.594] t=7 fileSize=4699839 frames=211 written=211
+[19:20:04.661] t=8 fileSize=5332194 frames=242 written=242
+[19:20:05.727] t=9 fileSize=5966422 frames=273 written=273
+[19:20:06.788] t=10 fileSize=6589927 frames=304 written=304
+[19:20:07.865] t=11 fileSize=7222312 frames=336 written=336
+[19:20:08.931] t=12 fileSize=8392771 frames=367 written=367
+[19:20:09.996] t=13 fileSize=9022337 frames=398 written=398
+[19:20:11.062] t=14 fileSize=9656821 frames=430 written=430
+[19:20:12.123] t=15 fileSize=10300702 frames=461 written=461
+[19:20:13.188] t=16 fileSize=10926413 frames=492 written=492
+[19:20:14.256] t=17 fileSize=11572736 frames=524 written=524
+[19:20:15.267] t=18 fileSize=12633617 frames=553 written=553
+[19:20:16.329] t=19 fileSize=13303676 frames=584 written=584
+[19:20:16.329] stopping cleanly (not killed)
+[19:20:16.373] AVAssetWriter finished status=2 (2 completed, 3 failed) error=none frames=584 written=584 notReady=0
+[19:20:16.374] done; fileSize=13319591

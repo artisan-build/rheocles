@@ -1,0 +1,19 @@
+=== rec-output-replayd-kill: 14645240 bytes
+--- boxes:
+           0  ftyp             20
+          20  wide              8
+          28  mdat       14645212
+counts: {'ftyp': 1, 'wide': 1, 'mdat': 1}
+fragmented: no | has moov: no
+--- ffprobe:
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x78f018000] moov atom not found
+/Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/rec-output-replayd-kill.mov: Invalid data found when processing input
+--- ffmpeg full decode:
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0xc28c28000] moov atom not found
+[in#0 @ 0xc28c20000] Error opening input: Invalid data found when processing input
+Error opening input file /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/rec-output-replayd-kill.mov.
+Error opening input files: Invalid data found when processing input
+--- AVAsset:
+[19:21:38.697] AVAsset load failed: Error Domain=AVFoundationErrorDomain Code=-11829 "Cannot Open" UserInfo={NSUnderlyingError=0xc06c199b0 {Error Domain=NSOSStatusErrorDomain Code=-12848 "(null)"}, NSLocalizedFailureReason=This media may be damaged., AVErrorFailedDependenciesKey=(
+    Duration
+), NSURL=file:///Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/rec-output-replayd-kill.mov, NSLocalizedDescription=Cannot Open}

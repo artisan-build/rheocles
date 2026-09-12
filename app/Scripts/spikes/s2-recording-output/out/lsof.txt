@@ -1,0 +1,4 @@
+COMMAND   PID   USER   FD   TYPE DEVICE SIZE/OFF      NODE NAME
+replayd 34907 gopher   10u   REG   1,15  6792455 442522049 /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/lsof.mov
+  PID COMM
+34907 /usr/libexec/replayd

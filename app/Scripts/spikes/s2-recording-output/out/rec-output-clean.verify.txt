@@ -1,0 +1,23 @@
+=== rec-output-clean: 21785768 bytes
+--- boxes:
+           0  ftyp             20
+          20  wide              8
+          28  mdat       21775686
+    21775714  moov          10054
+counts: {'ftyp': 1, 'wide': 1, 'mdat': 1, 'moov': 1}
+fragmented: no | has moov: yes
+--- ffprobe:
+codec_name=hevc
+width=3840
+height=2160
+r_frame_rate=60/1
+nb_frames=582
+format_name=mov,mp4,m4a,3gp,3g2,mj2
+duration=20.163333
+size=21785768
+--- ffmpeg full decode:
+decode ok
+--- AVAsset:
+[19:17:02.540] AVAsset /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/rec-output-clean.mov: playable=true duration=20.163s tracks=1
+[19:17:02.541]   track 1 vide 3840x2160 nominalFps=28.809504 range=0.000..20.163
+[19:17:05.718]   AVAssetReader decoded 581 frames, last pts=20.135s status=2 (2 completed, 3 failed) error=none

@@ -1,0 +1,35 @@
+=== writer-kill: 16287591 bytes
+--- boxes:
+           0  ftyp             20
+          20  wide              8
+          28  mdat        1670233
+     1670261  moov           1492
+     1671753  wide              8
+     1671761  mdat        1107644
+     2779405  moof            528
+     2779933  wide              8
+     2779941  mdat         897295
+     3677236  moof            592
+     3677828  wide              8
+     3677836  mdat        1304800
+         ...  (39 boxes total)
+    15107999  moof            624
+    15108623  wide              8
+    15108631  mdat        1178960
+counts: {'ftyp': 1, 'wide': 13, 'mdat': 13, 'moov': 1, 'moof': 11}
+fragmented: yes | has moov: yes
+--- ffprobe:
+codec_name=hevc
+width=3840
+height=2160
+r_frame_rate=60/1
+nb_frames=29
+format_name=mov,mp4,m4a,3gp,3g2,mj2
+duration=12.016667
+size=16287591
+--- ffmpeg full decode:
+decode ok
+--- AVAsset:
+[19:18:35.139] AVAsset /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/writer-kill.mov: playable=true duration=12.117s tracks=1
+[19:18:35.140]   track 1 vide 3840x2160 nominalFps=29.126213 range=0.000..12.117
+[19:18:37.094]   AVAssetReader decoded 350 frames, last pts=12.083s status=2 (2 completed, 3 failed) error=none

@@ -1,0 +1,19 @@
+[19:17:10.968] pid 62489 mode=rec-output seconds=60.0 out=/Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s2-recording-output/out/rec-output-kill.mov bundle=build.artisan.rheocles.spike.s2
+[19:17:10.983] screen capture preflight: true
+[19:17:11.024] display 2 3840x2160 pt @1.0x -> 3840x2160 px, 30 fps cap
+[19:17:11.121] SCRecordingOutput added codec=hvc1 available=["avc1", "hvc1"] fileTypes=["public.mpeg-4", "com.apple.quicktime-movie"]
+[19:17:11.147] SCRecordingOutput did start recording
+[19:17:11.155] capture started
+[19:17:12.222] t=1 fileSize=1382902 frames=0 written=0
+[19:17:13.288] t=2 fileSize=3262364 frames=0 written=0
+[19:17:14.354] t=3 fileSize=4201073 frames=0 written=0
+[19:17:15.420] t=4 fileSize=6198568 frames=0 written=0
+[19:17:16.486] t=5 fileSize=6583440 frames=0 written=0
+[19:17:17.554] t=6 fileSize=8265492 frames=0 written=0
+[19:17:18.621] t=7 fileSize=9261635 frames=0 written=0
+[19:17:19.687] t=8 fileSize=11075157 frames=0 written=0
+[19:17:20.754] t=9 fileSize=11473486 frames=0 written=0
+[19:17:21.778] t=10 fileSize=13267670 frames=0 written=0
+[19:17:22.788] t=11 fileSize=13661437 frames=0 written=0
+[19:17:23.854] t=12 fileSize=15457420 frames=0 written=0
+--- kill -9 62489 at 19:17:23 (file size now 15518297)
