@@ -55,10 +55,13 @@ const draft = api.source !== 'openapi';
 		<tbody>
 			<tr><td><code>400</code></td><td><code>bad_request</code></td><td>malformed JSON, missing body, a frame without <code>method</code>/<code>path</code></td></tr>
 			<tr><td><code>401</code></td><td><code>unauthorized</code></td><td>no token, wrong token, WebSocket before the auth frame</td></tr>
+			<tr><td><code>403</code></td><td><code>permission_denied</code></td><td>macOS has not granted the device class this stream needs</td></tr>
 			<tr><td><code>404</code></td><td><code>not_found</code></td><td>no such route, stream or take</td></tr>
 			<tr><td><code>405</code></td><td><code>method_not_allowed</code></td><td>the path exists, the method does not</td></tr>
 			<tr><td><code>409</code></td><td><code>conflict</code></td><td>destination already exists; a take already active</td></tr>
 			<tr><td><code>500</code></td><td><code>internal</code></td><td>a handler threw</td></tr>
+			<tr><td><code>501</code></td><td><code>unsupported</code></td><td>this kind cannot be captured yet</td></tr>
+			<tr><td><code>503</code></td><td><code>device_unavailable</code></td><td>the device is gone, busy, or refused the configuration</td></tr>
 			<tr><td><code>507</code></td><td><code>insufficient_storage</code></td><td>the disk pre-flight refused the take</td></tr>
 		</tbody>
 	</table>
@@ -97,7 +100,7 @@ const draft = api.source !== 'openapi';
 			{
 				api.events.map((ev) => (
 					<tr>
-						<td><code>{ev.type}</code></td>
+						<td><code>{ev.type}</code>{ev.pinned && <span class="badge badge--pinned">pinned</span>}{ev.planned && <span class="badge badge--planned">planned</span>}</td>
 						<td>{ev.when}</td>
 						<td><code class="ex">{ev.example}</code></td>
 					</tr>
@@ -111,6 +114,25 @@ const draft = api.source !== 'openapi';
 	.blurb {
 		color: var(--ink-soft);
 		margin-bottom: 0.6rem;
+	}
+	.badge {
+		display: inline-block;
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		padding: 0.15em 0.5em;
+		border-radius: 999px;
+		margin-left: 0.5rem;
+		vertical-align: middle;
+	}
+	.badge--pinned {
+		color: var(--olive);
+		border: 1px solid var(--olive);
+	}
+	.badge--planned {
+		color: var(--script);
+		border: 1px solid var(--limestone-line);
 	}
 	code.ex {
 		font-size: 0.74em;

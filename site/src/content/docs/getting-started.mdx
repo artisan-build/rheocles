@@ -28,16 +28,20 @@ Audio taps became dependable, and Rheocles uses both.
 
 ## Permissions
 
-The first time you arm a stream of each kind, macOS asks. Rheocles never asks
-ahead of time; it asks when a device is about to go live, so the prompt makes
-sense when it appears.
+macOS asks for each device class the first time it is needed, and Rheocles
+does not ask ahead of that — with one exception it cannot avoid.
 
-| you arm | macOS asks for | where it lives afterwards |
-|---|---|---|
-| a camera | Camera | System Settings → Privacy & Security → Camera |
-| a microphone | Microphone | … → Microphone |
-| system audio | Audio capture | … → Screen & System Audio Recording |
-| a display or window | Screen recording | … → Screen & System Audio Recording |
+| | macOS asks for | when | where it lives afterwards |
+|---|---|---|---|
+| a camera | Camera | the first arm | System Settings → Privacy & Security → Camera |
+| a microphone | Microphone | the first arm | … → Microphone |
+| system audio | System Audio Recording | the first arm | … → Screen & System Audio Recording |
+| displays and windows | Screen Recording | the first `GET /streams` — opening the popover | … → Screen & System Audio Recording |
+
+The exception is Screen Recording: without it there are no displays to list,
+so nothing could ever be armed to trigger the prompt. The first stream list
+raises it once, and the grant takes effect on the daemon's next launch —
+quit the app and open it again, and the displays are there.
 
 <Callout kind="trap" title="If Rheocles is not in the list">
 An app that has never asked does not appear in a Privacy pane at all. An empty
