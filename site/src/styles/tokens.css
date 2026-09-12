@@ -26,12 +26,10 @@
 	--olive: #6e7a52;      /* complete, healthy */
 	--script: #7a6a59;     /* a value we do not have */
 
-	/* dark blocks on the light page — the app's grounds */
-	--slip: #100c0a;
-	--panel: #1c1611;
-	--field: #2b211a;
-	--bone: #efe3d0;
-	--body: #cdbba3;
+	/* code and data blocks — the one dark surface, on the site and in the app */
+	--code-ground: #1c1611;
+	--code-inset: #2b211a;
+	--code-text: #efe3d0;
 	--aegean-bright: #6fa3d6;
 
 	/* type — the family constant, identical to sonocles.com */

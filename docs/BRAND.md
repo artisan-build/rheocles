@@ -109,13 +109,17 @@ limestone. Rheocles is **Crete** — Rhea's island, where Zeus was hidden — an
 Crete's painting is the **Minoan fresco**: Knossos blue on lime plaster. The
 ground is literally the same limestone; the pigment on it changes.
 
-So: same ground, same ink, same absence colour, same record red, same app
-darks, same type. The **signature** swaps from terracotta to Aegean blue, and
-terracotta demotes to a warm supporting role as ochre — the colour of a stream
-that is armed, live, and costing you.
+So: same ground, same ink, same absence colour, same record red, same type.
+The **signature** swaps from terracotta to Aegean blue, and terracotta demotes
+to a warm supporting role as ochre — the colour of a stream that is armed,
+live, and costing you.
 
-The app stays dark; the site is light. Same palette, opposite grounds, for the
-same reason as Sonocles: a tool sits over a running take, a poster does not.
+**One palette, both surfaces.** The menu bar app and the NativePHP app use
+the site's palette as it stands: limestone ground, ink text, Aegean
+signature, the state colours below. Not a dark theme, and not Pteroprompter's
+— spec §12 is explicit that Sonocles' apps were styled after ptero by mistake
+and Rheocles starts right. The only dark surfaces anywhere are code and data
+blocks, on the site and in the app alike, and those use the `code-*` tokens.
 
 | role | token | value | note |
 |---|---|---|---|
@@ -131,13 +135,10 @@ same reason as Sonocles: a tool sits over a running take, a poster does not.
 | recording, stop | `oxide` | `#B4453A` | shared — record red is family DNA |
 | complete, healthy | `olive` | `#6E7A52` | shared |
 | **absent values** | `script` | `#7A6A59` | shared — a value we do not have |
-| deepest ground (app) | `slip` | `#100C0A` | shared |
-| popover | `panel` | `#1C1611` | shared |
-| inset / meter cell | `field` | `#2B211A` | shared |
-| brightest text (app) | `bone` | `#EFE3D0` | shared |
-| body text (app) | `body` | `#CDBBA3` | shared |
-| signature (app) | `aegean-bright` | `#6FA3D6` | aegean on dark |
-| healthy (app) | `verdigris` | `#7FA88C` | shared |
+| code / data block ground | `code-ground` | `#1C1611` | the one dark surface, site and app |
+| code / data block inset | `code-inset` | `#2B211A` | |
+| code / data block text | `code-text` | `#EFE3D0` | |
+| signature on a code block | `aegean-bright` | `#6FA3D6` | aegean on dark; nowhere else |
 
 Views name the *role*, not the pigment, so a palette change stays in one file.
 
@@ -146,7 +147,8 @@ missing drift, an unmeasured level, a stream with no frames yet. Absence gets
 its own colour so it is never mistaken for a number.
 
 State colours are a small language and the menu bar app speaks it: `script`
-idle, `ochre` armed, `oxide` recording, `olive`/`verdigris` complete.
+idle, `ochre` armed, `oxide` recording, `olive` complete — on limestone, the
+same as on this site.
 
 ## Type
 
