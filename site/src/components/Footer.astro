@@ -1,0 +1,46 @@
+---
+import Meander from './Meander.astro';
+---
+
+<footer class="footer">
+	<div class="wrap wrap--wide">
+		<Meander />
+		<p class="footer__line">
+			<strong>Rheocles</strong> — every stream, its own file, on one cue. Apple Silicon, macOS
+			15 or later.
+		</p>
+		<p class="footer__line">
+			Free and open source under the MIT licence.{' '}
+			<a href="https://github.com/artisan-build/rheocles">Source on GitHub</a>.
+		</p>
+		<p class="footer__line">
+			Made for <a href="https://pteroprompter.com">Pteroprompter</a> by{' '}
+			<strong>ProjektGopher Multimedia</strong>, an <strong>Artisan Build</strong> property.{' '}
+			Useful on its own.
+		</p>
+	</div>
+</footer>
+
+<style>
+	.footer {
+		margin-top: 5rem;
+		padding-bottom: 3rem;
+	}
+	.footer__line {
+		font-size: 0.9rem;
+		color: var(--ink-soft);
+		margin: 0.5rem 0;
+	}
+	.footer__line:first-of-type {
+		margin-top: 2rem;
+	}
+	.footer strong {
+		font-weight: 600;
+		color: var(--ink);
+	}
+	.footer__line:first-of-type strong {
+		font-family: var(--display);
+		font-variation-settings: 'SOFT' 30, 'WONK' 1;
+		font-weight: 700;
+	}
+</style>

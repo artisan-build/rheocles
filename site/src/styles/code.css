@@ -1,0 +1,17 @@
+/* Code blocks: expressive-code renders them; we restate the ground so a dark
+ * block on the limestone page uses the app's panel colours, not GitHub's. */
+.expressive-code {
+	--ec-frm-edBg: var(--panel);
+	--ec-frm-edActTabBg: var(--panel);
+	--ec-frm-tbBg: var(--field);
+	--ec-frm-edActTabFg: var(--bone);
+	--ec-frm-edTabBrdCol: transparent;
+	--ec-brdCol: transparent;
+	--ec-codeFg: var(--bone);
+	margin: 1.25rem 0;
+}
+.expressive-code .frame.has-title .header {
+	font-family: var(--mono);
+	font-size: 0.72rem;
+	letter-spacing: 0.08em;
+}

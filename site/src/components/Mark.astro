@@ -1,0 +1,29 @@
+---
+// The mark: strokes struck from one bar. A vertical stroke — the cue — and
+// four horizontal strokes flowing right from it, staggered, with a slight
+// hand-made waver rather than ruled. They never merge; that is the point.
+// docs/BRAND.md § Mark. Decorative here; the wordmark carries the name.
+interface Props {
+	size?: number;
+	class?: string;
+}
+const { size = 28, class: cls } = Astro.props;
+---
+
+<svg
+	class={cls}
+	width={size}
+	height={size}
+	viewBox="0 0 32 32"
+	fill="none"
+	stroke="currentColor"
+	stroke-width="3"
+	stroke-linecap="round"
+	aria-hidden="true"
+>
+	<path d="M5 4 V28" />
+	<path d="M5 8.5 C 12 8, 20 9.2, 28 8.5" />
+	<path d="M5 14 C 11 13.6, 17 14.6, 22 14" />
+	<path d="M5 19.5 C 13 19, 19 20.2, 26 19.5" />
+	<path d="M5 25 C 10 24.7, 14 25.4, 18 25" />
+</svg>

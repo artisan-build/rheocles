@@ -1,0 +1,23 @@
+{
+  "name": "rheocles-site",
+  "private": true,
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "deploy": "astro build && wrangler pages deploy --branch=main",
+    "deploy:preview": "astro build && wrangler pages deploy --branch=preview"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^8.0.1",
+    "astro": "^7.3.2",
+    "astro-expressive-code": "^0.44.2",
+    "astro-pagefind": "^2.0.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.131.1"
+  }
+}

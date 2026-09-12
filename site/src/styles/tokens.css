@@ -1,0 +1,46 @@
+/* Rheocles palette and type — docs/BRAND.md is the source; this file names
+ * the roles. Views use the role, never the pigment, so a palette change stays
+ * here. Site is light (limestone); the app is dark and lives elsewhere. */
+:root {
+	/* ground */
+	--limestone: #faf2e4;
+	--limestone-deep: #efe5d2;
+	--limestone-sink: #e0d4be;
+	--limestone-line: #ded0b8;
+
+	/* ink */
+	--ink: #2a211a;
+	--ink-soft: #4e4034;
+	--ink-faint: #6b5c4c;
+
+	/* the signature — Aegean blue on lime plaster */
+	--aegean: #2e5c86;
+	--aegean-soft: #5f8fb8;
+	--aegean-deep: #244a6b;
+	--aegean-wash: #e4ecf3;
+
+	/* states */
+	--ochre: #c9903a;      /* armed: live, costing you */
+	--ochre-ink: #8a5e1a;
+	--oxide: #b4453a;      /* recording, stop */
+	--olive: #6e7a52;      /* complete, healthy */
+	--script: #7a6a59;     /* a value we do not have */
+
+	/* dark blocks on the light page — the app's grounds */
+	--slip: #100c0a;
+	--panel: #1c1611;
+	--field: #2b211a;
+	--bone: #efe3d0;
+	--body: #cdbba3;
+	--aegean-bright: #6fa3d6;
+
+	/* type — the family constant, identical to sonocles.com */
+	--display: 'Fraunces', Georgia, serif;
+	--sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+	--mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+	/* measure */
+	--page: 752px;
+	--page-wide: 1120px;
+	--gutter: 24px;
+}
