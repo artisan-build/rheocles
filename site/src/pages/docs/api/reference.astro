@@ -92,8 +92,7 @@ const draft = api.source !== 'openapi';
 	<h2 id="event-types">Event types</h2>
 	<p class="blurb">
 		Delivered on <code>GET /events</code> as <code>data:</code> lines, and on the WebSocket as
-		objects with an <code>event</code> key and no <code>id</code>. Shapes are planned until the
-		YAML pins them.
+		objects with an <code>event</code> key and no <code>id</code> — the same bytes on both.
 	</p>
 	<table>
 		<thead><tr><th>event</th><th>when</th><th>data</th></tr></thead>

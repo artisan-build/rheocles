@@ -47,8 +47,8 @@ and the same answer. It is what the popover's Record button does. Use it
 when you do not need the paths ahead of time.
 
 <Callout kind="note" title="The armed set is snapshotted at create">
-Arming a stream after create does not add it to the take. `join` (step 6,
-planned) does. A stream that was armed at create but is no longer armed at
+Arming a stream after create does not add it to the take;
+[`join`](/docs/streams-and-arming#late-join) does. A stream that was armed at create but is no longer armed at
 the cue is recorded with `error: "not armed at the cue"` and the take
 finishes `incomplete`.
 </Callout>

@@ -140,9 +140,26 @@ the take `complete` either, and the state is the honest one.
 
 ## Requests answer `401`
 
-The token does not match. It was rotated in the popover — rotation
-invalidates the old token for everyone — or the client is reading a stale
-copy. Re-read `~/Library/Application Support/Rheocles/token`.
+The token does not match. It was rotated — from the popover or
+`POST /token/rotate`, which refuses the old token from the very next request
+— or the client is reading a stale copy. Re-read
+`~/Library/Application Support/Rheocles/token`. A WebSocket that was
+authenticated before the rotation is still open but answers `401` to its
+next command until it sends `{ "auth" }` with the new token.
+
+## `PATCH /settings` answers `409`
+
+You moved `outputRoot` while a take was `created` or `recording`. Its files
+are already reserved beneath the old root, so the root stays until the take
+is stopped. Change the codec any time; it applies to the next take.
+
+## A `stalled` event arrived
+
+An armed or recording stream stopped delivering frames — the lid closed,
+the window minimised, the capture card lost its signal. The event carries
+the stream as it now is. If it is in a recording take and never resumes,
+the take finishes `incomplete` with `no frames arrived` for that stream;
+if it is merely armed, the cue will find nothing to write.
 
 ## My late-joined file lands before the take
 

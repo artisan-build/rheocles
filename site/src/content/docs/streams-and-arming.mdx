@@ -140,14 +140,26 @@ what you are not about to record.
 
 `join` on a stream that is not yet armed arms it first, so one call gets a
 cold stream into a running take — it just does not get there on frames that
-already existed. Disarming a joined stream implies `leave`. Nothing else is
-implicit.
+already existed. A stream that was in the create snapshot keeps its
+reserved path; a brand-new one gets a fresh name. Disarming a joined stream
+implies `leave`. Nothing else is implicit.
 
 ```sh title="late join"
 T=localhost:7447/takes/20260912T040433-fd9q
-curl -s -H "$H" -X POST $T/join  -d '{"stream": "window:11597"}'
-curl -s -H "$H" -X POST $T/leave -d '{"stream": "window:11597"}'
+curl -s -H "$H" -X POST $T/join  -d '{"stream": "window:11597"}'   # → the manifest, with the new file
+curl -s -H "$H" -X POST $T/leave -d '{"stream": "window:11597"}'   # → the manifest, that file complete
 ```
+
+Both answer the updated manifest. `409` if the take is not recording, if
+`join` names a stream already recording in it, or if `leave` names one that
+is not.
+
+<Callout kind="note" title="stalled">
+An armed or recording stream that stops delivering frames — a lid closed, a
+window minimised — is announced as a `stalled` event carrying the stream as
+it now is, so a client can say so before the take ends `incomplete` with
+`no frames arrived`.
+</Callout>
 
 ## Late join
 

@@ -43,9 +43,10 @@ closes the first.
 **Record / Stop.** One button. Record is `POST /record`: create and start
 together. The current take's name and elapsed time sit beside it.
 
-**Settings.** Output root, codec (HEVC or ProRes 422, one global setting),
-*Show windows*, and the bearer token — shown as a pairing code, with a
-rotate button.
+**Settings.** Output root and codec (HEVC or ProRes 422, one global setting)
+— `PATCH /settings`, and the root will not move while a take is active;
+*Show windows*; and the bearer token, shown as a pairing code with a rotate
+button that is `POST /token/rotate`.
 
 <Callout kind="note" title="It asks when it needs to">
 The first time you arm a kind of stream, macOS prompts for that permission.

@@ -1,7 +1,6 @@
 ---
 title: Markers
 description: A marker is a label and a time. Rheocles supplies the time, because only the engine owns the recording clock; the client supplies the label, and Rheocles never reads it.
-draft: true
 ---
 import Callout from '../../components/Callout.astro';
 import Cards from '../../components/Cards.astro';
@@ -11,12 +10,15 @@ import Card from '../../components/Card.astro';
 curl -s -H "$H" -X POST localhost:7447/takes/20260912T040433-fd9q/markers -d '{"label": "cold-open out"}'
 ```
 
-```json title="→ 201, and the manifest now has"
-{ "t": 38.7, "label": "cold-open out" }
+```json title="→ the updated manifest, whose markers now end with"
+{ "t": 38.702, "label": "cold-open out" }
 ```
 
-`t` is host time in seconds from the cue, stamped by Rheocles at the moment
-the request arrived. `label` is whatever you sent. That is the whole feature.
+`t` is host time in seconds from the cue, to the millisecond, stamped by
+Rheocles at the moment the request arrived. `label` is whatever you sent —
+an empty one is a `400`. The call answers the whole manifest, and a `marker`
+event carries the same `{ t, label }` to anything listening. That is the
+whole feature.
 
 ## The separation of concerns
 
@@ -34,8 +36,9 @@ can be redone as many times as you like; a time that is quietly four seconds
 out cannot be recovered from at all.
 
 <Callout kind="note" title="Only while recording">
-Markers are accepted between `start` and `stop`. Before the cue there is no
-clock to stamp against; after stop the manifest is final.
+Markers are accepted between `start` and `stop`; outside a recording take
+the call is a `409`. Before the cue there is no clock to stamp against;
+after stop the manifest is final.
 </Callout>
 
 ## What an editor does with them
@@ -47,11 +50,11 @@ is that two markers sharing a name bracket a span and a repeated name is a
 retake:
 
 ```json
-[ { "t":  38.7, "label": "cold-open out" },
-  { "t":  65.2, "label": "quick-hits in" },
-  { "t": 111.0, "label": "quick-hits out" },
-  { "t": 118.4, "label": "quick-hits in" },       ← went again
-  { "t": 164.6, "label": "quick-hits out" } ]
+[ { "t":  38.702, "label": "cold-open out" },
+  { "t":  65.210, "label": "quick-hits in" },
+  { "t": 111.004, "label": "quick-hits out" },
+  { "t": 118.437, "label": "quick-hits in" },       ← went again
+  { "t": 164.619, "label": "quick-hits out" } ]
 ```
 
 Because every marker's `t` is from the cue and every file's timecode is from
@@ -72,6 +75,6 @@ the other.
 		Where <code>markers[]</code> lives, and the rest of the file.
 	</Card>
 	<Card title="The API" href="/docs/api">
-		<code>POST /takes/&#123;id&#125;/markers</code>, on either transport.
+		<code>POST /takes/&#123;id&#125;/markers</code> and the <code>marker</code> event, on either transport.
 	</Card>
 </Cards>
