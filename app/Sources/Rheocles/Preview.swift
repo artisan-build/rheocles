@@ -19,6 +19,10 @@ import SwiftUI
 /// show up that way in these PNGs before it shows up on a screen.
 @MainActor
 enum Preview {
+    /// True while rendering, for the one view that has to lay out
+    /// differently offscreen (see StreamList).
+    static let isRendering = CommandLine.arguments.contains("--render-preview")
+
     static func renderIfRequested() -> Bool {
         let arguments = CommandLine.arguments
 
@@ -60,16 +64,59 @@ enum Preview {
     }
 
     private static func states() -> [(String, AnyView)] {
-        [
+        let granted = Permissions(camera: .authorized, microphone: .authorized, screen: .authorized)
+        return [
             (
                 "idle",
-                AnyView(MenuBarView(daemon: .staged(.running, discovery: discovery())))
-            ),
-            (
-                "idle-shared-daemon",
                 AnyView(
                     MenuBarView(
-                        daemon: .staged(.running, discovery: discovery(freeBytes: nil), ours: false)
+                        daemon: .staged(
+                            .running, discovery: discovery(), streams: streams(),
+                            permissions: granted)))
+            ),
+            (
+                "armed",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "display:56A96CFC", "camera:4kx", "microphone:scarlett",
+                                "systemAudio:system",
+                            ]),
+                            permissions: granted)))
+            ),
+            (
+                "armed-show-windows",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "window:9565"]),
+                            permissions: granted, showWindows: true)))
+            ),
+            (
+                "permissions",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(freeBytes: nil), ours: false,
+                            streams: streams().filter {
+                                $0.kind != .display && $0.kind != .window
+                            },
+                            permissions: Permissions(
+                                camera: .denied, microphone: .authorized, screen: .notDetermined))))
+            ),
+            (
+                // What the daemon says today, before Engine step 3 lands:
+                // the switch snaps back and the refusal is shown verbatim.
+                "arm-refused",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(), streams: streams(),
+                            permissions: granted,
+                            armError: "POST /streams/camera:4kx/arm → 404 not_found: no such route")
                     ))
             ),
             ("launching", AnyView(MenuBarView(daemon: .staged(.launching)))),
@@ -77,12 +124,64 @@ enum Preview {
                 "daemon-down",
                 AnyView(
                     MenuBarView(
-                        daemon: .staged(
-                            .down(
-                                "rheocles-core exited with status 1"
-                            ))))
+                        daemon: .staged(.down("rheocles-core exited with status 1"))))
             ),
         ]
+    }
+
+    /// This Mac's streams as `rheocles-core --list-streams` reported them on
+    /// 11 Sep 2026, in the daemon's fixed order, so the preview is judged on
+    /// real names and real numbers.
+    private static func streams(armed: Set<String> = []) -> [StreamInfo] {
+        func video(_ w: Int, _ h: Int, _ fps: Double) -> StreamInfo.Capabilities {
+            .init(video: .init(width: w, height: h, maxFrameRate: fps))
+        }
+        func audio(_ ch: Int) -> StreamInfo.Capabilities {
+            .init(audio: .init(sampleRate: 48000, channels: ch))
+        }
+        let all: [StreamInfo] = [
+            .init(
+                id: "display:56A96CFC", kind: .display, name: "BenQ PD3220U",
+                model: "vendor 2513 model 32813", capabilities: video(3840, 2160, 60)),
+            .init(
+                id: "window:9565", kind: .window, name: "Solo — Solo", model: "com.soloterm.solo",
+                capabilities: video(1852, 1684, 60)),
+            .init(
+                id: "window:11597", kind: .window,
+                name: "Google Chrome — Timecode and sync — Rheocles docs",
+                model: "com.google.Chrome", capabilities: video(1200, 900, 60)),
+            .init(
+                id: "camera:4kx", kind: .camera, name: "Elgato 4K X",
+                model: "UVC Camera VendorID_4057 ProductID_156",
+                capabilities: video(3840, 2160, 30.00003)),
+            .init(
+                id: "camera:hd60x", kind: .camera, name: "Elgato HD60 X",
+                model: "UVC Camera VendorID_4057 ProductID_138",
+                capabilities: video(3840, 2160, 30.00003)),
+            .init(
+                id: "camera:obs", kind: .camera, name: "OBS Virtual Camera",
+                model: "OBS Camera Extension", capabilities: video(1920, 1080, 60)),
+            .init(
+                id: "camera:facetime", kind: .camera, name: "FaceTime HD Camera",
+                model: "FaceTime HD Camera", capabilities: video(1280, 720, 30)),
+            .init(
+                id: "microphone:scarlett", kind: .microphone, name: "Scarlett 2i2 USB",
+                model: "Scarlett 2i2 USB:1235:8210", capabilities: audio(2)),
+            .init(
+                id: "microphone:4kx", kind: .microphone, name: "Elgato 4K X",
+                model: "Elgato 4K X:0FD9:009C", capabilities: audio(2)),
+            .init(
+                id: "microphone:mbp", kind: .microphone, name: "MacBook Pro Microphone",
+                model: "Digital Mic", capabilities: audio(1)),
+            .init(
+                id: "systemAudio:system", kind: .systemAudio, name: "System audio",
+                model: "Core Audio tap", capabilities: audio(2)),
+        ]
+        return all.map { stream in
+            var s = stream
+            s.armed = armed.contains(stream.id)
+            return s
+        }
     }
 
     /// A `GET /` answer, decoded from the protocol's own example so the
@@ -109,11 +208,12 @@ enum Preview {
     /// sizes and a size across states without moving the eye far.
     private static func markSheet() -> AnyView {
         let sizes: [CGFloat] = [18, 20, 34, 64]
-        let rows: [(String, Color, Double, RheoclesMark.Streams, Set<Int>)] = [
-            ("idle", Brand.aegean, 0.4, .solid, []),
-            ("armed", Brand.ochre, 1, .outline, []),
-            ("recording", Brand.oxide, 1, .solid, []),
-            ("late join", Brand.oxide, 1, .solid, [2]),
+        let rows: [(String, Color, Double, RheoclesMark.Streams, Set<Int>, Bool)] = [
+            ("idle", Brand.aegean, 0.4, .solid, [], false),
+            ("armed · icon", Brand.aegean, 1, .solid, [], false),
+            ("armed · popover", Brand.ochre, 1, .outline, [], false),
+            ("recording", Brand.oxide, 1, .solid, [], true),
+            ("late join", Brand.oxide, 1, .solid, [2], true),
         ]
         return AnyView(
             Grid(alignment: .center, horizontalSpacing: 26, verticalSpacing: 18) {
@@ -122,18 +222,19 @@ enum Preview {
                     ForEach(sizes, id: \.self) { size in
                         Text("\(Int(size))")
                             .font(Type.mono(8))
-                            .foregroundStyle(Brand.script)
+                            .foregroundStyle(Brand.inkFaint)
                     }
                 }
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     GridRow {
                         Text(row.0)
                             .font(Type.kicker())
-                            .foregroundStyle(Brand.script)
+                            .foregroundStyle(Brand.aegean)
                             .gridColumnAlignment(.leading)
                         ForEach(sizes, id: \.self) { size in
                             RheoclesMark(
-                                streams: row.3, lateJoined: row.4, weight: size <= 20 ? 3.2 : 3
+                                streams: row.3, lateJoined: row.4, cueDot: row.5,
+                                weight: size <= 20 ? 3.2 : 3
                             )
                             .foregroundStyle(row.1)
                             .opacity(row.2)
@@ -143,7 +244,7 @@ enum Preview {
                 }
             }
             .padding(22)
-            .background(Brand.panel)
+            .background(Brand.ground)
         )
     }
 

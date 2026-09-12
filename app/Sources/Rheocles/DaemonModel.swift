@@ -37,7 +37,19 @@ final class DaemonModel {
     private(set) var startedByUs = false
     private(set) var lastError: String?
 
-    private var api = API()
+    /// `GET /streams`, verbatim. See Streams.swift.
+    var streams: [StreamInfo] = []
+    var permissions: Permissions?
+    var streamsError: String?
+    var pending: Pending?
+    var armError: String?
+    /// Bumped when a UserDefaults-backed setting changes, so views that
+    /// read one through the model re-render.
+    var settingsVersion = 0
+    /// `--render-preview` only: a settings value without touching defaults.
+    var showWindowsOverride: Bool?
+
+    private(set) var api = API()
     private var process: Process?
     private var health: Task<Void, Never>?
     /// Launch times in the last minute, for the crash-loop guard.
@@ -50,13 +62,19 @@ final class DaemonModel {
 
     /// For `--render-preview` only: a model frozen in one state, never
     /// connected to anything.
-    static func staged(_ status: Status, discovery: Discovery? = nil, ours: Bool = true)
-        -> DaemonModel
-    {
+    static func staged(
+        _ status: Status, discovery: Discovery? = nil, ours: Bool = true,
+        streams: [StreamInfo] = [], permissions: Permissions? = nil, showWindows: Bool = false,
+        armError: String? = nil
+    ) -> DaemonModel {
         let model = DaemonModel()
         model.status = status
         model.discovery = discovery
         model.startedByUs = ours
+        model.streams = streams
+        model.permissions = permissions
+        model.showWindowsOverride = showWindows
+        model.armError = armError
         if case .down(let why) = status { model.lastError = why }
         return model
     }
@@ -101,6 +119,7 @@ final class DaemonModel {
             discovery = try await api.get("/", as: Discovery.self)
             status = .running
             if !startedByUs { Log.info("using a running rheocles-core on :\(api.port)") }
+            await refreshStreams()
             return
         } catch API.Failure.unreachable {
             // Nothing there. Ours to launch.
@@ -127,6 +146,7 @@ final class DaemonModel {
                 status = .running
                 lastError = nil
                 Log.info("rheocles-core \(answer.version) answering on :\(api.port)")
+                await refreshStreams()
                 return
             }
         }
@@ -134,14 +154,16 @@ final class DaemonModel {
     }
 
     /// The periodic pulse. Until the event stream exists (task 3) this is
-    /// also how the popover's numbers refresh.
-    private func check() async {
+    /// also how the popover's numbers refresh. The popover calls it on
+    /// opening so the list is current the moment it is seen.
+    func check() async {
         do {
             discovery = try await api.get("/", as: Discovery.self)
             if status != .running {
                 status = .running
                 lastError = nil
             }
+            await refreshStreams()
         } catch API.Failure.unauthorized {
             // The token rotated underneath us. Read it again; if it still
             // fails next time round that is a real error.
