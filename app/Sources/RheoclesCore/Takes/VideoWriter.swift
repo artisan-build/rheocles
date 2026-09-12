@@ -21,6 +21,11 @@ public final class VideoWriter: Writer, @unchecked Sendable {
     private let frameRate: Double
     private let tcRate: Int
     private let clock: HostClock
+    /// The video track's media timescale. QuickTime defaults to 600, which is
+    /// too coarse for burst frames (two updates within 1/600 s collide on one
+    /// tick and corrupt decode order); 60000 gives ~16 µs and divides the
+    /// common frame rates.
+    private let mediaTimescale: CMTimeScale = 60000
     private let lock = NSLock()
     private var writer: AVAssetWriter?
     private var video: AVAssetWriterInput?
@@ -86,21 +91,43 @@ public final class VideoWriter: Writer, @unchecked Sendable {
                 return
             }
         }
-        guard let writer, let video, writer.status == .writing else { return }
-        // A timestamp that does not advance would corrupt the track's
-        // timeline; ScreenCaptureKit occasionally repeats one.
-        if let last = lastPTS, pts.seconds - last.seconds < 0.001 {
-            dropped += 1
-            return
-        }
-        if video.isReadyForMoreMediaData, video.append(sampleBuffer) {
-            if let first = firstPTS { appendTimecodeSample(at: pts, from: first) }
-            frames += 1
-            lastPTS = pts
-        } else {
+        guard let writer, let video, let first = firstPTS, writer.status == .writing else { return }
+        guard video.isReadyForMoreMediaData else {
             dropped += 1
             if let error = writer.error { failure = "write failed: \(error)" }
+            return
         }
+        // Strictly increasing in a nanosecond timescale: real SCStream frames
+        // and the ~1 fps keepalive can otherwise land on the same tick of a
+        // coarser track timescale, and equal timestamps corrupt the file's
+        // decode order. A sub-tick nudge is invisible and keeps every frame.
+        var stamp = CMTimeConvertScale(
+            pts, timescale: mediaTimescale, method: .roundHalfAwayFromZero)
+        if let last = lastPTS, CMTimeCompare(stamp, last) <= 0 {
+            stamp = CMTimeAdd(last, CMTime(value: 1, timescale: mediaTimescale))
+        }
+        let toAppend = stamp == pts ? sampleBuffer : Self.restamp(sampleBuffer, to: stamp)
+        guard let toAppend, video.append(toAppend) else {
+            dropped += 1
+            if let error = writer.error { failure = "write failed: \(error)" }
+            return
+        }
+        appendTimecodeSample(at: stamp, from: first)
+        frames += 1
+        lastPTS = stamp
+    }
+
+    /// A copy of a frame with a new presentation timestamp, its duration kept.
+    static func restamp(_ sample: CMSampleBuffer, to pts: CMTime) -> CMSampleBuffer? {
+        var timing = CMSampleTimingInfo(
+            duration: CMSampleBufferGetDuration(sample), presentationTimeStamp: pts,
+            decodeTimeStamp: .invalid)
+        var copy: CMSampleBuffer?
+        CMSampleBufferCreateCopyWithNewTiming(
+            allocator: nil, sampleBuffer: sample, sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleBufferOut: &copy)
+        return copy
     }
 
     private func open(format: CMFormatDescription, at pts: CMTime) throws {
@@ -129,6 +156,7 @@ public final class VideoWriter: Writer, @unchecked Sendable {
         let video = AVAssetWriterInput(
             mediaType: .video, outputSettings: settings, sourceFormatHint: format)
         video.expectsMediaDataInRealTime = true
+        video.mediaTimeScale = mediaTimescale
 
         var tc: CMTimeCodeFormatDescription?
         let status = CMTimeCodeFormatDescriptionCreate(
@@ -155,13 +183,17 @@ public final class VideoWriter: Writer, @unchecked Sendable {
         guard writer.startWriting() else {
             throw writer.error ?? NSError(domain: "rheocles.writer", code: -2)
         }
-        writer.startSession(atSourceTime: pts)
+        // Everything downstream stamps in nanoseconds; start the session and
+        // the first frame there too so the timescale is consistent.
+        let firstNanos = CMTimeConvertScale(
+            pts, timescale: 1_000_000_000, method: .roundHalfAwayFromZero)
+        writer.startSession(atSourceTime: firstNanos)
 
         self.writer = writer
         self.video = video
         self.timecodeInput = timecodeInput
         self.tcFormat = tc
-        firstPTS = pts
+        firstPTS = firstNanos
         startFrames = HostClock.frames(sinceMidnightOf: clock.date(for: pts), fps: tcRate)
     }
 
