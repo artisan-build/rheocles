@@ -68,6 +68,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
       Screen and window capture have no key: ScreenCaptureKit raises its own
       prompt. NSAudioCaptureUsageDescription is the system-audio key — verified
       against the key list in tccd on macOS 26.6.
+
+      Verified on 11 Sep 2026 with this bundle signed with the Developer ID
+      (task 5): the daemon running as a child of the app is attributed to the
+      app for TCC. The camera and system-audio prompts both said "Rheocles"
+      and quoted the strings below, not "rheocles-core"; the grants were read
+      by the child daemon through GET /streams; and they survived a rebuild
+      with a different CDHash and a relaunch with no second prompt. System
+      audio needed only the plist key — there is no entitlement for the Core
+      Audio tap in Rheocles.entitlements and the hardened runtime did not
+      require one. No nested bundle for the daemon.
     -->
     <key>NSCameraUsageDescription</key>
     <string>Rheocles records each camera you arm to its own file.</string>
