@@ -162,15 +162,16 @@ struct StreamRow: View {
                     .font(Type.body(11.5, shownArmed ? .semibold : .medium))
                     .foregroundStyle(shownArmed ? Brand.ochreInk : Brand.ink)
                     .lineLimit(1)
+                // The meter shares the detail line until the row is writing,
+                // when the numbers need the width and the meter takes a
+                // third line: a writing audio row is twelve points taller.
+                let meterInline = writing == false
                 HStack(spacing: 8) {
                     Text(liveDetail ?? detail)
                         .font(Type.mono(9.5))
                         .foregroundStyle(Brand.inkFaint)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        // Numbers are not for truncating; the name above
-                        // yields first.
-                        .fixedSize(horizontal: liveDetail != nil, vertical: false)
                     if stalled {
                         Text("STALLED")
                             .font(Type.kicker(8))
@@ -182,13 +183,19 @@ struct StreamRow: View {
                     }
                     // Levels flow only while armed; before the first
                     // reading the meter is empty and the number is absent.
-                    if stream.capabilities.audio != nil,
+                    if meterInline, stream.capabilities.audio != nil,
                         stream.armed || daemon.previewing == stream.id
                     {
                         LevelMeter(db: daemon.levels[stream.id])
                     }
                 }
+                if !meterInline, stream.capabilities.audio != nil {
+                    LevelMeter(db: daemon.levels[stream.id])
+                }
             }
+            // The name and its numbers get their width before the spacer
+            // does; the controls on the right are fixed-size anyway.
+            .layoutPriority(1)
 
             Spacer(minLength: 8)
 
@@ -221,7 +228,7 @@ struct StreamRow: View {
             }
             .padding(.trailing, 14)
         }
-        .frame(height: 30)
+        .frame(height: writing && stream.capabilities.audio != nil ? 42 : 30)
         .contentShape(Rectangle())
     }
 
