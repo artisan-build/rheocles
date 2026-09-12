@@ -62,9 +62,23 @@ final class DaemonModel {
     /// in the popover moves.
     private(set) var now = Date()
 
-    /// Audio levels by stream id, dBFS, from `levels` events. Absent until
-    /// the daemon has said — an unmeasured level is not silence.
+    /// Audio levels by stream id, peak dBFS since the last `levels` event.
+    /// Absent until the daemon has said — an unmeasured level is not
+    /// silence.
     var levels: [String: Double] = [:]
+    /// The rest of the last `levels` event, by stream id: frames written and
+    /// measured drift, for the live readout while recording.
+    var streamStatus: [String: StreamStatus] = [:]
+    /// Streams the daemon says stopped delivering (a camera with the lid
+    /// closed). Cleared when the stream reports again.
+    var stalled: Set<String> = []
+    /// The daemon's settings: output root and default codec. `GET /settings`
+    /// on connect, then the `settings` event.
+    var settings: Settings.Values?
+    var settingsError: String?
+    /// Rotate is two clicks: the first arms it, the second does it. A
+    /// rotation cuts off every other paired client, so it is not one slip.
+    var rotateArmed = false
     /// The one stream being previewed, if any (spec §12: one at a time).
     var previewing: String?
     var previewFrame: NSImage?
@@ -98,7 +112,7 @@ final class DaemonModel {
     }
 
     let configuration: Configuration
-    private(set) var api = API()
+    var api = API()
     /// The pid of the core this process launched, while it runs.
     var corePID: Int32? { process.flatMap { $0.isRunning ? $0.processIdentifier : nil } }
     private var process: Process?
@@ -125,7 +139,9 @@ final class DaemonModel {
         streams: [StreamInfo] = [], permissions: Permissions? = nil, showWindows: Bool = false,
         armError: String? = nil, take: Manifest? = nil, takeName: String = "",
         levels: [String: Double] = [:], previewing: String? = nil, previewFrame: NSImage? = nil,
-        previewError: String? = nil, showSettings: Bool = false, tokenShown: Bool = false
+        previewError: String? = nil, showSettings: Bool = false, tokenShown: Bool = false,
+        stalled: Set<String> = [], streamStatus: [String: StreamStatus] = [:],
+        rotateArmed: Bool = false
     ) -> DaemonModel {
         let model = DaemonModel()
         model.status = status
@@ -143,6 +159,12 @@ final class DaemonModel {
         model.previewError = previewError
         model.showSettings = showSettings
         model.tokenShown = tokenShown
+        model.stalled = stalled
+        model.streamStatus = streamStatus
+        model.rotateArmed = rotateArmed
+        if let root = discovery?.outputRoot {
+            model.settings = Settings.Values(outputRoot: root, codec: .hevc)
+        }
         model.api.token = "3f9a1c77e2b04d5f8a6c1e2d9b7f4a0c5d6e7f8091a2b3c4d5e6f70819a2b3c4"
         if case .down(let why) = status { model.lastError = why }
         return model
@@ -384,6 +406,7 @@ final class DaemonModel {
     /// The daemon is answering: read everything once, then follow events.
     private func becameRunning() async {
         await refreshStreams()
+        await refreshSettings()
         await discoverActiveTake()
         listen()
     }
@@ -423,6 +446,7 @@ final class DaemonModel {
                 let index = streams.firstIndex(where: { $0.id == info.id })
             {
                 streams[index] = info
+                if (info.framesSeen ?? 0) > 0 { stalled.remove(info.id) }
             } else {
                 Task { await refreshStreams() }
             }
@@ -438,26 +462,44 @@ final class DaemonModel {
                 Task { await discoverActiveTake() }
             }
         case "levels":
-            // Planned (step 6); read leniently until the shape is pinned:
-            // either { levels: { id: dB } } or { stream: id, db | peak: dB }.
-            if let map = message.json["levels"] as? [String: Any] {
-                for (id, value) in map {
-                    if let db = value as? Double {
-                        levels[id] = db
-                    } else if let inner = value as? [String: Any],
-                        let db = (inner["db"] ?? inner["peak"]) as? Double
-                    {
-                        levels[id] = db
-                    }
-                }
-            } else if let id = message.json["stream"] as? String,
-                let db = (message.json["db"] ?? message.json["peak"]) as? Double
+            // { take, streams: [{ id, levelDb?, framesWritten, drift? }] },
+            // ~4×/s while recording. levelDb is peak dBFS, audio only.
+            if let payload = message.json["streams"],
+                let data = try? JSONSerialization.data(withJSONObject: payload),
+                let statuses = try? JSONDecoder().decode([StreamStatus].self, from: data)
             {
-                levels[id] = db
+                for entry in statuses {
+                    streamStatus[entry.id] = entry
+                    if let db = entry.levelDb { levels[entry.id] = db }
+                    stalled.remove(entry.id)
+                }
             }
-        case "drift", "join", "leave", "marker", "error":
-            // Planned (step 6). Until their shapes land, any of them means
-            // the take changed: re-read it.
+        case "marker":
+            // { take, marker: { t, label } }: append to the take we hold.
+            if let id = message.json["take"] as? String, take?.id == id,
+                let payload = message.json["marker"],
+                let data = try? JSONSerialization.data(withJSONObject: payload),
+                let marker = try? JSONDecoder().decode(Manifest.Marker.self, from: data)
+            {
+                take?.markers.append(marker)
+            } else {
+                Task { await discoverActiveTake() }
+            }
+        case "stalled":
+            if let stream = message.json["stream"] as? [String: Any],
+                let id = stream["id"] as? String
+            {
+                stalled.insert(id)
+                Log.info("stalled: \(id)")
+            }
+        case "settings":
+            if let payload = message.json["settings"],
+                let data = try? JSONSerialization.data(withJSONObject: payload),
+                let values = try? JSONDecoder().decode(Settings.Values.self, from: data)
+            {
+                settings = values
+            }
+        case "drift", "join", "leave", "error":
             Task { await discoverActiveTake() }
         default:
             break

@@ -4,11 +4,11 @@ import SwiftUI
 /// Settings, in place of the stream list (spec §12): output root, codec,
 /// show windows, the bearer token as a pairing code.
 ///
-/// Every row says whose setting it is. Codec and show windows are the
-/// app's and take effect at once; the output root and the token are the
-/// daemon's, shown as they are and changed only through the API — and the
-/// two commands that would change them are not in the protocol yet, so
-/// those controls say so rather than pretend.
+/// Every row says whose setting it is. The output root, the codec and the
+/// token are the daemon's, changed over `PATCH /settings` and
+/// `POST /token/rotate` and shown as the daemon last answered; show
+/// windows is the app's. A refusal — the root cannot move under an active
+/// take — is shown in the daemon's words beneath the rows.
 struct SettingsView: View {
     @Bindable var daemon: DaemonModel
 
@@ -16,32 +16,31 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             row("Output root") {
                 HStack(spacing: 8) {
-                    Text(
-                        daemon.discovery.map { MenuBarView.abbreviate($0.outputRoot) } ?? "··"
-                    )
-                    .font(Type.mono(10.5))
-                    .foregroundStyle(daemon.discovery == nil ? Brand.script : Brand.ink)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    Text(daemon.settings.map { MenuBarView.abbreviate($0.outputRoot) } ?? "··")
+                        .font(Type.mono(10.5))
+                        .foregroundStyle(daemon.settings == nil ? Brand.script : Brand.ink)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     Spacer(minLength: 4)
+                    PillButton("Change…", colour: Brand.aegean, filled: false) {
+                        daemon.chooseOutputRoot()
+                    }
+                    .disabled(daemon.settings == nil || Preview.isRendering)
                     PillButton("Reveal", colour: Brand.aegean, filled: false) {
                         daemon.revealOutputRoot()
                     }
-                    .disabled(daemon.discovery == nil)
+                    .disabled(daemon.settings == nil)
                 }
-                if DaemonModel.outputRootPath == nil {
-                    note(
-                        "Set with rheocles-core --output-root. Changing it over the API is not in the protocol yet."
-                    )
-                }
+                note("Where new takes land. Cannot move while a take is active.")
             }
             rule
             row("Codec") {
                 Segmented(
                     options: [(Manifest.Codec.hevc, "HEVC"), (.prores, "ProRes 422")],
-                    selection: Binding(get: { daemon.codec }, set: { daemon.codec = $0 }))
+                    selection: Binding(
+                        get: { daemon.codec }, set: { daemon.updateSettings(codec: $0) }))
                 note(
-                    "One setting for the whole take, sent with every Record. Video only; audio is always Broadcast Wave."
+                    "The daemon's default for every take. Video only; audio is always Broadcast Wave."
                 )
             }
             rule
@@ -77,12 +76,25 @@ struct SettingsView: View {
                         daemon.tokenShown.toggle()
                     }
                     PillButton("Copy", colour: Brand.aegean, filled: false) { daemon.copyToken() }
-                    PillButton("Rotate", colour: Brand.script, filled: false) {}
-                        .disabled(true)
+                    PillButton(
+                        daemon.rotateArmed ? "Rotate now" : "Rotate", colour: Brand.oxide,
+                        filled: daemon.rotateArmed
+                    ) { daemon.rotateToken() }
                 }
                 note(
-                    "The bearer token, from \(MenuBarView.abbreviate(daemon.tokenFile.path)). "
-                        + "Rotating it is the daemon's job and not in the protocol yet.")
+                    daemon.rotateArmed
+                        ? "Click again to rotate. Every other paired client loses access until it reads the new token from the file."
+                        : "The bearer token, from \(MenuBarView.abbreviate(daemon.tokenFile.path)). Rotating invalidates the old one at once."
+                )
+            }
+            if let error = daemon.settingsError {
+                Text(error)
+                    .font(Type.mono(9.5))
+                    .foregroundStyle(Brand.oxide)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
             }
         }
         .padding(.vertical, 4)

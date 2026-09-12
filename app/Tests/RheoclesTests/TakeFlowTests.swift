@@ -132,6 +132,73 @@ struct TakeFlowTests {
         #expect(icon(model) == .idle)
     }
 
+    @Test("Markers: labelled, unlabelled, and nothing sent outside a recording take")
+    func markers() async throws {
+        let (daemon, model) = try engine()
+        defer { daemon.stop() }
+        model.connect()
+        defer { model.shutdown() }
+        #expect(await eventually { model.status == .running })
+
+        // Not recording: nothing is sent.
+        model.markerLabel = "nowhere"
+        model.mark()
+        #expect(model.markerError == nil)
+
+        model.arm("microphone:fake", true)
+        #expect(await eventually { model.armedStreams.count == 1 })
+        model.record()
+        #expect(await eventually { model.take?.isRecording == true })
+        try await Task.sleep(for: .milliseconds(300))
+
+        model.markerLabel = "chapter 1"
+        model.mark()
+        #expect(await eventually { model.take?.markers.count == 1 })
+        #expect(model.take?.markers.first?.label == "chapter 1")
+        #expect((model.take?.markers.first?.t ?? 0) > 0)
+        #expect(model.markerLabel.isEmpty)
+
+        model.mark()
+        #expect(await eventually { model.take?.markers.count == 2 })
+        #expect(model.take?.markers.last?.label == "marker 2")
+
+        model.stop()
+        #expect(await eventually { model.take?.isOver == true })
+        #expect(model.take?.markers.count == 2)
+    }
+
+    @Test("Join adds a cold stream's file mid-take; leave finalizes it and keeps it armed")
+    func joinAndLeave() async throws {
+        let (daemon, model) = try engine()
+        defer { daemon.stop() }
+        model.connect()
+        defer { model.shutdown() }
+        #expect(await eventually { model.status == .running })
+
+        model.arm("camera:fake", true)
+        #expect(await eventually { model.armedStreams.count == 1 })
+        model.record()
+        #expect(await eventually { model.take?.isRecording == true })
+        #expect(model.take?.streams.map(\.id) == ["camera:fake"])
+
+        // Join arms the mic first, then starts its writer.
+        model.join("microphone:fake")
+        #expect(await eventually { model.take?.writing.count == 2 })
+        #expect(await eventually { model.armedStreams.count == 2 })
+
+        model.leave("microphone:fake")
+        #expect(await eventually { model.take?.writing.count == 1 })
+        #expect(model.take?.streams.first { $0.id == "microphone:fake" }?.stopped != nil)
+        #expect(model.armedStreams.map(\.id).contains("microphone:fake"))
+
+        // Leaving twice is the daemon's 409, shown.
+        model.leave("microphone:fake")
+        #expect(await eventually { model.takeError?.contains("409") == true })
+
+        model.stop()
+        #expect(await eventually { model.take?.isOver == true })
+    }
+
     @Test("A take started by another client shows up without a click")
     func takeStartedElsewhere() async throws {
         let (daemon, model) = try engine()

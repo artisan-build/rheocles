@@ -52,7 +52,53 @@ extension Manifest {
 extension DaemonModel {
     struct RecordBody: Encodable {
         var name: String?
+        /// The daemon's own default, sent back explicitly: as of step 6
+        /// `POST /record` without `codec` records HEVC whatever
+        /// `settings.codec` says (`request.codec ?? .hevc` in TakeEngine).
+        /// Reported to Engine; harmless to keep once fixed.
         var codec: Manifest.Codec?
+    }
+
+    struct StreamBody: Encodable {
+        var stream: String
+    }
+
+    /// Join a stream to the recording take now (spec §6): arms it first if
+    /// it is cold, stamps the file with the time it actually began.
+    func join(_ id: String) {
+        guard let take, take.isRecording, !takeBusy else { return }
+        takeBusy = true
+        takeError = nil
+        Task {
+            do {
+                self.take = try await api.post(
+                    "/takes/\(take.id)/join", StreamBody(stream: id), as: Manifest.self,
+                    decoder: Manifest.wireDecoder)
+                Log.info("joined \(id) to \(take.id)")
+                await refreshStreams()
+            } catch {
+                takeError = "POST /takes/\(take.id)/join → \(error)"
+            }
+            takeBusy = false
+        }
+    }
+
+    /// Leave: finalize that stream's file; it stays armed, the take goes on.
+    func leave(_ id: String) {
+        guard let take, take.isRecording, !takeBusy else { return }
+        takeBusy = true
+        takeError = nil
+        Task {
+            do {
+                self.take = try await api.post(
+                    "/takes/\(take.id)/leave", StreamBody(stream: id), as: Manifest.self,
+                    decoder: Manifest.wireDecoder)
+                Log.info("\(id) left \(take.id)")
+            } catch {
+                takeError = "POST /takes/\(take.id)/leave → \(error)"
+            }
+            takeBusy = false
+        }
     }
 
     struct MarkerBody: Encodable {
@@ -69,10 +115,11 @@ extension DaemonModel {
         markerError = nil
         Task {
             do {
-                try await api.post("/takes/\(take.id)/markers", MarkerBody(label: sent))
+                self.take = try await api.post(
+                    "/takes/\(take.id)/markers", MarkerBody(label: sent), as: Manifest.self,
+                    decoder: Manifest.wireDecoder)
                 Log.info("marker \"\(sent)\" on \(take.id)")
                 markerLabel = ""
-                await refreshTake(id: take.id)
             } catch {
                 markerError = "POST /takes/\(take.id)/markers → \(error)"
             }
@@ -88,7 +135,7 @@ extension DaemonModel {
         Task {
             do {
                 let created: TakeEngine.Created = try await api.post(
-                    "/record", RecordBody(name: name.isEmpty ? nil : name, codec: codec),
+                    "/record", RecordBody(name: name.isEmpty ? nil : name, codec: settings?.codec),
                     decoder: Manifest.wireDecoder)
                 Log.info("recording take \(created.take.id)")
                 for warning in created.warnings { Log.info("take warning: \(warning)") }

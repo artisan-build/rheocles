@@ -280,16 +280,19 @@ struct PillButton: View {
     let colour: Color
     let filled: Bool
     var glyph: String?
+    /// Row-sized: for controls that sit beside a switch, not in a bar.
+    var compact = false
     let action: () -> Void
 
     init(
-        _ label: String, colour: Color, filled: Bool, glyph: String? = nil,
+        _ label: String, colour: Color, filled: Bool, glyph: String? = nil, compact: Bool = false,
         action: @escaping () -> Void
     ) {
         self.label = label
         self.colour = colour
         self.filled = filled
         self.glyph = glyph
+        self.compact = compact
         self.action = action
     }
 
@@ -301,13 +304,11 @@ struct PillButton: View {
                 }
                 Text(label)
             }
-            .font(Type.body(11, .semibold))
+            .font(Type.body(compact ? 9.5 : 11, .semibold))
             .foregroundStyle(filled ? Brand.ground : colour)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(
-                Capsule().fill(filled ? colour : .clear)
-            )
+            .padding(.horizontal, compact ? 8 : 12)
+            .padding(.vertical, compact ? 2.5 : 5)
+            .background(Capsule().fill(filled ? colour : .clear))
             .overlay(Capsule().strokeBorder(colour, lineWidth: filled ? 0 : 1.2))
         }
         .buttonStyle(.plain)

@@ -225,6 +225,42 @@ enum Preview {
                             permissions: granted, showSettings: true)))
             ),
             (
+                "settings-rotate-armed",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(), streams: streams(),
+                            permissions: granted, showSettings: true, rotateArmed: true)))
+            ),
+            (
+                "recording-stalled",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "display:56A96CFC", "camera:4kx", "microphone:scarlett",
+                                "systemAudio:system",
+                            ]),
+                            permissions: granted,
+                            take: manifest(state: "recording", elapsed: 257),
+                            levels: ["microphone:scarlett": -20, "systemAudio:system": -31],
+                            stalled: ["camera:4kx"],
+                            streamStatus: [
+                                "display:56A96CFC": StreamStatus(
+                                    id: "display:56A96CFC", levelDb: nil, framesWritten: 15420,
+                                    drift: 0.003),
+                                "camera:4kx": StreamStatus(
+                                    id: "camera:4kx", levelDb: nil, framesWritten: 4102, drift: nil),
+                                "microphone:scarlett": StreamStatus(
+                                    id: "microphone:scarlett", levelDb: -20,
+                                    framesWritten: 12_336_000, drift: -0.001),
+                                "systemAudio:system": StreamStatus(
+                                    id: "systemAudio:system", levelDb: -31,
+                                    framesWritten: 12_336_000, drift: 0),
+                            ])))
+            ),
+            (
                 "settings-token-shown",
                 AnyView(
                     MenuBarView(
