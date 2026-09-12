@@ -4,7 +4,7 @@
 // planned. When the YAML has every route, this table contributes nothing but
 // the group order and blurbs.
 
-export type Method = 'GET' | 'POST' | 'WS';
+export type Method = 'GET' | 'POST' | 'PATCH' | 'WS';
 
 export interface Field {
 	name: string;
@@ -211,6 +211,39 @@ export const specTable: ApiSpec = {
 			],
 		},
 		{
+			id: 'settings',
+			label: 'Settings',
+			blurb: 'Daemon-owned defaults, persisted to ~/Library/Application Support/Rheocles/settings.json.',
+			endpoints: [
+				{ method: 'GET', path: '/settings', summary: 'The output root and the codec.', response: `{ "outputRoot": "/Users/len/Movies/Rheocles", "codec": "hevc" }`, ws: ws('GET', '/settings') },
+				{
+					method: 'PATCH',
+					path: '/settings',
+					summary: 'Change either. The output root cannot move while a take is active.',
+					request: [
+						{ name: 'outputRoot', type: 'string', note: 'Absolute. 409 while a take is created or recording — its files are already reserved beneath the old root.' },
+						{ name: 'codec', type: '"hevc" | "prores"', note: 'One setting for every take that follows.' },
+					],
+					response: `{ "outputRoot": "/Volumes/SSD/Takes", "codec": "hevc" }`,
+					errors: [{ code: '409', when: 'outputRoot while a take is active' }],
+					ws: ws('PATCH', '/settings', '{ "codec": "prores" }'),
+				},
+			],
+		},
+		{
+			id: 'token',
+			label: 'Token',
+			endpoints: [
+				{
+					method: 'POST',
+					path: '/token/rotate',
+					summary: 'A new token. The old one is refused from the next request on, both transports.',
+					response: `{ "token": "9f3c…" }`,
+					ws: ws('POST', '/token/rotate', '{}'),
+				},
+			],
+		},
+		{
 			id: 'events',
 			label: 'Events',
 			blurb: 'State, levels, drift, joins, errors — pushed as they happen.',
@@ -251,7 +284,7 @@ data: { "stream": "microphone:Scarlett_2i2", "peakDb": -19.4, "ts": 178917896025
 					path: '/',
 					summary: 'One socket carries every command and every event.',
 					description:
-						'Text frames, one JSON object each. The first frame must be `{ "auth": "<token>" }`; until then every command answers 401 and no event is delivered. A command frame is the HTTP request as an object — `id` is anything you like and is echoed back, `method`, `path`, and the optional `query` and `body` are exactly the HTTP request’s — and the reply carries the HTTP `status` and `body`. Events arrive as objects with an `event` key and no `id`.',
+						'Text frames, one JSON object each. The first frame must be `{ "auth": "<token>" }`; until then every command answers 401 and no event is delivered. A command frame is the HTTP request as an object — `id` is anything you like and is echoed back, `method`, `path`, and the optional `query` and `body` are exactly the HTTP request’s — and the reply carries the HTTP `status` and `body`. Events arrive as objects with an `event` key and no `id`. After `POST /token/rotate` a socket that authenticated with the old token stays up but must `auth` again before its next command.',
 					response: `→ { "auth": "<token>" }
 ← { "id": null, "status": 200, "body": { "authenticated": true } }
 → { "id": 7, "method": "POST", "path": "/takes/20260912T040433-fd9q/start", "query": {}, "body": null }
@@ -261,13 +294,7 @@ data: { "stream": "microphone:Scarlett_2i2", "peakDb": -19.4, "ts": 178917896025
 			],
 		},
 	],
-	events: [
-		{ type: 'state', when: 'a take changes state', example: `{ "take": "20260912T040433-fd9q", "state": "recording", "at": "2026-09-11T14:02:17.004Z" }` },
-		{ type: 'join', when: 'a stream starts writing', example: `{ "take": "20260912T040433-fd9q", "stream": "window:11597", "t": 240.017, "timecode": "14:06:17:00" }` },
-		{ type: 'leave', when: 'a stream’s file is finalised', example: `{ "take": "20260912T040433-fd9q", "stream": "window:11597", "t": 374.111, "framesWritten": 8045 }` },
-		{ type: 'levels', when: 'an armed audio stream’s meter ticks', example: `{ "stream": "microphone:Scarlett_2i2", "peakDb": -19.4 }` },
-		{ type: 'drift', when: 'a recording stream’s drift is re-measured', example: `{ "take": "20260912T040433-fd9q", "stream": "camera:0x2300000fd9009c", "drift": -0.003, "framesWritten": 21540 }` },
-		{ type: 'marker', when: 'a marker lands', example: `{ "take": "20260912T040433-fd9q", "t": 38.7, "label": "cold-open out" }` },
-		{ type: 'error', when: 'something fails; the take may now be incomplete', example: `{ "take": "20260912T040433-fd9q", "stream": "display:56A96CFC-7F21", "reason": "disk full", "state": "incomplete" }` },
-	],
+	// Every event the daemon emits is pinned in the YAML's x-events; nothing is
+	// planned here. Kept as the fallback shape only.
+	events: [],
 };

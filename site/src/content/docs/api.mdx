@@ -1,7 +1,6 @@
 ---
 title: The API
 description: One command set, two transports. HTTP with server-sent events on 7447, WebSocket on 7448, a bearer token on both, loopback only.
-draft: true
 ---
 import Callout from '../../components/Callout.astro';
 import Cards from '../../components/Cards.astro';
@@ -48,8 +47,10 @@ Authorization: Bearer <token>
 The token is provisioned to `~/Library/Application Support/Rheocles/token`,
 mode `0600`, so any app running as you reads it and is paired with zero
 clicks. It is also shown in the popover's settings as a pairing code, for
-anything that cannot read the file, and can be rotated there; rotation
-invalidates the old token for everyone at once.
+anything that cannot read the file. `POST /token/rotate` (or the button
+beside the code) writes a new one and refuses the old from the next request
+on, both transports; a WebSocket that authenticated with the old token stays
+up but must `auth` again before its next command.
 
 <Callout kind="note" title="Why a token on loopback">
 The threat is not the network. It is a web page in your browser making
@@ -97,9 +98,25 @@ const es = new EventSource(`http://127.0.0.1:7447/events?access_token=${token}`)
 | `GET /takes/{id}` | the manifest, live while recording |
 | `GET /takes` | recent takes, newest first |
 | `POST /record` | create and start, the one-click form |
-| `GET /events` | SSE: state, levels, drift, joins, errors |
-| `GET /preview/{stream}` | low-rate preview frames; one at a time |
+| `GET /settings` · `PATCH /settings` | `{ outputRoot, codec }`; the root cannot move while a take is active |
+| `POST /token/rotate` | a new token; the old one refused from the next request |
+| `GET /events` | SSE: `stream`, `take`, `levels`, `marker`, `stalled`, `settings` |
+| `GET /preview/{stream}` | low-rate preview frames; one at a time — *planned* |
 | `WS /` | everything above, full duplex |
+
+## The events
+
+| event | when | carries |
+|---|---|---|
+| `stream` | a stream's armed state changes | the stream as it now is |
+| `take` | a take changes state | the manifest — with its join, leave and marker history |
+| `levels` | ~4×/s while recording | `take` and `streams: [{ id, levelDb?, framesWritten, drift? }]`; `levelDb` is peak dBFS since the last event, audio only |
+| `marker` | a marker lands | `take` and the `{ t, label }` |
+| `stalled` | an armed or recording stream stops delivering | the stream as it now is |
+| `settings` | `PATCH /settings` | the new `{ outputRoot, codec }` |
+
+The same objects, byte for byte, on SSE and on every authenticated
+WebSocket. Each has an `event` key and no `id`.
 
 Every one of these, with request fields, response examples, errors and the
 WebSocket frame, is on the [API reference](/docs/api/reference).
@@ -112,9 +129,8 @@ WebSocket frame, is on the [API reference](/docs/api/reference).
 - **Ids are the handle.** A take id, a stream id. Paths are what you get
   back when you ask.
 - **Absence is absence.** An unmeasurable value is left out — `freeBytes` on a
-  volume that will not say — or is `null` where the field is always present,
-  like a stream's `drift` before it has written a frame. Never zero by
-  default.
+  volume that will not say, `drift` on a display, `framesDropped` when none
+  were. Never zero by default.
 - **Errors are one shape**, `{ "error": "for humans", "code": "for_programs" }`,
   on every route and both transports. HTTP carries the status in the status
   line, the WebSocket in the frame's `status`. The codes are on the

@@ -61,8 +61,13 @@ and get it. It is written to
 with mode `0600`, so any app running as you can read it and is paired with
 zero clicks. That is how Pteroprompter and the NativePHP app pair. Anything
 that cannot read a file gets the same token as a pairing code in the popover's
-settings, where it can also be rotated — rotation invalidates the old one for
-everyone.
+settings.
+
+**Rotating it** — the button beside the code, or `POST /token/rotate` —
+writes a new token to the file and refuses the old one from the very next
+request, on both transports. Every client re-reads the file; a WebSocket
+that is already up must send `{ "auth" }` again before its next command.
+Rotate it if the code was ever shown somewhere it should not have been.
 
 ```sh
 TOKEN="$(cat ~/Library/Application\ Support/Rheocles/token)"
@@ -77,8 +82,11 @@ curl -s -H "Authorization: Bearer $TOKEN" localhost:7447/
 ```
 
 Everything Rheocles ever tells you about a file is a path **relative to
-`outputRoot`**. Store the relative path; join it to the root only if you need
-an absolute one.
+`outputRoot`** — the take folder to the root, each file to the take folder.
+Store them as given; join them only if you need an absolute path. The root
+and the codec are the daemon's two settings, `GET` and `PATCH /settings`,
+persisted beside the token in `settings.json`; the root cannot move while a
+take is active.
 
 ## The first take, from the popover
 

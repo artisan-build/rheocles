@@ -28,8 +28,8 @@ not.
 ## Written atomically
 
 The manifest is rewritten as a temp file in the take folder and then renamed
-over the old one, on every state change: create, start, stop, and any
-failure — and, from step 6, each join, leave and marker. At any instant on
+over the old one, on every state change: create, start, each join, leave
+and marker, stop, and any failure. At any instant on
 disk it is either the previous complete version or the next. There is no
 moment at which a reader can see half a manifest.
 
@@ -136,8 +136,7 @@ Where this page and the reference disagree, the reference is right.
 ### `markers[]`
 
 `{ t, label }`, `t` in seconds from the cue. Rheocles stamps `t`; the client
-owns `label`, and Rheocles never interprets it. See [Markers](/docs/markers)
-(step 6, planned).
+owns `label`, and Rheocles never interprets it. See [Markers](/docs/markers).
 
 ## Reading it
 
@@ -159,7 +158,9 @@ source; the API is a reader.
 
 The same manifest arrives as a `take` event on `/events` and the WebSocket
 on every state change, so a client that is listening never has to poll for
-`state`.
+`state`. While recording, a `levels` event about four times a second
+carries each stream's `framesWritten`, `drift` and — for audio — `levelDb`,
+the peak dBFS since the last one: the meters, and a live drift readout.
 
 <Cards>
 	<Card title="Markers" href="/docs/markers">
