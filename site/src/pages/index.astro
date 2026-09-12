@@ -11,29 +11,31 @@ import stonePlate from '../assets/plates/stone.png';
 import rigPlate from '../assets/plates/rig.png';
 
 const manifest = `{
-  "take": { "id": "tk_7f3a", "name": "ep12", "state": "recording",
-            "created": "2026-09-11T14:02:09Z", "started": "2026-09-11T14:02:17Z" },
+  "id": "20260911T210217-fd9q", "name": "Episode 12", "state": "recording",
+  "created": "2026-09-11T21:02:09.412Z", "started": "2026-09-11T21:02:17.004Z",
+  "outputRoot": "/Users/len/Movies/Rheocles",
+  "destination": "takes/2026-09-11/140217-episode-12",
   "streams": [
-    { "id": "camera:0x2300000fd9009c", "kind": "camera", "name": "FaceTime HD Camera",
-      "path": "ep12/cam-facetime.mov", "codec": "hevc",
-      "started": "2026-09-11T14:02:17.004Z", "timecode": "14:02:17:00",
-      "frames": 21540, "driftMs": -3 },
+    { "id": "camera:0x2300000fd9009c", "kind": "camera", "name": "Elgato 4K X",
+      "path": "elgato-4k-x.mov", "codec": "hevc",
+      "started": "2026-09-11T21:02:17.004Z", "timecode": "14:02:17:00",
+      "framesWritten": 21540, "events": [ { "t": 0, "type": "join" } ] },
     { "id": "window:11597", "kind": "window", "name": "Keynote",
-      "path": "ep12/window-keynote.mov", "codec": "hevc",
-      "started": "2026-09-11T14:06:17.021Z", "timecode": "14:06:17:00",
-      "frames": 7200, "driftMs": null }
+      "path": "window-com.apple.iWork.Keynote.mov", "codec": "hevc",
+      "started": "2026-09-11T21:06:17.021Z", "timecode": "14:06:17:00",
+      "framesWritten": 7200, "events": [ { "t": 240.017, "type": "join" } ] }
   ],
-  "markers": [ { "t": 38.7, "label": "cold-open out" } ]
+  "markers": [ { "t": 38.7, "label": "cold-open out" } ],
+  "settings": { "codec": "hevc", "expectedDuration": 1800 }
 }`;
 
 const api = `TOKEN="$(cat ~/Library/Application\\ Support/Rheocles/token)"
 H="Authorization: Bearer $TOKEN"
 
-curl -s -H "$H" -X POST localhost:7447/takes -d '{"name":"ep12"}'
-#   → { "id": "tk_7f3a", "files": { "camera:0x2300000fd9009c": "ep12/cam-facetime.mov", … } }
-#     paths reserved, manifest written. Nothing is recording.
+curl -s -H "$H" -X POST localhost:7447/takes -d '{"name":"Episode 12"}'
+#   → 201, the manifest: id, destination, a path per stream. Nothing is recording.
 
-T=localhost:7447/takes/tk_7f3a
+T=localhost:7447/takes/20260911T210217-fd9q
 curl -s -H "$H" -X POST $T/start                                  # the cue
 curl -s -H "$H" -X POST $T/markers -d '{"label":"cold-open out"}'
 curl -s -H "$H" -X POST $T/stop`;
@@ -211,7 +213,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 			temp file, then rename — on every state change. At any instant it is either the previous
 			complete version or the next. A dead process leaves playable files and a truthful manifest.
 		</p>
-		<Code code={manifest} lang="json" title="ep12/manifest.json — the shape the spec describes; Engine finalises the names" />
+		<Code code={manifest} lang="json" title="manifest.json — the shape docs/openapi.yaml pins" />
 		<p class="aside">
 			Everything downstream consumes the manifest; nothing guesses from a folder listing. Take IDs
 			are the handle, paths are the answer, and every path is relative to the output root.

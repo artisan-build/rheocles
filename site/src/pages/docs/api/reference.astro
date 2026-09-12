@@ -40,13 +40,13 @@ const draft = api.source !== 'openapi';
 			<tr><td>WebSocket</td><td><code>ws://127.0.0.1:7448</code></td></tr>
 			<tr><td>Auth</td><td><code>Authorization: Bearer &lt;token&gt;</code> on every HTTP request; <code>?access_token=</code> also accepted on <code>GET /events</code>; on the WebSocket, a first frame of <code>{`{ "auth": "<token>" }`}</code></td></tr>
 			<tr><td>Bodies</td><td>JSON in, JSON out; <code>Content-Type: application/json</code></td></tr>
-			<tr><td>Paths</td><td>every file path in every response is relative to <code>outputRoot</code> from <code>GET /</code></td></tr>
+			<tr><td>Paths</td><td>the take folder is relative to <code>outputRoot</code> from <code>GET /</code>; each file is relative to the take folder</td></tr>
 			<tr><td>Times</td><td>host times are ISO 8601 UTC with milliseconds; <code>t</code> is seconds from the cue; <code>timecode</code> is <code>HH:MM:SS:FF</code></td></tr>
 			<tr><td>Absence</td><td>an unmeasurable value is absent, or <code>null</code> where the field is always present — never <code>0</code></td></tr>
 		</tbody>
 	</table>
 	<Code
-		code={`{ "error": "destination ep12 already exists", "code": "conflict" }`}
+		code={`{ "error": "destination takes/2026-09-11/210433-episode-12 is not empty", "code": "conflict" }`}
 		lang="json"
 		title="the error shape — error for humans, code for programs"
 	/>
@@ -58,7 +58,8 @@ const draft = api.source !== 'openapi';
 			<tr><td><code>403</code></td><td><code>permission_denied</code></td><td>macOS has not granted the device class this stream needs</td></tr>
 			<tr><td><code>404</code></td><td><code>not_found</code></td><td>no such route, stream or take</td></tr>
 			<tr><td><code>405</code></td><td><code>method_not_allowed</code></td><td>the path exists, the method does not</td></tr>
-			<tr><td><code>409</code></td><td><code>conflict</code></td><td>destination already exists; a take already active</td></tr>
+			<tr><td><code>409</code></td><td><code>conflict</code></td><td>destination already exists; a take is not in the state the verb needs</td></tr>
+			<tr><td><code>409</code></td><td><code>take_active</code></td><td>a take is recording; stop it first</td></tr>
 			<tr><td><code>500</code></td><td><code>internal</code></td><td>a handler threw</td></tr>
 			<tr><td><code>501</code></td><td><code>unsupported</code></td><td>this kind cannot be captured yet</td></tr>
 			<tr><td><code>503</code></td><td><code>device_unavailable</code></td><td>the device is gone, busy, or refused the configuration</td></tr>

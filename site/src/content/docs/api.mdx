@@ -95,7 +95,7 @@ const es = new EventSource(`http://127.0.0.1:7447/events?access_token=${token}`)
 | `POST /takes/{id}/leave` | `{ stream }` — finalises that file, stays armed |
 | `POST /takes/{id}/markers` | `{ label }` |
 | `GET /takes/{id}` | the manifest, live while recording |
-| `GET /takes` | recent takes |
+| `GET /takes` | recent takes, newest first |
 | `POST /record` | create and start, the one-click form |
 | `GET /events` | SSE: state, levels, drift, joins, errors |
 | `GET /preview/{stream}` | low-rate preview frames; one at a time |
@@ -106,13 +106,14 @@ WebSocket frame, is on the [API reference](/docs/api/reference).
 
 ## Conventions
 
-- **Paths are relative to the output root.** The root is one field on
-  `GET /`. Clients store relative paths.
+- **Paths are relative.** The take folder to the output root — the one
+  absolute path in the API, on `GET /` — and each file to the take folder.
+  Clients store them as given.
 - **Ids are the handle.** A take id, a stream id. Paths are what you get
   back when you ask.
 - **Absence is absence.** An unmeasurable value is left out — `freeBytes` on a
   volume that will not say — or is `null` where the field is always present,
-  like a stream's `driftMs` before it has written a frame. Never zero by
+  like a stream's `drift` before it has written a frame. Never zero by
   default.
 - **Errors are one shape**, `{ "error": "for humans", "code": "for_programs" }`,
   on every route and both transports. HTTP carries the status in the status
@@ -120,7 +121,8 @@ WebSocket frame, is on the [API reference](/docs/api/reference).
   [reference](/docs/api/reference#conventions).
 - **CORS is open.** A page in your browser can call the API; the token is the
   lock, not the origin.
-- **Same destination twice is a `409`.** Rheocles never silently suffixes.
+- **Same destination twice is a `409 conflict`.** Rheocles never silently
+  suffixes. A take already recording is a `409 take_active`.
 
 ## The reference is generated
 

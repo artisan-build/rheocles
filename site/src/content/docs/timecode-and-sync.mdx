@@ -62,8 +62,8 @@ time, so the editor does the placing.
 
 Drift is measured, not assumed. For each stream Rheocles compares frames
 written × frame duration against host elapsed and reports the difference in
-milliseconds — in status events while recording and in the manifest's
-`driftMs` afterwards, the way OBS reports timecode drift.
+seconds — in `drift` events while recording and in the manifest's `drift`
+afterwards, the way OBS reports timecode drift.
 
 A capture device's clock is not the host's clock, and a long take can drift
 by a frame or two. Whether a client does anything with the number is the
@@ -72,8 +72,9 @@ conform a long file has the figure to do it with.
 
 <Callout kind="note" title="Absent, never zero">
 A stream whose drift has not been measured — one that has written no frames
-yet — reports `driftMs: null`. A `0` means measured and found to be zero. The
-two are not the same thing and the manifest does not pretend they are.
+yet — has no `drift` field at all. A `0` means measured and found to be
+zero. The two are not the same thing and the manifest does not pretend they
+are. Until the writers land in step 5, `drift` is absent everywhere.
 </Callout>
 
 ## Midnight
@@ -108,7 +109,7 @@ one take.
 
 <Cards>
 	<Card title="Takes and the manifest" href="/docs/takes-and-the-manifest">
-		<code>started</code>, <code>timecode</code>, <code>driftMs</code>, per stream.
+		<code>started</code>, <code>timecode</code>, <code>drift</code>, per stream.
 	</Card>
 	<Card title="Streams and arming" href="/docs/streams-and-arming" tone="ochre">
 		Late join, and what it is for.
