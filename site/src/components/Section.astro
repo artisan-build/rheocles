@@ -1,0 +1,41 @@
+---
+// The kicker-and-rule section rhythm shared with sonocles.com: a hairline
+// with a short signature-coloured segment, a mono kicker, a Fraunces heading.
+interface Props {
+	kicker: string;
+	id?: string;
+	wide?: boolean;
+}
+const { kicker, id, wide = false } = Astro.props;
+---
+
+<section class:list={['section', 'wrap', { 'wrap--wide': wide }]} id={id}>
+	<p class="kicker">{kicker}</p>
+	<slot />
+</section>
+
+<style>
+	.section {
+		position: relative;
+		padding-top: 3.2rem;
+		margin-top: 3.2rem;
+		border-top: 1px solid var(--limestone-line);
+	}
+	.section::before {
+		content: '';
+		position: absolute;
+		top: -2px;
+		left: 0;
+		width: 60px;
+		height: 3px;
+		background: var(--aegean);
+	}
+	.section :global(h2) {
+		font-size: clamp(1.9rem, 4.2vw, 2.7rem);
+		margin-bottom: 1.1rem;
+	}
+	.section :global(.lede) {
+		font-size: 1.08rem;
+		max-width: 36rem;
+	}
+</style>

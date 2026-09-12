@@ -1,0 +1,55 @@
+---
+// Where an illustration will go. The prompt for each plate is written down in
+// site/ART.md; nothing is generated until Len approves the run. Until then
+// this is a flat shape in the plate's proportions, so the page's rhythm is the
+// real one and the copy around it can be judged.
+import Mark from './Mark.astro';
+interface Props {
+	name: string;
+	ratio?: string; // CSS aspect-ratio
+	caption?: string;
+	class?: string;
+}
+const { name, ratio = '3 / 2', caption, class: cls } = Astro.props;
+---
+
+<figure class:list={['plate', cls]}>
+	<div class="plate__shape" style={`aspect-ratio: ${ratio}`} role="img" aria-label={`Illustration to come: ${name}`}>
+		<Mark size={40} class="plate__mark" />
+		<span class="plate__name">plate · {name}</span>
+	</div>
+	{caption && <figcaption class="plate__caption" set:html={caption} />}
+</figure>
+
+<style>
+	.plate {
+		margin: 2rem 0 0;
+	}
+	.plate__shape {
+		width: 100%;
+		max-width: 100%;
+		display: grid;
+		place-content: center;
+		justify-items: center;
+		gap: 0.8rem;
+		background: var(--limestone-deep);
+		border-radius: 12px;
+		color: var(--aegean-soft);
+	}
+	.plate__name {
+		font-family: var(--mono);
+		font-size: 0.68rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--script);
+	}
+	.plate__caption {
+		margin-top: 0.9rem;
+		font-size: 0.9rem;
+		color: var(--ink-soft);
+	}
+	.plate__caption :global(strong) {
+		color: var(--ink);
+		font-weight: 600;
+	}
+</style>

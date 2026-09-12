@@ -7,7 +7,7 @@ const inDocs = path === '/docs' || path.startsWith('/docs/');
 ---
 
 <header class="header">
-	<div class="wrap wrap--wide header__row">
+	<div class:list={['wrap', 'header__row', { 'wrap--wide': inDocs }]}>
 		<a href="/" class="brand" aria-label="Rheocles home">
 			<Mark class="brand__mark" size={26} />
 			<span class="brand__name">Rheocles</span>

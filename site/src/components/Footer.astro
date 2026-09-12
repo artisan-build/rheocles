@@ -1,9 +1,11 @@
 ---
 import Meander from './Meander.astro';
+const path = Astro.url.pathname;
+const inDocs = path === '/docs' || path.startsWith('/docs/');
 ---
 
 <footer class="footer">
-	<div class="wrap wrap--wide">
+	<div class:list={['wrap', { 'wrap--wide': inDocs }]}>
 		<Meander />
 		<p class="footer__line">
 			<strong>Rheocles</strong> — every stream, its own file, on one cue. Apple Silicon, macOS
