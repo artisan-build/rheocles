@@ -53,11 +53,26 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${BUILD}</string>
-    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <!-- Spec §4: macOS 15 for SCRecordingOutput and mature Core Audio taps. -->
+    <key>LSMinimumSystemVersion</key><string>15.0</string>
     <!-- Menu bar only: no Dock icon, no app switcher entry. -->
     <key>LSUIElement</key><true/>
+    <!--
+      The daemon, not the app, opens the devices — but it runs as a child of
+      this bundle, so this is the plist macOS reads when it decides whether
+      the process may ask. One usage string per capability the daemon records
+      (spec §4, "verify each, assume none"); each needs its entitlement too,
+      in Rheocles.entitlements, or the app never appears under Privacy at all.
+      Screen and window capture have no key: ScreenCaptureKit raises its own
+      prompt. NSAudioCaptureUsageDescription is the system-audio key — verified
+      against the key list in tccd on macOS 26.6.
+    -->
+    <key>NSCameraUsageDescription</key>
+    <string>Rheocles records each camera you arm to its own file.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Rheocles listens to your microphone so it can stream what you say to the tools that follow along.</string>
+    <string>Rheocles records each microphone you arm to its own file.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Rheocles records system audio to its own file when you arm it.</string>
 </dict>
 </plist>
 PLIST
