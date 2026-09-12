@@ -1,0 +1,93 @@
+---
+title: Troubleshooting
+description: The things that go wrong, what they look like, and what they mean. Most of them are macOS telling you something quietly.
+draft: true
+---
+import Callout from '../../components/Callout.astro';
+
+## Nothing prompts, and nothing records
+
+You arm a camera, macOS does not ask, the row goes ochre, and the file is
+empty. Open System Settings → Privacy & Security → Camera: Rheocles is not in
+the list.
+
+That is not "denied". An app that has never been able to ask does not appear
+at all, and there are two ways to be unable to ask under the hardened
+runtime: a missing `Info.plist` usage description, or a missing entitlement.
+Both are required. A release build from this repo has both; a local build
+signed differently may not.
+
+<Callout kind="trap" title="Changing the signing identity changes the TCC identity">
+macOS grants permissions to a signing identity, not to a bundle. A build
+signed with a different certificate is a different app to Privacy, and every
+grant vanishes on the first properly signed build. Local builds that touch a
+device should be signed with the real Developer ID from the start.
+</Callout>
+
+If you are building from source, `codesign --verify` will report the bundle
+valid even when `--deep` has skipped an executable in `Contents/Resources`.
+Only notarisation catches it. Sign inside out.
+
+## The port is in use
+
+The daemon comes up on 7447 and 7448. If another daemon is already there —
+the NativePHP app's, or one left over — the app uses it rather than starting
+another, which is the intended behaviour. If something *else* is on 7447,
+the app says so and will not start a daemon until the port is free. Sonocles
+is on 7357 and 7358 and does not collide.
+
+## `409` on create
+
+`POST /takes` was refused because the destination already exists, or a take
+is already recording. Rheocles never silently suffixes a path — a client
+that named a path meant it. Pass `overwrite: true` if you meant to replace
+it, or name it something else. One active take at a time in the MVP.
+
+## Create refused for disk space
+
+The pre-flight estimated the take's size from the armed set's measured
+bitrates and `expectedDuration` (default thirty minutes) and found the free
+space short. The error carries both numbers. Free space, shorten the
+estimate if you know the take is short, or disarm the stream that is costing
+the most.
+
+## The manifest says `incomplete`
+
+A write failed mid-take — the disk filled, a volume unmounted, a device
+disappeared — and Rheocles stopped cleanly rather than continuing with a
+lie. `reason` says what. Every file is playable up to the last fragment,
+and the manifest is truthful about what it has.
+
+## The manifest says `recording` and nothing is running
+
+The daemon died mid-take. The files are fragmented MOVs and play to their
+last fragment; the manifest has every stream's `started`, `timecode` and
+last known frame count. Nothing needs reconstructing — but nothing will mark
+the take `complete` either, and the state is the honest one.
+
+## Requests answer `401`
+
+The token does not match. It was rotated in the popover — rotation
+invalidates the old token for everyone — or the client is reading a stale
+copy. Re-read `~/Library/Application Support/Rheocles/token`.
+
+## My late-joined file lands before the take
+
+The stream joined after midnight into a take that started before it. Its
+time-of-day timecode is near zero, and the editor placed it twenty-four
+hours early. Every camera and field recorder shares this; there is no fix
+inside the file. Place it from the manifest's `started`, which is absolute
+UTC — see [Timecode and sync](/docs/timecode-and-sync#midnight).
+
+## Two files are a frame apart
+
+Look at `driftMs` for each stream in the manifest. A capture device's clock
+is not the host's, and a long take can drift by a frame or two; the number
+is measured per stream and is there to conform with. `null` means it was
+not measured — a stream that wrote no frames — and is not the same as `0`.
+
+## Six cameras are still armed
+
+The mark in the menu bar is drawn in outline and the popover rows are ochre.
+That is what armed looks like, and armed streams cost CPU and hold their
+devices until you disarm them. Nothing disarms on your behalf.
