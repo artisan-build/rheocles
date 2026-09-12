@@ -47,6 +47,9 @@ struct StreamList: View {
                 SectionHeading(kind.heading)
                 ForEach(members) { stream in
                     StreamRow(stream: stream, daemon: daemon)
+                    if daemon.previewing == stream.id {
+                        PreviewPane(daemon: daemon)
+                    }
                 }
                 if let nudge = nudge(for: kind) {
                     nudge
@@ -143,14 +146,27 @@ struct StreamRow: View {
                     .font(Type.body(11.5, shownArmed ? .semibold : .medium))
                     .foregroundStyle(shownArmed ? Brand.ochreInk : Brand.ink)
                     .lineLimit(1)
-                Text(detail)
-                    .font(Type.mono(9.5))
-                    .foregroundStyle(Brand.inkFaint)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 8) {
+                    Text(detail)
+                        .font(Type.mono(9.5))
+                        .foregroundStyle(Brand.inkFaint)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    // Levels flow only while armed; before the first
+                    // reading the meter is empty and the number is absent.
+                    if stream.armed, stream.capabilities.audio != nil {
+                        LevelMeter(db: daemon.levels[stream.id])
+                    }
+                }
             }
 
             Spacer(minLength: 8)
+
+            if stream.capabilities.video != nil {
+                PreviewButton(on: daemon.previewing == stream.id) {
+                    daemon.togglePreview(stream.id)
+                }
+            }
 
             ArmSwitch(on: shownArmed, pending: isPending) {
                 daemon.arm(stream.id, !shownArmed)
@@ -234,5 +250,89 @@ struct PermissionNudge: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
+    }
+}
+
+/// The eye: preview this stream, one at a time.
+struct PreviewButton: View {
+    let on: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: on ? "eye.fill" : "eye")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(on ? Brand.aegean : Brand.inkFaint)
+                .frame(width: 22, height: 17)
+                .background(RoundedRectangle(cornerRadius: 4).fill(on ? Brand.wash : .clear))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(on ? "Stop preview" : "Preview")
+    }
+}
+
+/// The preview frame, under the row it belongs to. 16:9 at the popover's
+/// width; a frame of another shape letterboxes on the code-block ground.
+struct PreviewPane: View {
+    let daemon: DaemonModel
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Brand.Block.panel)
+            if let frame = daemon.previewFrame {
+                Image(nsImage: frame)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else if let error = daemon.previewError {
+                Text(error)
+                    .font(Type.mono(9.5))
+                    .foregroundStyle(Brand.oxide)
+                    .multilineTextAlignment(.center)
+                    .padding(12)
+            } else {
+                Text("waiting for a frame")
+                    .font(Type.mono(9.5))
+                    .foregroundStyle(Brand.script)
+            }
+        }
+        .frame(width: 316, height: 178)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+    }
+}
+
+/// Twelve cells over the useful range, in the row.
+///
+/// Below −60 dBFS is silence for our purposes and clipping pins at the top,
+/// so the bar reads the way a console meter does. No reading yet is no
+/// cells and `··`, never an empty bar pretending to be silence.
+struct LevelMeter: View {
+    let db: Double?
+
+    private var filled: Int {
+        guard let db else { return 0 }
+        return max(0, min(12, Int(((db + 60) / 60) * 12)))
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            HStack(spacing: 1.5) {
+                ForEach(0..<12, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(colour(for: index))
+                        .frame(width: 4, height: 8)
+                }
+            }
+            Text(db.map { String(format: "%.0f", $0) } ?? "··")
+                .font(Type.mono(9))
+                .foregroundStyle(db == nil ? Brand.script : Brand.inkFaint)
+                .frame(width: 22, alignment: .trailing)
+        }
+    }
+
+    private func colour(for index: Int) -> Color {
+        guard index < filled else { return Brand.sink }
+        return index >= 11 ? Brand.oxide : Brand.ochre
     }
 }

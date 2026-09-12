@@ -174,6 +174,64 @@ enum Preview {
                             take: manifest(
                                 state: "incomplete", elapsed: 88, reason: "disk full"))))
             ),
+            (
+                "levels",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "microphone:scarlett", "microphone:mbp", "systemAudio:system",
+                            ]),
+                            permissions: granted,
+                            levels: ["microphone:scarlett": -18, "systemAudio:system": -2])))
+            ),
+            (
+                "preview",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx"]), permissions: granted,
+                            previewing: "camera:4kx", previewFrame: frame())))
+            ),
+            (
+                "preview-refused",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(), streams: streams(),
+                            permissions: granted, previewing: "display:56A96CFC",
+                            previewError:
+                                "GET /preview/display:56A96CFC → 404 not_found: no such route")))
+            ),
+            (
+                "recording-markers",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted,
+                            take: manifest(state: "recording", elapsed: 257, markers: 2),
+                            levels: ["microphone:scarlett": -24])))
+            ),
+            (
+                "settings",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(), streams: streams(),
+                            permissions: granted, showSettings: true)))
+            ),
+            (
+                "settings-token-shown",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(), streams: streams(),
+                            permissions: granted, showSettings: true, tokenShown: true)))
+            ),
             ("launching", AnyView(MenuBarView(daemon: .staged(.launching)))),
             (
                 "daemon-down",
@@ -188,7 +246,8 @@ enum Preview {
     /// `elapsed` seconds ago so the counter shows a real duration. `lateJoin`
     /// names the index of one stream that joined four minutes in.
     private static func manifest(
-        state: String, elapsed: Double, lateJoin: Int? = nil, reason: String? = nil
+        state: String, elapsed: Double, lateJoin: Int? = nil, reason: String? = nil,
+        markers: Int = 0
     ) -> Manifest {
         let iso = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
         let now = Date()
@@ -233,11 +292,32 @@ enum Preview {
               "version": "0.1.0",
               "machine": { "hostname": "lens-macbook-pro.local", "machineId": "CD3B7EE5" },
               "streams": [\(streams.joined(separator: ","))],
-              "markers": [],
+              "markers": [\((0..<markers).map { "{ \"t\": \(38.7 + Double($0) * 90), \"label\": \"marker \($0 + 1)\" }" }.joined(separator: ","))],
               "settings": { "codec": "hevc" }
             }
             """
         return try! Manifest.wireDecoder.decode(Manifest.self, from: Data(json.utf8))
+    }
+
+    /// A stand-in preview frame: no daemon is rendering, so a 16:9 field of
+    /// the fresco's colours says "an image goes here" without pretending
+    /// to be one.
+    private static func frame() -> NSImage {
+        let size = NSSize(width: 640, height: 360)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        let gradient = NSGradient(
+            colors: [NSColor(Brand.aegeanDeep), NSColor(Brand.aegeanSoft), NSColor(Brand.ochre)])
+        gradient?.draw(in: NSRect(origin: .zero, size: size), angle: 20)
+        let text = "preview · 3840×2160 · 30" as NSString
+        text.draw(
+            at: NSPoint(x: 18, y: 16),
+            withAttributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 18, weight: .medium),
+                .foregroundColor: NSColor(Brand.ground),
+            ])
+        image.unlockFocus()
+        return image
     }
 
     /// This Mac's streams as `rheocles-core --list-streams` reported them on

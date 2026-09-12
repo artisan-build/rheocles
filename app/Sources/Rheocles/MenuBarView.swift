@@ -30,6 +30,7 @@ struct MenuBarView: View {
         // The pulse is every three seconds; the list should be current the
         // moment it is looked at.
         .task { await daemon.check() }
+        .onDisappear { daemon.stopPreview() }
     }
 
     private var rule: some View {
@@ -60,6 +61,20 @@ struct MenuBarView: View {
             Spacer()
 
             StatePill(label: stateLabel, colour: stateColour)
+
+            Button {
+                daemon.showSettings.toggle()
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(daemon.showSettings ? Brand.aegean : Brand.inkFaint)
+                    .frame(width: 20, height: 20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(daemon.showSettings ? Brand.wash : .clear))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Settings")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
@@ -105,7 +120,11 @@ struct MenuBarView: View {
         switch daemon.status {
         case .running:
             VStack(spacing: 0) {
-                StreamList(daemon: daemon)
+                if daemon.showSettings {
+                    SettingsView(daemon: daemon)
+                } else {
+                    StreamList(daemon: daemon)
+                }
                 rule
                 TakeBar(daemon: daemon)
                 daemonStrip
@@ -208,7 +227,9 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 8) {
             // An arm call the daemon refused, in the daemon's words. Cleared
             // by the next call; the list itself is already re-read and true.
-            if let error = daemon.takeError ?? daemon.armError ?? daemon.streamsError {
+            if let error = daemon.takeError ?? daemon.markerError ?? daemon.armError
+                ?? daemon.streamsError
+            {
                 Text(error)
                     .font(Type.mono(9.5))
                     .foregroundStyle(Brand.oxide)
@@ -217,17 +238,9 @@ struct MenuBarView: View {
             }
 
             HStack(spacing: 8) {
-                Button {
-                    daemon.showWindows.toggle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Checkbox(on: daemon.showWindows)
-                        Text("Show windows")
-                            .font(Type.body(11))
-                            .foregroundStyle(Brand.inkSoft)
-                    }
-                }
-                .buttonStyle(.plain)
+                Text("http :\(String(daemon.configuration.port)) · loopback · bearer")
+                    .font(Type.mono(9))
+                    .foregroundStyle(Brand.script)
 
                 Spacer()
 
@@ -378,6 +391,47 @@ struct TakeBar: View {
     private var canRecord: Bool { !daemon.armedStreams.isEmpty && !daemon.takeBusy }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            controls
+            if recording { markers }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(recording ? Brand.oxide.opacity(0.08) : Brand.inset)
+    }
+
+    /// A marker is a label and the daemon's clock (spec §10). Empty label
+    /// → "marker n". Return in the field marks too.
+    private var markers: some View {
+        HStack(spacing: 8) {
+            if Preview.isRendering {
+                Text(daemon.markerLabel.isEmpty ? "marker label" : daemon.markerLabel)
+                    .font(Type.mono(10.5))
+                    .foregroundStyle(daemon.markerLabel.isEmpty ? Brand.script : Brand.ink)
+                    .modifier(FieldChrome())
+            } else {
+                TextField(
+                    text: $daemon.markerLabel,
+                    prompt: Text("marker label").foregroundStyle(Brand.script)
+                ) { EmptyView() }
+                .textFieldStyle(.plain)
+                .font(Type.mono(10.5))
+                .foregroundStyle(Brand.ink)
+                .onSubmit { daemon.mark() }
+                .modifier(FieldChrome())
+            }
+            PillButton("Mark", colour: Brand.aegean, filled: false, glyph: "flag.fill") {
+                daemon.mark()
+            }
+            Spacer(minLength: 0)
+            let count = take?.markers.count ?? 0
+            Text(count == 0 ? "no markers" : "\(count) marker\(count == 1 ? "" : "s")")
+                .font(Type.mono(9.5))
+                .foregroundStyle(count == 0 ? Brand.script : Brand.inkFaint)
+        }
+    }
+
+    private var controls: some View {
         HStack(spacing: 10) {
             if recording {
                 PillButton("Stop", colour: Brand.oxide, filled: true, glyph: "stop.fill") {
@@ -407,9 +461,6 @@ struct TakeBar: View {
             Spacer(minLength: 0)
         }
         .frame(height: 30)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(recording ? Brand.oxide.opacity(0.08) : Brand.inset)
     }
 
     /// The name for the next take. Empty means the daemon names it.
