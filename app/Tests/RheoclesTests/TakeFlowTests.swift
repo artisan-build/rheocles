@@ -48,6 +48,10 @@ struct TakeFlowTests {
         server.wsPort = StubDaemon.freePort()
         server.catalog = TwoStreams()
         server.sessionFactory = FakeFactory()
+        // The fake sessions deliver no frames, so a real writer would finish
+        // the take `incomplete`. This suite tests the app's take flow, not the
+        // writers (step 5) — record with a writer that completes on no frames.
+        server.writerFactory = NullWriterFactory()
         server.permissions = {
             Permissions(camera: .authorized, microphone: .authorized, screen: .authorized)
         }
