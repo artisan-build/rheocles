@@ -1,8 +1,10 @@
 ---
-// Docs shell: the sibling header, a sidebar in reading order, the article,
-// and a banner when the page is written ahead of the code (draft: true).
+// Docs shell: the sibling header, a sidebar in reading order, the article
+// with an on-this-page rail at wide widths, prev/next, and a banner when the
+// page is written ahead of the code (draft: true).
+import type { MarkdownHeading } from 'astro';
 import Base from './Base.astro';
-import { docsNav, docsHref } from '../lib/docs-nav';
+import { docsNav, docsHref, neighbours, staticDocs } from '../lib/docs-nav';
 
 interface Props {
 	id: string;
@@ -10,8 +12,12 @@ interface Props {
 	description: string;
 	draft?: boolean;
 	existing: Set<string>;
+	headings?: MarkdownHeading[];
 }
-const { id, title, description, draft = false, existing } = Astro.props;
+const { id, title, description, draft = false, headings = [] } = Astro.props;
+const existing = new Set([...Astro.props.existing, ...staticDocs]);
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+const { prev, next } = neighbours(id, existing);
 ---
 
 <Base title={`${title} — Rheocles docs`} description={description}>
@@ -52,18 +58,37 @@ const { id, title, description, draft = false, existing } = Astro.props;
 			<div class="prose">
 				<slot />
 			</div>
+			<nav class="pager" aria-label="Previous and next">
+				{prev ? <a class="pager__prev" href={docsHref(prev.id)}><span>← previous</span>{prev.label}</a> : <span />}
+				{next ? <a class="pager__next" href={docsHref(next.id)}><span>next →</span>{next.label}</a> : <span />}
+			</nav>
 		</article>
+		{
+			toc.length > 2 && (
+				<aside class="rail">
+					<p class="kicker">On this page</p>
+					<ul>
+						{toc.map((h) => (
+							<li class:list={{ deep: h.depth === 3 }}>
+								<a href={`#${h.slug}`}>{h.text}</a>
+							</li>
+						))}
+					</ul>
+				</aside>
+			)
+		}
 	</div>
 </Base>
 
 <style>
 	.docs {
 		display: grid;
-		grid-template-columns: 200px minmax(0, 1fr);
+		grid-template-columns: 200px minmax(0, 1fr) 180px;
 		gap: 3rem;
 		padding-block: 2.5rem 1rem;
 	}
-	.sidebar ul {
+	.sidebar ul,
+	.rail ul {
 		list-style: none;
 		margin: 0;
 		padding: 0;
@@ -76,11 +101,13 @@ const { id, title, description, draft = false, existing } = Astro.props;
 	.sidebar li.nested {
 		padding-left: 1rem;
 	}
-	.sidebar a {
+	.sidebar a,
+	.rail a {
 		color: var(--ink-soft);
 		text-decoration: none;
 	}
-	.sidebar a:hover {
+	.sidebar a:hover,
+	.rail a:hover {
 		color: var(--aegean);
 	}
 	.sidebar a[aria-current='page'] {
@@ -91,6 +118,21 @@ const { id, title, description, draft = false, existing } = Astro.props;
 	}
 	.sidebar .soon span::after {
 		content: ' ·';
+	}
+	.rail {
+		position: sticky;
+		top: 1.5rem;
+		align-self: start;
+	}
+	.rail ul {
+		font-size: 0.74rem;
+	}
+	.rail li {
+		margin: 0 0 0.5rem;
+		line-height: 1.35;
+	}
+	.rail li.deep {
+		padding-left: 0.8rem;
 	}
 	.article {
 		max-width: var(--page);
@@ -116,11 +158,16 @@ const { id, title, description, draft = false, existing } = Astro.props;
 	}
 	.prose :global(h2) {
 		font-size: 1.55rem;
-		margin: 2.4rem 0 0.8rem;
+		margin: 2.6rem 0 0.8rem;
 	}
 	.prose :global(h3) {
 		font-size: 1.15rem;
 		margin: 1.8rem 0 0.6rem;
+	}
+	.prose :global(h2 a),
+	.prose :global(h3 a) {
+		color: inherit;
+		text-decoration: none;
 	}
 	.prose :global(ul),
 	.prose :global(ol) {
@@ -129,7 +176,63 @@ const { id, title, description, draft = false, existing } = Astro.props;
 	.prose :global(li) {
 		margin-bottom: 0.35rem;
 	}
+	.prose :global(table) {
+		margin: 1.2rem 0;
+	}
+	.prose :global(td:first-child code),
+	.prose :global(th) {
+		white-space: nowrap;
+	}
+	.prose :global(blockquote) {
+		margin: 1.4rem 0;
+		padding-left: 1rem;
+		border-left: 3px solid var(--limestone-line);
+		color: var(--ink-soft);
+		font-family: var(--display);
+		font-variation-settings: 'SOFT' 30, 'WONK' 1;
+		font-size: 1.15rem;
+		line-height: 1.4;
+	}
+	.pager {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-top: 3.5rem;
+		padding-top: 1.4rem;
+		border-top: 1px solid var(--limestone-line);
+		font-weight: 500;
+	}
+	.pager a {
+		text-decoration: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+	.pager__next {
+		text-align: right;
+	}
+	.pager span {
+		font-family: var(--mono);
+		font-size: 0.68rem;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+	@media (max-width: 1100px) {
+		.docs {
+			grid-template-columns: 200px minmax(0, 1fr);
+		}
+		.rail {
+			display: none;
+		}
+	}
 	@media (max-width: 760px) {
+		/* a wide table scrolls inside its own box rather than widening the page */
+		.prose :global(table) {
+			display: block;
+			max-width: 100%;
+			overflow-x: auto;
+		}
 		.docs {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 1.5rem;

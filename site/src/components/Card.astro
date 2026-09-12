@@ -1,0 +1,67 @@
+---
+// A card: a title, a body, an optional link and a state colour along the
+// bottom — the same colour language as the app (aegean, ochre = armed,
+// oxide = recording, olive = complete).
+interface Props {
+	title: string;
+	href?: string;
+	tone?: 'aegean' | 'ochre' | 'oxide' | 'olive';
+	code?: string;
+}
+const { title, href, tone = 'aegean', code } = Astro.props;
+const Tag = href ? 'a' : 'div';
+---
+
+<Tag class:list={['card', `card--${tone}`]} href={href}>
+	<p class="card__title">
+		{code && <code class="card__code">{code}</code>}
+		{title}
+	</p>
+	<div class="card__body"><slot /></div>
+</Tag>
+
+<style>
+	.card {
+		display: block;
+		background: var(--limestone-deep);
+		border-radius: 12px;
+		padding: 1rem 1.15rem 0.4rem;
+		border-bottom: 3px solid var(--aegean);
+		color: inherit;
+		text-decoration: none;
+	}
+	.card--ochre {
+		border-bottom-color: var(--ochre);
+	}
+	.card--oxide {
+		border-bottom-color: var(--oxide);
+	}
+	.card--olive {
+		border-bottom-color: var(--olive);
+	}
+	a.card:hover .card__title {
+		color: var(--aegean);
+	}
+	.card__title {
+		font-weight: 600;
+		font-size: 0.98rem;
+		margin: 0 0 0.4rem;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+	.card__code {
+		font-size: 0.78rem;
+		color: var(--aegean);
+		background: transparent;
+		padding: 0;
+	}
+	.card__body {
+		font-size: 0.9rem;
+		color: var(--ink-soft);
+	}
+	.card__body :global(p) {
+		margin-bottom: 0.6rem;
+	}
+</style>
