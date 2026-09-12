@@ -117,12 +117,54 @@ record at the format the device is delivering when armed — `active` on the
 stream — and per-stream codec, resolution and rate are deliberately not
 exposed.
 
-<Callout kind="note" title="The HEVC tier is measured, not asserted">
-The bitrate at which HEVC is visually indistinguishable from ProRes at 1080p
-and 4K on a calibrated display is picked by measurement, and the method and
-the numbers are published in `docs/CAPTURE.md` when the measurement exists.
-Until then this page does not name a number.
+### The HEVC tier
+
+HEVC is the default because at the tier Rheocles uses it is visually
+indistinguishable from ProRes 422 on the hardest content it records. That is
+a measurement, not a claim; the method and every number are in
+[`docs/CAPTURE.md`](https://github.com/artisan-build/rheocles/blob/main/docs/CAPTURE.md).
+
+The tier is **0.15 bits per pixel per frame**, so it is independent of frame
+rate and resolution. What that comes to, and what the encoder actually
+produced at that tier on the measured source:
+
+| | nominal at 0.15 bpp | measured at 0.15 bpp |
+|---|---|---|
+| 1080p, 30 fps | 9.3 Mbps | 8.3 Mbps · SSIM 0.9956 · XPSNR 47.0 dB |
+| 1080p, 60 fps | 18.7 Mbps | |
+| 4K, 30 fps | 37.3 Mbps | 30.0 Mbps · SSIM 0.9977 · XPSNR 52.0 dB |
+| 4K, 60 fps | 74.6 Mbps | |
+
+**The method.** Two real captures, recorded by Rheocles itself as ProRes 422
+from a BenQ PD3220U at its native 3840×2160: a terminal scrolling colour-coded
+hex over a photographic wallpaper (continuous motion plus fine high-contrast
+text — harder than camera footage), and a static desktop with a browser full
+of JSON. Each was re-encoded with `hevc_videotoolbox` — the same VideoToolbox
+encoder `AVAssetWriter` uses — across a sweep from 0.04 to 0.30 bpp, and
+compared to the ProRes reference by XPSNR (perceptually weighted PSNR; ~45 dB
+is transparent) and SSIM (> 0.995 indistinguishable, > 0.997 excellent). The
+1080p rows are the same captures downscaled, not independently shot footage.
+
+**What it found.** 4K reaches transparency early — SSIM 0.997 / XPSNR 50 by
+0.12 bpp on the motion source — and the curves flatten above 0.15, where
+another 7 Mbps buys +0.0004 SSIM. 1080p wants slightly more per pixel and
+knees at about 0.15. A 100 % crop of the motion source at 0.10 bpp is
+indistinguishable from ProRes by eye. So 0.15 bpp is kept as the single
+default with headroom; 4K at 0.12 bpp (about 20 % smaller, still
+transparent) is a refinement the data would justify if file size ever
+matters.
+
+<Callout kind="note" title="Stated plainly">
+The source is display capture of screen content, not camera footage: the
+Elgato 4K X had no HDMI signal on the day. Screen text is a harder case for a
+codec than motion video, so the tier is conservative for camera streams,
+not optimistic. The objective metrics are proxies for "indistinguishable";
+the final eyeball on the calibrated display is Len's, and on the sample crop
+it agrees with them.
 </Callout>
+
+The disk pre-flight estimates from the same figures: HEVC at 0.15 bpp,
+ProRes 422 at about 2.4 bpp (1080p30 ≈ 147 Mbps).
 
 ### What the counters mean
 
