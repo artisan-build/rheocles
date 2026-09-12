@@ -109,21 +109,13 @@ Rheocles/                              ← output root, one field on GET /
 
 | kind | container | `codec` | carries its time as |
 |---|---|---|---|
-| camera, display, window | QuickTime `.mov`, fragmented | `hevc` (default) or `prores` — ProRes 422, one setting for the whole take | a `tmcd` track, time-of-day |
-| microphone, system audio | Broadcast Wave `.wav` | `pcm_s24le`, 48 kHz | `bext` `TimeReference`, samples since midnight |
+| camera, display, window | QuickTime `.mov`, a fragment every second | `hevc` (default) or `prores` — ProRes 422, one setting for the whole take | a `tmcd` track, local time of day, one sample per frame |
+| microphone, system audio | Broadcast Wave `.wav`, sizes patched every second | `pcm_s24le`, 48 kHz | `bext` `TimeReference`, samples since local midnight |
 
 Video files carry no audio track; audio is always its own file. Streams
 record at the format the device is delivering when armed — `active` on the
 stream — and per-stream codec, resolution and rate are deliberately not
 exposed.
-
-<Callout kind="note" title="Until step 5, the files are the shape and not yet the frames">
-Create, start and stop are real: the take folder, the manifest, every state
-change, the pre-flight, the 409s. The writers land in step 5, so
-`framesWritten` reads `0` in every manifest until then, and a stopped take
-has files with no frames in them. This page says so because the manifest
-does.
-</Callout>
 
 <Callout kind="note" title="The HEVC tier is measured, not asserted">
 The bitrate at which HEVC is visually indistinguishable from ProRes at 1080p
@@ -132,13 +124,35 @@ the numbers are published in `docs/CAPTURE.md` when the measurement exists.
 Until then this page does not name a number.
 </Callout>
 
+### What the counters mean
+
+`framesWritten` is frames for video and samples for audio, actually written.
+`framesDropped` (video, absent when zero) counts frames the encoder was not
+ready for under load — the timeline stays correct, the frame is simply not
+there. `drift` is on [Timecode and sync](/docs/timecode-and-sync#drift).
+
+A screen delivers a frame only when its content changes, so a prompter
+holding a page would otherwise produce a file with a hole in it. A ~1 fps
+keepalive re-feeds the last frame, so a static screen still spans the take
+and still flushes fragments.
+
+A stream that delivered **no frames at all** while armed — a camera with the
+lid closed — writes no file, and the take finishes `incomplete` with that
+stream's `error` reading `no frames arrived`. Its `framesSeen` in
+`GET /streams` sat at `0` the whole time it was armed, which is the signal to
+watch before the cue.
+
 ### Crash safety
 
-Every MOV is written with a movie fragment interval, so a process that dies
-mid-take leaves a file that plays up to the last fragment. The manifest is
+Every MOV is written with a one-second movie fragment interval, so a process
+that dies mid-take leaves a file that plays up to the last fragment; every
+WAV has its RIFF sizes patched every second, so it reads. The manifest is
 rewritten atomically — temp file, then rename — on every state change, so it
-is never half-written. A dead process leaves playable files and a truthful
-manifest; that is a design constraint, not a recovery feature.
+is never half-written. This is proven, not hoped: `kill -9` mid-take
+recovers every MOV, leaves every WAV readable, and the manifest says
+`recording` because that is the truth. A dead process leaves playable files
+and a truthful manifest; that is a design constraint, not a recovery
+feature.
 
 Broadcast Wave stops at 4 GB. At 48 kHz, 24-bit, that is 144 kB a second per
 channel: about 8.3 hours mono, about 4.1 hours stereo. It is the format's

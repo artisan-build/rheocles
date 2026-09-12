@@ -1,7 +1,6 @@
 ---
 title: Timecode and sync
 description: Every file carries its own time — a time-of-day timecode track in video, a Broadcast Wave time reference in audio — so an editor lines them up without the manifest, and the manifest agrees with the files.
-draft: true
 ---
 import Callout from '../../components/Callout.astro';
 import Cards from '../../components/Cards.astro';
@@ -16,18 +15,25 @@ with each other because they agree with the clock.
 
 | file | carries | as |
 |---|---|---|
-| `.mov` (camera, display, window) | a `tmcd` timecode track | time-of-day at the first written frame, at the stream's frame rate |
-| `.wav` (microphone, system audio) | a `bext` chunk | `TimeReference`: samples since midnight, at 48 kHz |
+| `.mov` (camera, display, window) | a `tmcd` timecode track, one sample per frame | **local** time of day at the first written frame, rounded to the nearest frame, counting at the integer frame rate |
+| `.wav` (microphone, system audio) | a `bext` chunk | `TimeReference`: samples since **local** midnight at the first sample, at 48 kHz |
+
+**Local, not UTC.** Timecode is the machine's own time of day — the
+production convention, and what a camera on the same desk would stamp. The
+manifest's `created`, `started` and `stopped` are UTC; the manifest carries
+the `timecode` string and the audio `timeReference` per stream as well, so
+both readings are in one place.
 
 Both are stamped from the same host clock at the same moment for a stream
 that joins on the cue, and from that clock at the later moment for a stream
-that joins late. A stream that started at `14:06:17` carries `14:06:17:00` in
-its timecode track and `2 437 296 000` in its `TimeReference` (50 777 s
-× 48 000), and an editor reading either lands it in the same place.
+that joins late. A stream that started at `14:06:17` local carries
+`14:06:17:00` in its timecode track and `2 437 296 000` in its
+`TimeReference` (50 777 s × 48 000), and an editor reading either lands it
+in the same place.
 
-The manifest records the same instant as an absolute UTC `started`, and the
-`timecode` string as stamped, per stream. The manifest is never the only copy
-of the time; it is the copy that is easiest to read.
+Fractional rates count in the integer rate — 59.94 and 60.00024 both count
+in 60 — and the file's own frame timing carries the exact rate, so the
+timecode names the frame and the container places it.
 
 ## Why time-of-day
 
@@ -60,10 +66,12 @@ time, so the editor does the placing.
 
 ## Drift
 
-Drift is measured, not assumed. For each stream Rheocles compares frames
-written × frame duration against host elapsed and reports the difference in
-seconds — in `drift` events while recording and in the manifest's `drift`
-afterwards, the way OBS reports timecode drift.
+Drift is measured, not assumed. For a camera or a microphone, Rheocles
+compares delivered frames × the nominal frame duration (samples ÷ rate for
+audio) against the timeline they span and reports the difference in seconds
+as `drift` — ~0 for a camera running at its rate, negative for a capture
+card fed a slower signal than it advertises — in the manifest, and in
+`drift` events while recording once step 6 lands.
 
 A capture device's clock is not the host's clock, and a long take can drift
 by a frame or two. Whether a client does anything with the number is the
@@ -71,11 +79,16 @@ client's business; it costs nothing to emit, and an editor that wants to
 conform a long file has the figure to do it with.
 
 <Callout kind="note" title="Absent, never zero">
-A stream whose drift has not been measured — one that has written no frames
-yet — has no `drift` field at all. A `0` means measured and found to be
-zero. The two are not the same thing and the manifest does not pretend they
-are. Until the writers land in step 5, `drift` is absent everywhere.
+`drift` is **absent for displays and windows**: a screen delivers a frame
+only when its content changes, so its cadence is the content's and drift is
+meaningless. It is absent for any stream that has not been measured. A `0`
+means measured and found to be zero. The manifest does not pretend the two
+are the same.
 </Callout>
+
+`framesDropped`, on video, is a different thing: frames the encoder was not
+ready for under load. The timeline stays correct — the frame is missing, not
+shifted — and the field is absent when it is zero.
 
 ## Midnight
 
@@ -90,7 +103,8 @@ A stream that **joins after midnight into a take that started before** gets a
 time-of-day stamp near zero — `00:03:10:00` — and an editor syncing by
 timecode will place it twenty-four hours before the rest of the take rather
 than three minutes after. Broadcast Wave's `TimeReference` wraps the same
-way. There is no clean fix inside the files.
+way, at the machine's local midnight. There is no clean fix inside the
+files.
 
 <Callout kind="trap" title="Across midnight, the manifest is the authority">
 The manifest records absolute UTC `started` for every stream and is
