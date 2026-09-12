@@ -31,6 +31,17 @@ enum MenuBarIcon {
         case recording(lateJoined: Set<Int>)
 
         static let recording = State.recording(lateJoined: [])
+
+        /// What the icon says, from what the daemon says. The icon speaks
+        /// for the daemon, not the app: recording is a take the daemon
+        /// reports as recording, armed is any stream it reports armed, and
+        /// a daemon that is launching or down shows idle — there is nothing
+        /// live to show.
+        static func derive(status: DaemonModel.Status, take: Manifest?, armedCount: Int) -> State {
+            guard status == .running else { return .idle }
+            if let take, take.isRecording { return .recording(lateJoined: take.lateJoined) }
+            return armedCount > 0 ? .armed : .idle
+        }
     }
 
     private static var cache: [State: NSImage] = [:]

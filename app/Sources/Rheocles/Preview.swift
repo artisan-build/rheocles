@@ -119,6 +119,61 @@ enum Preview {
                             armError: "POST /streams/camera:4kx/arm → 404 not_found: no such route")
                     ))
             ),
+            (
+                "armed-named",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, takeName: "ep12")))
+            ),
+            (
+                "recording",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "display:56A96CFC", "camera:4kx", "microphone:scarlett",
+                                "systemAudio:system",
+                            ]),
+                            permissions: granted, take: manifest(state: "recording", elapsed: 257)))
+                )
+            ),
+            (
+                "recording-late-join",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "display:56A96CFC", "camera:4kx", "microphone:scarlett",
+                                "systemAudio:system",
+                            ]),
+                            permissions: granted,
+                            take: manifest(state: "recording", elapsed: 257, lateJoin: 2))))
+            ),
+            (
+                "take-complete",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, take: manifest(state: "complete", elapsed: 743))))
+            ),
+            (
+                "take-incomplete",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted,
+                            take: manifest(
+                                state: "incomplete", elapsed: 88, reason: "disk full"))))
+            ),
             ("launching", AnyView(MenuBarView(daemon: .staged(.launching)))),
             (
                 "daemon-down",
@@ -127,6 +182,43 @@ enum Preview {
                         daemon: .staged(.down("rheocles-core exited with status 1"))))
             ),
         ]
+    }
+
+    /// A manifest in the docs' shape (takes-and-the-manifest), with the cue
+    /// `elapsed` seconds ago so the counter shows a real duration. `lateJoin`
+    /// names the index of one stream that joined four minutes in.
+    private static func manifest(
+        state: String, elapsed: Double, lateJoin: Int? = nil, reason: String? = nil
+    ) -> Manifest {
+        let iso = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+        let now = Date()
+        let cue = now.addingTimeInterval(-elapsed)
+        let over = state == "complete" || state == "incomplete"
+        let ids = [
+            ("display:56A96CFC", "display", "BenQ PD3220U", "ep12/display-benq.mov"),
+            ("camera:4kx", "camera", "Elgato 4K X", "ep12/cam-elgato-4k-x.mov"),
+            ("microphone:scarlett", "microphone", "Scarlett 2i2 USB", "ep12/mic-scarlett.wav"),
+            ("systemAudio:system", "systemAudio", "System audio", "ep12/system-audio.wav"),
+        ]
+        let streams = ids.enumerated().map { index, s in
+            let started = index == lateJoin ? cue.addingTimeInterval(240) : cue
+            return """
+                { "id": "\(s.0)", "kind": "\(s.1)", "name": "\(s.2)", "path": "\(s.3)",
+                  "started": "\(iso.format(started))"\(over ? ", \"stopped\": \"\(iso.format(now))\"" : ""),
+                  "timecode": "14:02:17:00", "frames": 7710, "driftMs": null }
+                """
+        }
+        let json = """
+            {
+              "take": { "id": "tk_7f3a", "name": "ep12", "state": "\(state)",
+                        "created": "\(iso.format(cue.addingTimeInterval(-8)))",
+                        "started": "\(iso.format(cue))"\(over ? ", \"stopped\": \"\(iso.format(now))\"" : "")
+                        \(reason.map { ", \"reason\": \"\($0)\"" } ?? "") },
+              "streams": [\(streams.joined(separator: ","))],
+              "markers": []
+            }
+            """
+        return try! Manifest.decoder.decode(Manifest.self, from: Data(json.utf8))
     }
 
     /// This Mac's streams as `rheocles-core --list-streams` reported them on

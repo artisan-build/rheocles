@@ -14,7 +14,7 @@ import SwiftUI
 /// so the popover and the site open the same way. Dark is for the daemon's
 /// data strip only, the way the site's code blocks are dark.
 struct MenuBarView: View {
-    let daemon: DaemonModel
+    @Bindable var daemon: DaemonModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -40,9 +40,13 @@ struct MenuBarView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 9) {
-            RheoclesMark(streams: armedCount > 0 ? .outline : .solid, weight: 3.4)
-                .foregroundStyle(markColour)
-                .frame(width: 20, height: 20)
+            RheoclesMark(
+                streams: armedCount > 0 && !recording ? .outline : .solid,
+                lateJoined: recording ? daemon.take?.lateJoined ?? [] : [],
+                cueDot: recording, weight: 3.4
+            )
+            .foregroundStyle(markColour)
+            .frame(width: 20, height: 20)
 
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text("Rheocles")
@@ -65,9 +69,13 @@ struct MenuBarView: View {
         daemon.status == .running ? daemon.armedStreams.count : 0
     }
 
+    private var recording: Bool {
+        daemon.status == .running && daemon.take?.isRecording == true
+    }
+
     private var markColour: Color {
         switch daemon.status {
-        case .running: armedCount > 0 ? Brand.ochre : Brand.aegean
+        case .running: recording ? Brand.oxide : armedCount > 0 ? Brand.ochre : Brand.aegean
         case .launching: Brand.aegean.opacity(0.5)
         case .down: Brand.script
         }
@@ -75,15 +83,17 @@ struct MenuBarView: View {
 
     private var stateLabel: String {
         switch daemon.status {
-        case .running: armedCount > 0 ? "Armed · \(armedCount)" : "Idle"
-        case .launching: "Launching"
-        case .down: "Down"
+        case .running:
+            if recording { return "Recording" }
+            return armedCount > 0 ? "Armed · \(armedCount)" : "Idle"
+        case .launching: return "Launching"
+        case .down: return "Down"
         }
     }
 
     private var stateColour: Color {
         switch daemon.status {
-        case .running: armedCount > 0 ? Brand.ochreInk : Brand.script
+        case .running: recording ? Brand.oxide : armedCount > 0 ? Brand.ochreInk : Brand.script
         case .launching: Brand.aegean
         case .down: Brand.oxide
         }
@@ -96,6 +106,8 @@ struct MenuBarView: View {
         case .running:
             VStack(spacing: 0) {
                 StreamList(daemon: daemon)
+                rule
+                TakeBar(daemon: daemon)
                 daemonStrip
             }
         case .launching:
@@ -196,7 +208,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 8) {
             // An arm call the daemon refused, in the daemon's words. Cleared
             // by the next call; the list itself is already re-read and true.
-            if let error = daemon.armError ?? daemon.streamsError {
+            if let error = daemon.takeError ?? daemon.armError ?? daemon.streamsError {
                 Text(error)
                     .font(Type.mono(9.5))
                     .foregroundStyle(Brand.oxide)
@@ -254,26 +266,36 @@ struct PillButton: View {
     let label: String
     let colour: Color
     let filled: Bool
+    var glyph: String?
     let action: () -> Void
 
-    init(_ label: String, colour: Color, filled: Bool, action: @escaping () -> Void) {
+    init(
+        _ label: String, colour: Color, filled: Bool, glyph: String? = nil,
+        action: @escaping () -> Void
+    ) {
         self.label = label
         self.colour = colour
         self.filled = filled
+        self.glyph = glyph
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
-            Text(label)
-                .font(Type.body(11, .semibold))
-                .foregroundStyle(filled ? Brand.ground : colour)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule().fill(filled ? colour : .clear)
-                )
-                .overlay(Capsule().strokeBorder(colour, lineWidth: filled ? 0 : 1.2))
+            HStack(spacing: 5) {
+                if let glyph {
+                    Image(systemName: glyph).font(.system(size: 7, weight: .bold))
+                }
+                Text(label)
+            }
+            .font(Type.body(11, .semibold))
+            .foregroundStyle(filled ? Brand.ground : colour)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(filled ? colour : .clear)
+            )
+            .overlay(Capsule().strokeBorder(colour, lineWidth: filled ? 0 : 1.2))
         }
         .buttonStyle(.plain)
     }
@@ -338,5 +360,127 @@ struct Checkbox: View {
             }
         }
         .frame(width: 13, height: 13)
+    }
+}
+
+/// Record or Stop, the take's name, and the time since the cue.
+///
+/// One button (spec §12). Record is `POST /record` — create and start in
+/// one — and is only offered when something is armed, because a take with
+/// no streams is a folder with a manifest in it. While recording the bar
+/// turns oxide and counts; afterwards it says what the take became, in
+/// olive if complete and oxide with the reason if not.
+struct TakeBar: View {
+    @Bindable var daemon: DaemonModel
+
+    private var take: Manifest? { daemon.take }
+    private var recording: Bool { take?.isRecording == true }
+    private var canRecord: Bool { !daemon.armedStreams.isEmpty && !daemon.takeBusy }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if recording {
+                PillButton("Stop", colour: Brand.oxide, filled: true, glyph: "stop.fill") {
+                    daemon.stop()
+                }
+                .disabled(daemon.takeBusy)
+                live
+            } else {
+                PillButton(
+                    "Record", colour: canRecord ? Brand.oxide : Brand.script,
+                    filled: canRecord, glyph: "circle.fill"
+                ) {
+                    daemon.record()
+                }
+                .disabled(!canRecord)
+                if daemon.armedStreams.isEmpty {
+                    Text(take.map { _ in "" } ?? "Arm a stream to record.")
+                        .font(Type.body(10.5))
+                        .foregroundStyle(Brand.script)
+                }
+                if let take, take.isOver {
+                    finished(take)
+                } else if !daemon.armedStreams.isEmpty {
+                    nameField
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(height: 30)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(recording ? Brand.oxide.opacity(0.08) : Brand.inset)
+    }
+
+    /// The name for the next take. Empty means the daemon names it.
+    ///
+    /// An NSTextField underneath, so `--render-preview` cannot draw it and
+    /// shows a drawn stand-in instead; on screen it is a real field.
+    @ViewBuilder private var nameField: some View {
+        if Preview.isRendering {
+            Text(daemon.takeName.isEmpty ? "take name" : daemon.takeName)
+                .font(Type.mono(10.5))
+                .foregroundStyle(daemon.takeName.isEmpty ? Brand.script : Brand.ink)
+                .modifier(FieldChrome())
+        } else {
+            TextField(
+                text: $daemon.takeName, prompt: Text("take name").foregroundStyle(Brand.script)
+            ) { EmptyView() }
+            .textFieldStyle(.plain)
+            .font(Type.mono(10.5))
+            .foregroundStyle(Brand.ink)
+            .onSubmit { if canRecord { daemon.record() } }
+            .modifier(FieldChrome())
+        }
+    }
+
+    private var live: some View {
+        HStack(spacing: 8) {
+            Text(take?.take.name ?? "··")
+                .font(Type.body(11.5, .semibold))
+                .foregroundStyle(Brand.ink)
+                .lineLimit(1)
+            Text(take?.elapsed(at: daemon.now)?.clock ?? "··:··")
+                .font(Type.mono(12, .medium))
+                .foregroundStyle(Brand.oxide)
+                .monospacedDigit()
+            Text("\(take?.writing.count ?? 0) writing")
+                .font(Type.mono(9.5))
+                .foregroundStyle(Brand.inkFaint)
+        }
+    }
+
+    private func finished(_ take: Manifest) -> some View {
+        let complete = take.take.state == "complete"
+        let tone = complete ? Brand.olive : Brand.oxide
+        // One Text, so it truncates as one line rather than word by word.
+        var line =
+            Text(take.take.name ?? take.take.id).foregroundColor(Brand.inkSoft) + Text(" · ")
+            + Text(take.take.state ?? "··").foregroundColor(tone)
+        if let elapsed = take.elapsed(at: daemon.now) {
+            line = line + Text(" · \(elapsed.clock)")
+        }
+        line = line + Text(" · \(take.streams.count) files")
+        if let reason = take.take.reason {
+            line = line + Text(" — \(reason)").foregroundColor(Brand.oxide)
+        }
+        return HStack(spacing: 6) {
+            Circle().fill(tone).frame(width: 5, height: 5)
+            line
+                .font(Type.mono(9.5))
+                .foregroundStyle(Brand.inkFaint)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+struct FieldChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Brand.ground))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Brand.line, lineWidth: 1))
     }
 }

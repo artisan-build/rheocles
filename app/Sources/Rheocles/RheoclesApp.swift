@@ -27,10 +27,10 @@ struct RheoclesApp: App {
         .menuBarExtraStyle(.window)
     }
 
-    /// Recording arrives with the takes (task 3). Armed is any stream the
-    /// daemon reports armed — the icon speaks for the daemon, not the app.
+    /// The icon speaks for the daemon, not the app: recording is a take the
+    /// daemon says is recording, armed is any stream it says is armed.
     private var iconState: MenuBarIcon.State {
-        daemon.status == .running && !daemon.armedStreams.isEmpty ? .armed : .idle
+        .derive(status: daemon.status, take: daemon.take, armedCount: daemon.armedStreams.count)
     }
 }
 
