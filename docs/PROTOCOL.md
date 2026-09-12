@@ -4,8 +4,9 @@ Every command is reachable over both transports, and every event reaches
 both. One command table, two encoders: this document describes the table
 once and the two encodings once.
 
-**Status:** current with the code through task 4 step 7 — everything below is
-live. Takes record real files (HEVC or ProRes MOV with a time-of-day `tmcd`
+**Status:** current with the code through task 4 step 8 — everything below is
+live, and a contract test in CI validates every live response against
+`openapi.yaml` on each push. Takes record real files (HEVC or ProRes MOV with a time-of-day `tmcd`
 track and 1 s fragments, Broadcast Wave audio with a `bext` `TimeReference`);
 join/leave/markers, live `levels`, `drift`, `stalled`, `settings`,
 `token/rotate` and on-demand `preview` are all in. Sections marked *planned* describe what the next steps add and are
@@ -341,8 +342,14 @@ PATCH /settings { "outputRoot": "/Volumes/SSD/Takes" } → the full settings
 
 `outputRoot` must be an absolute path, and it **cannot move while a take is
 active** (`created` or `recording`) — its files are already reserved beneath
-the old root — so that `PATCH` is `409`. `codec` is `hevc` or `prores`. Every
-change emits a `settings` event. `GET /` reports the same output root.
+the old root — so that `PATCH` is `409`. `codec` is `hevc` or `prores` and is
+the **default codec for new takes**: a take with no `codec` in its body
+records in `settings.codec` (not a hardcoded HEVC). Every change emits a
+`settings` event. `GET /` reports the same output root.
+
+Settings persist across launches. `rheocles-core --output-root DIR` is
+authoritative when given — it overrides and re-persists the stored root —
+otherwise the stored root (or `~/Movies/Rheocles` on first run) applies.
 
 ### Token rotation
 

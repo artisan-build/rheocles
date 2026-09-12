@@ -118,7 +118,8 @@ public final class HTTPServer: Transport, @unchecked Sendable {
         Task {
             let response = await dispatcher.dispatch(request)
             self.respond(
-                conn, status: response.status, body: response.body, contentType: response.contentType)
+                conn, status: response.status, body: response.body,
+                contentType: response.contentType)
         }
     }
 

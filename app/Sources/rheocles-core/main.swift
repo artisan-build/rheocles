@@ -45,6 +45,10 @@ if let file = opt("--token-file") {
 let server: Server
 do {
     server = try Server(configuration: configuration)
+    // An explicit --output-root is authoritative: it overrides (and persists
+    // to) settings.json, rather than being silently ignored when a previous
+    // run left an outputRoot behind.
+    if let root = opt("--output-root") { server.settings.update(outputRoot: root) }
     try server.start()
 } catch {
     FileHandle.standardError.write(Data("rheocles-core: \(error)\n".utf8))

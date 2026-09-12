@@ -60,6 +60,7 @@ public actor TakeEngine {
     private let registry: Registry
     private let rootProvider: @Sendable () -> URL
     private var root: URL { rootProvider() }
+    private let defaultCodec: @Sendable () -> Manifest.Codec
     private let writerFactory: any WriterFactory
     private let machine: Manifest.Machine
     private let freeBytes: @Sendable (URL) -> Int64?
@@ -80,12 +81,14 @@ public actor TakeEngine {
         registry: Registry, outputRoot: @escaping @Sendable () -> URL,
         writerFactory: any WriterFactory,
         machine: Manifest.Machine,
+        defaultCodec: @escaping @Sendable () -> Manifest.Codec = { .hevc },
         freeBytes: @escaping @Sendable (URL) -> Int64? = { Discovery.freeBytes(at: $0) },
         onChange: @escaping @Sendable (Manifest) -> Void = { _ in },
         onEvent: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.registry = registry
         self.rootProvider = outputRoot
+        self.defaultCodec = defaultCodec
         self.writerFactory = writerFactory
         self.machine = machine
         self.freeBytes = freeBytes
@@ -194,7 +197,9 @@ public actor TakeEngine {
         }
 
         let files = try Self.files(for: armed, requested: request.files)
-        let codec = request.codec ?? .hevc
+        // The client can pick a codec per take; otherwise the daemon's
+        // default (settings.codec) applies — not a hardcoded HEVC.
+        let codec = request.codec ?? defaultCodec()
         let expected = request.expectedDuration ?? Self.defaultExpectedDuration
         var warnings: [String] = []
 

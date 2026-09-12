@@ -80,6 +80,7 @@ public final class Server: Sendable {
             machine: .init(
                 hostname: ProcessInfo.processInfo.hostName, machineId: Discovery.machineIdentifier()
             ),
+            defaultCodec: { settings.codec },
             freeBytes: configuration.freeBytes
         ) { manifest in
             let event = Event.take(manifest)
