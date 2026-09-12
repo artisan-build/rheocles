@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   decodeEvent, reduce, initial, setStreams, headline, sections, summary, detail, nudge, writingIds, bytes, abbreviate,
-  elapsed, clock, lateJoined, finishedLine, isOver,
+  elapsed, clock, lateJoined, finishedLine, isOver, meterCells, maskToken,
 } from '../../public/js/state.js'
 
 /* The browser-side state, without a browser: what the events and the pulse
@@ -32,7 +32,7 @@ describe('events', () => {
   it('keeps the manifest from a take event, ignores the rest', () => {
     const s = reduce(initial(), { event: 'take', take: { id: 't', state: 'recording', streams: [] } })
     expect(s.take.state).toBe('recording')
-    expect(reduce(s, { event: 'levels', levels: {} })).toBe(s)
+    expect(reduce(s, { event: 'drift', drift: {} })).toBe(s)
   })
 })
 
@@ -144,5 +144,30 @@ describe('takes', () => {
     expect(finishedLine(bad, now).reason).toContain('no frames')
     expect(isOver(done)).toBe(true)
     expect(isOver(take)).toBe(false)
+  })
+})
+
+describe('levels, settings and the pairing code', () => {
+  it('keeps the latest level per stream from levels events', () => {
+    let s = reduce(initial(), { event: 'levels', take: 't', streams: [{ id: 'a', levelDb: -18.3, framesWritten: 10 }, { id: 'v', framesWritten: 5 }] })
+    expect(s.levels).toEqual({ a: -18.3 })
+    s = reduce(s, { event: 'levels', take: 't', streams: [{ id: 'a', levelDb: -6 }] })
+    expect(s.levels.a).toBe(-6)
+  })
+  it('fills the meter over the useful range', () => {
+    expect(meterCells(null)).toBe(0)
+    expect(meterCells(-120)).toBe(0)
+    expect(meterCells(-60)).toBe(0)
+    expect(meterCells(-30)).toBe(6)
+    expect(meterCells(0)).toBe(12)
+    expect(meterCells(3)).toBe(12)
+  })
+  it('takes settings from the event', () => {
+    expect(reduce(initial(), { event: 'settings', settings: { outputRoot: '/x', codec: 'prores' } }).settings).toEqual({ outputRoot: '/x', codec: 'prores' })
+  })
+  it('masks the token to its ends', () => {
+    expect(maskToken('3f9a1c77e2b04d5f8a6c1e2d9b7f4a0c')).toBe('3f9a1c…7f4a0c')
+    expect(maskToken('short')).toBe('short')
+    expect(maskToken(null)).toBeNull()
   })
 })

@@ -99,6 +99,63 @@ final class Client
         return $this->post("/takes/$takeId/markers", ['label' => $label]);
     }
 
+    /** `GET /settings` — the daemon's output root and default codec. */
+    public function settings(): array
+    {
+        return $this->get('/settings');
+    }
+
+    /** `PATCH /settings { outputRoot?, codec? }` → the full settings. */
+    public function updateSettings(array $changes): array
+    {
+        return $this->send('PATCH', '/settings', fn (PendingRequest $r) => $r->patch($this->base().'/settings', $changes), timeout: 10);
+    }
+
+    /**
+     * `POST /token/rotate` → `{ token }`. The old token is dead for every
+     * request after the answer — including this client's, so the new one
+     * goes straight into it; every other client reads the file again.
+     */
+    public function rotateToken(): string
+    {
+        $answer = $this->post('/token/rotate', (object) []);
+        $token = (string) ($answer['token'] ?? '');
+        if ($token === '') {
+            throw new Malformed('POST /token/rotate: no token in the answer');
+        }
+        $this->token = $token;
+
+        return $token;
+    }
+
+    /**
+     * `GET /preview/{stream}` — one frame, on demand: JPEG bytes for video,
+     * `{ levelDb }` for audio. Raw, with its content type; errors still come
+     * in the protocol's shape and are thrown as such.
+     */
+    public function preview(string $id): array
+    {
+        $request = Http::timeout(5)->connectTimeout(1);
+        if ($this->token !== null) {
+            $request = $request->withToken($this->token);
+        }
+        try {
+            $response = $request->get($this->base()."/preview/$id");
+        } catch (ConnectionException $e) {
+            throw new Unreachable($e->getMessage());
+        }
+        if ($response->status() === 401) {
+            throw new Unauthorized;
+        }
+        if (! $response->successful()) {
+            $body = $response->json();
+            throw new Rejected($response->status(), is_array($body) ? ($body['code'] ?? 'unknown') : 'unknown',
+                is_array($body) ? ($body['error'] ?? $response->body()) : $response->body());
+        }
+
+        return ['contentType' => (string) $response->header('Content-Type'), 'body' => $response->body()];
+    }
+
     // MARK: transport
 
     /**

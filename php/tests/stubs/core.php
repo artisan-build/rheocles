@@ -7,7 +7,9 @@
  */
 header('Connection: close');
 header('Access-Control-Allow-Origin: *');
-$expected = getenv('STUB_TOKEN') ?: 'stub-token';
+$stateFile = getenv('STUB_STATE') ?: sys_get_temp_dir().'/rheo-stub-state.json';
+$armed = is_file($stateFile) ? (json_decode((string) file_get_contents($stateFile), true) ?: []) : [];
+$expected = $armed['__token'] ?? (getenv('STUB_TOKEN') ?: 'stub-token');
 $given = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
@@ -35,8 +37,6 @@ if ($path === '/') {
  * request. Three streams, one per shape: a display, a camera the stub
  * refuses (403, as macOS would), a microphone.
  */
-$stateFile = getenv('STUB_STATE') ?: sys_get_temp_dir().'/rheo-stub-state.json';
-$armed = is_file($stateFile) ? (json_decode((string) file_get_contents($stateFile), true) ?: []) : [];
 $streams = [
     ['id' => 'display:STUB-1', 'kind' => 'display', 'name' => 'Stub Display', 'model' => 'vendor 1 model 1',
         'capabilities' => ['video' => ['width' => 1920, 'height' => 1080, 'maxFrameRate' => 60]]],
@@ -93,6 +93,7 @@ if (preg_match('~^/streams/([^/]+)/arm$~', $path, $m) && $_SERVER['REQUEST_METHO
  * the icon; the real thing is exercised against the binary in ClientTest.
  */
 $take = $armed['__take'] ?? null;
+$settings = $armed['__settings'] ?? ['outputRoot' => '/tmp/rheocles-stub', 'codec' => 'hevc'];
 $saveTake = function (?array $t) use (&$armed, $stateFile) {
     $armed['__take'] = $t;
     file_put_contents($stateFile, json_encode($armed));
@@ -119,11 +120,11 @@ if ($path === '/record' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         'streams' => array_map(fn ($s) => [
             'id' => $s['id'], 'kind' => $s['kind'], 'name' => $s['name'], 'model' => $s['model'],
             'path' => strtolower(str_replace(' ', '-', $s['name'])).(isset($s['capabilities']['video']) ? '.mov' : '.wav'),
-            'codec' => isset($s['capabilities']['video']) ? ($body['codec'] ?? 'hevc') : 'pcm_s24le',
+            'codec' => isset($s['capabilities']['video']) ? ($body['codec'] ?? $settings['codec']) : 'pcm_s24le',
             'format' => $s['capabilities'], 'started' => $now, 'framesWritten' => 0,
             'events' => [['t' => 0, 'type' => 'join']],
         ], $set),
-        'markers' => [], 'settings' => ['codec' => $body['codec'] ?? 'hevc'],
+        'markers' => [], 'settings' => ['codec' => $body['codec'] ?? $settings['codec']],
     ];
     if (isset($body['name'])) {
         $take['name'] = $body['name'];
@@ -173,6 +174,73 @@ if (preg_match('~^/takes/([^/]+)$~', $path, $m)) {
         exit;
     }
     echo json_encode($take);
+    exit;
+}
+/*
+ * Settings, token rotation and preview (PROTOCOL § Settings, § Token
+ * rotation, § Preview). The rotated token goes into the state file and the
+ * token file the test names in STUB_TOKEN_FILE, as the daemon rewrites its own.
+ */
+if ($path === '/settings') {
+    if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
+        $body = json_decode((string) file_get_contents('php://input'), true) ?: [];
+        if (isset($body['outputRoot'])) {
+            if ($take && in_array($take['state'], ['created', 'recording'], true)) {
+                http_response_code(409);
+                echo json_encode(['error' => 'the output root cannot move while a take is active', 'code' => 'conflict']);
+                exit;
+            }
+            if (! str_starts_with((string) $body['outputRoot'], '/')) {
+                http_response_code(400);
+                echo json_encode(['error' => 'outputRoot must be absolute', 'code' => 'bad_request']);
+                exit;
+            }
+            $settings['outputRoot'] = $body['outputRoot'];
+        }
+        if (isset($body['codec'])) {
+            if (! in_array($body['codec'], ['hevc', 'prores'], true)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'codec must be hevc or prores', 'code' => 'bad_request']);
+                exit;
+            }
+            $settings['codec'] = $body['codec'];
+        }
+        $armed['__settings'] = $settings;
+        file_put_contents($stateFile, json_encode($armed));
+    }
+    echo json_encode($settings);
+    exit;
+}
+if ($path === '/token/rotate' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $new = bin2hex(random_bytes(32));
+    $armed['__token'] = $new;
+    file_put_contents($stateFile, json_encode($armed));
+    if ($f = getenv('STUB_TOKEN_FILE')) {
+        file_put_contents($f, $new."\n");
+    }
+    echo json_encode(['token' => $new]);
+    exit;
+}
+if (preg_match('~^/preview/([^/]+)$~', $path, $m)) {
+    $id = rawurldecode($m[1]);
+    $found = array_values(array_filter($streams, fn ($s) => $s['id'] === $id));
+    if ($found === []) {
+        http_response_code(404);
+        echo json_encode(['error' => "no such stream: $id", 'code' => 'not_found']);
+        exit;
+    }
+    if (isset($found[0]['capabilities']['audio'])) {
+        echo json_encode(['levelDb' => -18.3]);
+        exit;
+    }
+    if ($id === 'camera:stub') {
+        http_response_code(503);
+        echo json_encode(['error' => 'the device delivered no frame', 'code' => 'no_frame']);
+        exit;
+    }
+    header('Content-Type: image/jpeg');
+    // The smallest JPEG that decodes: 1×1, from a well-known minimal encoding.
+    echo base64_decode('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=');
     exit;
 }
 if ($path === '/takes') {

@@ -11,7 +11,7 @@ export function decodeEvent(text) {
   return json && typeof json.event === 'string' ? json : null
 }
 
-export const initial = () => ({ streams: [], permissions: null, take: null })
+export const initial = () => ({ streams: [], permissions: null, take: null, levels: {}, settings: null })
 
 /** `GET /streams`, verbatim: the list and what macOS lets the daemon see. */
 export const setStreams = (state, list) => ({
@@ -36,6 +36,15 @@ export function reduce(state, event) {
     }
     case 'take':
       return event.take && event.take.state ? { ...state, take: event.take } : state
+    case 'levels': {
+      // Per-stream peak dBFS ~4×/s while recording (audio only). Kept by
+      // id; an unmeasured level is absent, never zero.
+      const next = { ...state.levels }
+      for (const s of event.streams || []) if (s && s.id && typeof s.levelDb === 'number') next[s.id] = s.levelDb
+      return { ...state, levels: next }
+    }
+    case 'settings':
+      return event.settings ? { ...state, settings: event.settings } : state
     case 'marker': {
       // `{ t, label }` just added to the active take (PROTOCOL § Events);
       // appended here so the count moves before the next manifest arrives.
@@ -147,6 +156,16 @@ export function nudge(kind, permissions, ours) {
   }
   return null
 }
+
+/**
+ * Twelve cells over the useful range: below −60 dBFS is silence for our
+ * purposes and clipping pins at the top, the way a console meter reads.
+ * No reading is no cells, never an empty bar pretending to be silence.
+ */
+export const meterCells = db => (db == null ? 0 : Math.max(0, Math.min(12, Math.floor(((db + 60) / 60) * 12))))
+
+/** `3f9a1c…a2b3c4`: enough to compare, not enough to use. */
+export const maskToken = t => (!t || t.length <= 12 ? t : `${t.slice(0, 6)}…${t.slice(-6)}`)
 
 /** Streams in the active take and still writing: joined and not left. */
 export const writingIds = state =>

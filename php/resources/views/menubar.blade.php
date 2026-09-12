@@ -99,6 +99,7 @@
     base: @json($base),
     events: @json($events),
     token: @json($token),
+    tokenFile: @json($tokenFile),
     daemon: @json($daemon),
     preferences: @json($preferences),
     home: @json(\App\Rheocles\Home::path()),
