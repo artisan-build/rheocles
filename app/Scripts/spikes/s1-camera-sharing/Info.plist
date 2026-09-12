@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>build.artisan.rheocles.spike.s1</string>
+	<key>CFBundleName</key>
+	<string>s1-camera-sharing</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Rheocles spike S1 opens a camera to test sharing it with another app.</string>
+</dict>
+</plist>

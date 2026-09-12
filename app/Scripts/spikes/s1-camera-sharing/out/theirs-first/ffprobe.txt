@@ -1,0 +1,35 @@
+--- ffprobe out/theirs-first/mine-assetwriter.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=266100/8899
+nb_frames=887
+duration=29.663333
+size=52591546
+--- ffprobe out/theirs-first/mine-fileoutput.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=30000/1001
+nb_frames=728
+duration=24.190867
+size=32643198
+--- ffprobe out/theirs-first/quicktime.mov (saved by hand after the run; QuickTime's document reference went stale — see README):
+codec_name=h264
+codec_type=video
+width=1280
+height=720
+r_frame_rate=120/1
+avg_frame_rate=145680/1217
+nb_frames=1214
+codec_name=aac
+codec_type=audio
+r_frame_rate=0/0
+avg_frame_rate=0/0
+nb_frames=436
+duration=9.217271
+size=14525866

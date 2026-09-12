@@ -1,0 +1,55 @@
+--- launching QuickTime at 19:04:21
+quicktime.applescript:1098:1132: execution error: System Events got an error: Can’t get menu 1 of button 2 of window "Movie Recording" of application process "QuickTime Player". Invalid index. (-1719)
+--- QuickTime finished at 19:04:29
+[19:04:15.230] camera authorization status: 3 (0 notDetermined, 1 restricted, 2 denied, 3 authorized)
+[19:04:15.230] [mine] opening: FaceTime HD Camera | model=FaceTime HD Camera | id=EAB7A68F-EC2B-4487-AADF-D8A91C1CB782 | 1280x720@30.0 420v | inUseByOther=false | connected=true
+[19:04:16.235] [mine] activeFormat changed -> FaceTime HD Camera | model=FaceTime HD Camera | id=EAB7A68F-EC2B-4487-AADF-D8A91C1CB782 | 1280x720@30.0 420v | inUseByOther=false | connected=true
+[19:04:16.308] [mine] session running=true format now: FaceTime HD Camera | model=FaceTime HD Camera | id=EAB7A68F-EC2B-4487-AADF-D8A91C1CB782 | 1280x720@30.0 420v | inUseByOther=false | connected=true
+[19:04:16.309] [mine] holding lockForConfiguration for the run
+[19:04:17.317] [mine] t= 1 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:18.322] [mine] t= 2 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:19.325] [mine] t= 3 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:20.330] [mine] t= 4 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:21.333] [mine] t= 5 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:22.338] [mine] t= 6 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:23.342] [mine] t= 7 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:24.347] [mine] t= 8 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:25.351] [mine] t= 9 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:26.355] [mine] t=10 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:27.357] [mine] t=11 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:28.362] [mine] t=12 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:29.367] [mine] t=13 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:30.373] [mine] t=14 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:31.377] [mine] t=15 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:32.382] [mine] t=16 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:33.385] [mine] t=17 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:34.385] [mine] t=18 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:35.389] [mine] t=19 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:36.395] [mine] t=20 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:37.399] [mine] t=21 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:38.404] [mine] t=22 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:39.406] [mine] t=23 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:40.412] [mine] t=24 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:41.415] [mine] t=25 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:42.420] [mine] t=26 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:43.422] [mine] t=27 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:44.427] [mine] t=28 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:45.432] [mine] t=29 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:46.437] [mine] t=30 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:47.439] [mine] t=31 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:48.444] [mine] t=32 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:49.448] [mine] t=33 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:50.451] [mine] t=34 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:51.453] [mine] t=35 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:52.455] [mine] t=36 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:53.459] [mine] t=37 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:54.464] [mine] t=38 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:55.467] [mine] t=39 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:56.470] [mine] t=40 frames=    0 (+  0) drops=0 medianGap=0.0000s maxGap=0.0000s stalls=0 inUseByOther=false running=true
+[19:04:56.472] recording finished -> /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s1-camera-sharing/out/mine-first-locked-facetime/mine-fileoutput.mov error=Error Domain=AVFoundationErrorDomain Code=-11805 "Cannot Record" UserInfo={NSLocalizedRecoverySuggestion=Try recording again., NSLocalizedDescription=Cannot Record, AVErrorRecordingSuccessfullyFinishedKey=false}
+[19:04:56.501] [mine] SUMMARY device=FaceTime HD Camera seconds=40.2 frames=0 avgFps=0.00 medianGap=0.0000s (0.0 fps) drops=0 [:] maxGap=0.0000s stalls=0 recordingErrors=["Error Domain=AVFoundationErrorDomain Code=-11805 \"Cannot Record\" UserInfo={NSLocalizedRecoverySuggestion=Try recording again., NSLocalizedDescription=Cannot Record, AVErrorRecordingSuccessfullyFinishedKey=false}"]
+[19:04:56.509] [mine] file out/mine-first-locked-facetime/mine-fileoutput.mov size=0
+[19:04:56.509] [mine] file out/mine-first-locked-facetime/mine-assetwriter.mov size=0
+--- ffprobe out/mine-first-locked-facetime/*.mov:
+out/mine-first-locked-facetime/*.mov: No such file or directory
+=== DONE mine-first-locked-facetime

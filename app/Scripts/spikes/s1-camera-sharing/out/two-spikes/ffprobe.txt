@@ -1,0 +1,30 @@
+--- ffprobe out/two-spikes/first-assetwriter.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=312000/10429
+nb_frames=1040
+duration=34.763333
+size=61581332
+--- ffprobe out/two-spikes/first-fileoutput.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=8810000/293957
+nb_frames=881
+duration=29.295500
+size=88206074
+--- ffprobe out/two-spikes/second-assetwriter.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=267000/9049
+nb_frames=445
+duration=15.081667
+size=26866290

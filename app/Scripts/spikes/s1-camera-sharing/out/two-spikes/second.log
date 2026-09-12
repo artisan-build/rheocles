@@ -1,0 +1,24 @@
+[19:03:24.742] camera authorization status: 3 (0 notDetermined, 1 restricted, 2 denied, 3 authorized)
+[19:03:24.743] [second] opening: Elgato 4K X | model=UVC Camera VendorID_4057 ProductID_156 | id=0x2300000fd9009c | 1920x1080@120.00048000192001 420v | inUseByOther=false | connected=true
+[19:03:24.798] [second] activeFormat changed -> Elgato 4K X | model=UVC Camera VendorID_4057 ProductID_156 | id=0x2300000fd9009c | 1920x1080@120.00048000192001 420v | inUseByOther=false | connected=true
+[19:03:24.830] [second] session running=true format now: Elgato 4K X | model=UVC Camera VendorID_4057 ProductID_156 | id=0x2300000fd9009c | 1920x1080@120.00048000192001 420v | inUseByOther=false | connected=true
+[19:03:25.075] frame dimensions now 1920x1080
+[19:03:25.181] writer started -> /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s1-camera-sharing/out/two-spikes/second-assetwriter.mov 1920x1080
+[19:03:25.831] [second] t= 1 frames=   31 (+ 31) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:26.832] [second] t= 2 frames=   61 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:27.836] [second] t= 3 frames=   91 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:28.841] [second] t= 4 frames=  121 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:29.845] [second] t= 5 frames=  151 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:30.849] [second] t= 6 frames=  181 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:31.854] [second] t= 7 frames=  211 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:32.855] [second] t= 8 frames=  241 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:33.859] [second] t= 9 frames=  271 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:34.864] [second] t=10 frames=  301 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:35.870] [second] t=11 frames=  331 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:36.875] [second] t=12 frames=  362 (+ 31) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:37.879] [second] t=13 frames=  392 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:38.883] [second] t=14 frames=  422 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:39.885] [second] t=15 frames=  452 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0340s stalls=0 inUseByOther=false running=true
+[19:03:39.913] writer finished status=2 (2 completed, 3 failed) error=none frames=445 notReady=7
+[19:03:39.990] [second] SUMMARY device=Elgato 4K X seconds=15.2 frames=453 avgFps=29.88 medianGap=0.0334s (30.0 fps) drops=0 [:] maxGap=0.0340s stalls=0 recordingErrors=[]
+[19:03:39.990] [second] file out/two-spikes/second-assetwriter.mov size=26866290

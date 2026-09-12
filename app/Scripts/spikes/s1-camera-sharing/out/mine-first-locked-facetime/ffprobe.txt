@@ -1,0 +1,1 @@
+--- ffprobe out/mine-first-locked-facetime/*.mov:

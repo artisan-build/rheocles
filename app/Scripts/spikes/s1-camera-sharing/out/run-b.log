@@ -1,0 +1,61 @@
+--- launching QuickTime at 19:01:47
+--- QuickTime finished at 19:02:31
+quicktime.applescript:707:715: execution error: QuickTime Player got an error: Can’t get document "Movie Recording". (-1728)
+[19:02:01.932] camera authorization status: 3 (0 notDetermined, 1 restricted, 2 denied, 3 authorized)
+[19:02:01.933] [mine] opening: Elgato 4K X | model=UVC Camera VendorID_4057 ProductID_156 | id=0x2300000fd9009c | 1280x720@120.00048000192001 420v | inUseByOther=false | connected=true
+[19:02:02.124] [mine] activeFormat changed -> Elgato 4K X | model=UVC Camera VendorID_4057 ProductID_156 | id=0x2300000fd9009c | 1920x1080@120.00048000192001 420v | inUseByOther=false | connected=true
+[19:02:02.517] [mine] session running=true format now: Elgato 4K X | model=UVC Camera VendorID_4057 ProductID_156 | id=0x2300000fd9009c | 1920x1080@120.00048000192001 420v | inUseByOther=false | connected=true
+[19:02:03.097] frame dimensions now 1920x1080
+[19:02:03.230] writer started -> /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s1-camera-sharing/out/theirs-first/mine-assetwriter.mov 1920x1080
+[19:02:03.492] recording started -> /Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s1-camera-sharing/out/theirs-first/mine-fileoutput.mov
+[19:02:03.524] [mine] t= 1 frames=   13 (+ 13) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:04.526] [mine] t= 2 frames=   43 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:05.530] [mine] t= 3 frames=   73 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:06.535] [mine] t= 4 frames=  103 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:07.538] [mine] t= 5 frames=  133 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:08.544] [mine] t= 6 frames=  163 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:09.549] [mine] t= 7 frames=  193 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:10.551] [mine] t= 8 frames=  223 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:11.554] [mine] t= 9 frames=  253 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:12.556] [mine] t=10 frames=  283 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:13.561] [mine] t=11 frames=  313 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:14.562] [mine] t=12 frames=  343 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:15.567] [mine] t=13 frames=  374 (+ 31) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:16.572] [mine] t=14 frames=  404 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:17.578] [mine] t=15 frames=  434 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:18.581] [mine] t=16 frames=  464 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:19.581] [mine] t=17 frames=  494 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:20.586] [mine] t=18 frames=  524 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:21.592] [mine] t=19 frames=  554 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:22.596] [mine] t=20 frames=  584 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:23.601] [mine] t=21 frames=  614 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:24.607] [mine] t=22 frames=  644 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:25.610] [mine] t=23 frames=  674 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:26.615] [mine] t=24 frames=  705 (+ 31) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:27.621] [mine] t=25 frames=  735 (+ 30) drops=0 medianGap=0.0334s maxGap=0.0993s stalls=1 inUseByOther=false running=true
+[19:02:32.707] movie file output never reported didFinishRecording within 5s
+[19:02:32.731] writer finished status=2 (2 completed, 3 failed) error=none frames=887 notReady=0
+[19:02:32.913] [mine] SUMMARY device=Elgato 4K X seconds=30.4 frames=889 avgFps=29.25 medianGap=0.0334s (30.0 fps) drops=0 [:] maxGap=0.0993s stalls=1 recordingErrors=[]
+[19:02:32.913] [mine] file out/theirs-first/mine-fileoutput.mov size=32643198
+[19:02:32.914] [mine] file out/theirs-first/mine-assetwriter.mov size=52591546
+--- ffprobe out/theirs-first/mine-assetwriter.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=266100/8899
+nb_frames=887
+duration=29.663333
+size=52591546
+--- ffprobe out/theirs-first/mine-fileoutput.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=30000/1001
+nb_frames=728
+duration=24.190867
+size=32643198
+=== DONE theirs-first

@@ -1,0 +1,35 @@
+--- ffprobe out/mine-first-locked/mine-assetwriter.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=134100/4481
+nb_frames=1341
+duration=44.810000
+size=79415999
+--- ffprobe out/mine-first-locked/mine-fileoutput.mov:
+codec_name=h264
+codec_type=video
+width=1920
+height=1080
+r_frame_rate=30000/1001
+avg_frame_rate=35430000/1182157
+nb_frames=1181
+duration=39.305033
+size=52623723
+--- ffprobe out/mine-first-locked/quicktime.mov:
+codec_name=h264
+codec_type=video
+width=1280
+height=720
+r_frame_rate=30000/1001
+avg_frame_rate=30000/1001
+nb_frames=599
+codec_name=aac
+codec_type=audio
+r_frame_rate=0/0
+avg_frame_rate=0/0
+nb_frames=888
+duration=19.068833
+size=28887597
