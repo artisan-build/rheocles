@@ -1,7 +1,6 @@
 ---
 title: Streams and arming
 description: Every input on the machine is a stream with a stable id. Armed means the device is live. Three verbs, and only these.
-draft: true
 ---
 import Callout from '../../components/Callout.astro';
 import Cards from '../../components/Cards.astro';
@@ -30,7 +29,9 @@ Nothing in the list is on until you arm it.
     { "id": "microphone:Scarlett_2i2", "kind": "microphone",
       "name": "Scarlett 2i2 USB", "model": "Scarlett 2i2 USB:1235:8210",
       "capabilities": { "audio": { "sampleRate": 48000, "channels": 2 } },
-      "armed": true } ],
+      "armed": true,
+      "active": { "audio": { "sampleRate": 48000, "channels": 2 } },
+      "framesSeen": 4812 } ],
   "permissions": { "camera": "notDetermined", "microphone": "authorized", "screen": "authorized" } }
 ```
 
@@ -50,11 +51,26 @@ signal's real rate can be lower, and the writer follows the frames, not this
 field. Recording is always 48 kHz 24-bit BWF whatever `capabilities.audio`
 says the device is doing.
 
+**`active` and `framesSeen` appear only while armed.** `active` is the format
+the device is actually delivering — which is what a take records — and
+`framesSeen` is how many frames or audio buffers it has delivered since
+arming. A live device counts up; a stuck one does not, and that is how a
+client tells the difference before the cue.
+
 `permissions` is what macOS has let this process do — `authorized`,
 `denied`, `restricted` or `notDetermined`. Screen Recording gates displays
 and windows both: with `screen` anything but `authorized` the list simply
 has none, and this field is how a client tells "no displays" from "not
 allowed to see them".
+
+<Callout kind="note" title="The first GET /streams asks for Screen Recording">
+The first `GET /streams` in a daemon process whose `screen` permission is
+`notDetermined` raises the system's Screen Recording prompt, once. Without
+the grant there are no displays to list, so there would be no id to arm and
+nothing would ever ask; this is how every screen recorder behaves on first
+launch. The grant takes effect on the daemon's next launch — quit the app
+and open it again.
+</Callout>
 
 Windows are supported by the engine and the API from day one and hidden in
 the popover behind a *Show windows* setting: window lists are long and
@@ -73,11 +89,43 @@ record button: arming is what makes "on one cue" true.
 curl -s -H "$H" -X POST localhost:7447/streams/camera:0x2300000fd9009c/arm -d '{"armed": true}'
 ```
 
+```json title="→ the stream as it now is"
+{ "id": "camera:0x2300000fd9009c", "kind": "camera", "name": "Elgato 4K X", "model": "…",
+  "capabilities": { "video": { "width": 3840, "height": 2160, "maxFrameRate": 30 } },
+  "armed": true,
+  "active": { "video": { "width": 1280, "height": 720, "maxFrameRate": 120 } },
+  "framesSeen": 0 }
+```
+
+Both directions are idempotent and answer the stream as it now is. Every
+change of armed state is also pushed as a `stream` event to anything
+listening on `/events` or the WebSocket.
+
+### What arming holds, per kind
+
+| kind | while armed | and |
+|---|---|---|
+| camera | an `AVCaptureSession` at the device's **current** format, and the configuration lock for the whole armed period | another app can still open the camera; it gets our format and cannot change it. A camera another app left at 720p stays at 720p until that app or the user changes it — `active` says what you will get |
+| microphone | an `AVCaptureSession` delivering 48 kHz 24-bit LPCM | |
+| display, window | an `SCStream` at the display's refresh rate, complete frames only | a window that closes ends its session; the stream then reads as not armed |
+| systemAudio | a Core Audio process tap on every process, clocked by the default output device | needs the System Audio Recording grant, which macOS asks for on the first arm |
+
+### When arming fails
+
+| | |
+|---|---|
+| `404 not_found` | no such id — a window that closed, a device that unplugged |
+| `403 permission_denied` | macOS has not granted the device class. For camera and microphone the prompt is raised first, so a `403` means it was refused |
+| `503 device_unavailable` | the device is gone, busy, or refused the configuration |
+| `501 unsupported` | this kind cannot be captured yet |
+
 <Callout kind="trap" title="Armed costs you">
-Armed streams use CPU and hold their devices while armed. A camera that is
-armed is a camera other apps may not get. The popover shows armed state in
-ochre and the menu bar mark draws in outline, so nobody leaves six cameras
-live overnight by accident. Disarm what you are not about to record.
+Armed streams use CPU and hold their devices while armed: five at once — a
+4K display, a window, a camera, a microphone, system audio — idle at roughly
+a quarter of a core on an M1, and an armed camera holds its format for every
+other app. The popover shows armed state in ochre and the menu bar mark draws
+in outline, so nobody leaves six cameras live overnight by accident. Disarm
+what you are not about to record.
 </Callout>
 
 ## Three verbs, and only these

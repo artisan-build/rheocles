@@ -69,6 +69,17 @@ function example(content: Any | undefined, deref: (n: Any) => Any | undefined): 
 	return typeof ex === 'string' ? ex : JSON.stringify(ex, null, 2);
 }
 
+// Engine writes x-ws as { request, response } objects; render as two frames.
+function wsFrames(x: unknown): string | undefined {
+	if (!x) return undefined;
+	if (typeof x === 'string') return x;
+	const o = x as Any;
+	const lines: string[] = [];
+	if (o.request) lines.push(`→ ${JSON.stringify(o.request)}`);
+	if (o.response) lines.push(`← ${JSON.stringify(o.response)}`);
+	return lines.join('\n') || undefined;
+}
+
 function fromOpenApi(doc: Any): Map<string, Endpoint> {
 	const deref = resolver(doc);
 	const out = new Map<string, Endpoint>();
@@ -94,7 +105,7 @@ function fromOpenApi(doc: Any): Map<string, Endpoint> {
 				responseFields: okSchema ? fields(okSchema, deref) : undefined,
 				responseNote: ok?.[1]?.description,
 				errors: errors.length ? errors : undefined,
-				ws: o['x-ws'],
+				ws: wsFrames(o['x-ws']),
 				pinned: true,
 			});
 		}
@@ -138,11 +149,17 @@ export function loadApi(): ApiSpec {
 		pinned += extra.length;
 		groups.push({ id: 'other', label: 'Other', endpoints: extra });
 	}
-	const events = (doc['x-events'] as Any[] | undefined)?.map((ev) => ({
-		type: ev.type,
+	// Events the YAML pins, then the spec's planned ones it does not name yet.
+	const fromYamlEvents = (doc['x-events'] as Any[] | undefined)?.map((ev) => ({
+		type: ev.event ?? ev.type,
 		when: ev.description ?? '',
 		example: typeof ev.example === 'string' ? ev.example : JSON.stringify(ev.example ?? {}),
+		pinned: true,
 	}));
+	const named = new Set((fromYamlEvents ?? []).map((e) => e.type));
+	const events = fromYamlEvents
+		? [...fromYamlEvents, ...specTable.events.filter((e) => !named.has(e.type)).map((e) => ({ ...e, planned: true }))]
+		: undefined;
 	return {
 		source: planned ? 'merged' : 'openapi',
 		version: doc.info?.version,

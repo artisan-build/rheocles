@@ -28,6 +28,44 @@ If you are building from source, `codesign --verify` will report the bundle
 valid even when `--deep` has skipped an executable in `Contents/Resources`.
 Only notarisation catches it. Sign inside out.
 
+## Displays are missing after granting Screen Recording
+
+The grant takes effect on the daemon's next launch, not the current one.
+Quit Rheocles and open it again; `GET /streams` then lists every display and
+`permissions.screen` reads `authorized`. The first stream list in a fresh
+process is what raised the prompt, and that process keeps the answer it had
+when it started.
+
+## Arming answers `403`
+
+`permission_denied`: macOS has not granted the device class this stream
+needs. For camera and microphone the prompt is raised first, so a `403` means
+it was refused — the grant is under System Settings → Privacy & Security.
+For system audio the grant is *System Audio Recording*, under Screen & System
+Audio Recording.
+
+## Arming answers `503`
+
+`device_unavailable`: the device is gone, busy, or refused the configuration.
+A camera another app holds exclusively, a display that was just unplugged, a
+window that closed between the list and the arm. Refresh the list and try
+again; if it persists, the device is the problem, not the request.
+
+## The armed camera is 720p
+
+Arming takes the device's **current** format and holds the configuration
+lock for the whole armed period. A camera another app left at 720p stays at
+720p until that app or the user changes it. `active` on the stream says what
+you will get; set the format in the other app, or disarm, change it, and arm
+again.
+
+## `framesSeen` is not counting
+
+An armed stream that delivers frames counts up. One that does not is stuck —
+a window that went off-screen, a device that stalled — and a take started
+now would record nothing from it. Disarm and arm again; if it stays at zero,
+the device is not delivering.
+
 ## The port is in use
 
 The daemon comes up on 7447 and 7448. If another daemon is already there —

@@ -39,6 +39,8 @@ export interface EventKind {
 	type: string;
 	when: string;
 	example: string;
+	pinned?: boolean;
+	planned?: boolean;
 }
 
 export interface ApiSpec {
@@ -263,7 +265,7 @@ data: { "stream": "microphone:Scarlett_2i2", "peakDb": -19.4, "ts": 178917896025
 		{ type: 'state', when: 'a take changes state', example: `{ "take": "tk_7f3a", "state": "recording", "at": "2026-09-11T14:02:17.004Z" }` },
 		{ type: 'join', when: 'a stream starts writing', example: `{ "take": "tk_7f3a", "stream": "window:11597", "t": 240.017, "timecode": "14:06:17:00" }` },
 		{ type: 'leave', when: 'a stream’s file is finalised', example: `{ "take": "tk_7f3a", "stream": "window:11597", "t": 374.111, "frames": 8045 }` },
-		{ type: 'level', when: 'an armed audio stream’s meter ticks', example: `{ "stream": "microphone:Scarlett_2i2", "peakDb": -19.4 }` },
+		{ type: 'levels', when: 'an armed audio stream’s meter ticks', example: `{ "stream": "microphone:Scarlett_2i2", "peakDb": -19.4 }` },
 		{ type: 'drift', when: 'a recording stream’s drift is re-measured', example: `{ "take": "tk_7f3a", "stream": "camera:0x2300000fd9009c", "driftMs": -3, "frames": 21540 }` },
 		{ type: 'marker', when: 'a marker lands', example: `{ "take": "tk_7f3a", "t": 38.7, "label": "cold-open out" }` },
 		{ type: 'error', when: 'something fails; the take may now be incomplete', example: `{ "take": "tk_7f3a", "stream": "display:56A96CFC-7F21", "reason": "disk full", "state": "incomplete" }` },
