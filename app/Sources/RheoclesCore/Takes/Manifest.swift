@@ -58,7 +58,12 @@ public struct Manifest: Codable, Sendable, Equatable {
         /// Time-of-day timecode of the first written frame (video) or the
         /// BWF time reference as timecode (audio). Absent until written.
         public var timecode: String?
+        /// Audio only: the BWF `TimeReference`, samples since local midnight
+        /// at the first sample. The sample-exact form of `timecode`.
+        public var timeReference: Int?
         public var framesWritten: Int
+        /// Frames the encoder was not ready for. Absent when zero.
+        public var framesDropped: Int?
         /// Frames × frame duration versus host elapsed, in seconds. Positive
         /// means the file runs long. Absent until measured.
         public var drift: Double?

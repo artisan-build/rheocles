@@ -168,7 +168,7 @@ public actor TakeEngine {
                     path: files[stream.id] ?? "",
                     codec: Self.codecName(for: stream.kind, codec: codec),
                     format: stream.active ?? stream.capabilities, started: nil, stopped: nil,
-                    timecode: nil,
+                    timecode: nil, timeReference: nil,
                     framesWritten: 0, drift: nil, events: [], error: nil)
             },
             markers: [], settings: .init(codec: codec, expectedDuration: request.expectedDuration))
@@ -239,7 +239,11 @@ public actor TakeEngine {
             let error = await writer.finish()
             current.manifest.streams[index].stopped = end
             current.manifest.streams[index].timecode = writer.timecode
+            current.manifest.streams[index].timeReference =
+                (writer as? AudioWriter)?.bwfTimeReference
             current.manifest.streams[index].framesWritten = writer.framesWritten
+            current.manifest.streams[index].framesDropped =
+                writer.framesDropped > 0 ? writer.framesDropped : nil
             current.manifest.streams[index].drift = writer.drift
             current.manifest.streams[index].error = error
             if let t = current.manifest.offset(of: end) {

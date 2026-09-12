@@ -13,6 +13,7 @@ final class FakeWriter: Writer, @unchecked Sendable {
     init(failure: String? = nil) { self.failure = failure }
     var timecode: String? { "10:00:00:00" }
     var framesWritten: Int { lock.withLock { frames } }
+    var framesDropped: Int { 0 }
     var drift: Double? { 0.001 }
     func handle(_ sampleBuffer: CMSampleBuffer) { lock.withLock { frames += 1 } }
     func finish() async -> String? {

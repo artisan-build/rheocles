@@ -19,8 +19,8 @@ public final class Server: Sendable {
         /// How arming opens a device. Tests hand in sessions that only
         /// remember what they were told.
         public var sessionFactory: any SessionFactory = DeviceSessionFactory()
-        /// How a take's files get written. Null until step 5; tests keep it null.
-        public var writerFactory: any WriterFactory = NullWriterFactory()
+        /// How a take's files get written. Tests hand in fakes.
+        public var writerFactory: any WriterFactory = DeviceWriterFactory()
         /// Free space on a volume, for the disk pre-flight. Tests fake it.
         public var freeBytes: @Sendable (URL) -> Int64? = { Discovery.freeBytes(at: $0) }
 

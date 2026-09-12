@@ -7,6 +7,10 @@ public protocol Writer: FrameSink {
     /// The first frame's time-of-day timecode, once there is one.
     var timecode: String? { get }
     var framesWritten: Int { get }
+    /// Frames the writer had to drop because the encoder was not ready. A
+    /// count, not an error: a few under load is life, and the file's
+    /// timeline is still right.
+    var framesDropped: Int { get }
     /// Frames × frame duration versus host elapsed, once measurable.
     var drift: Double? { get }
     /// Close the file. The manifest is written after this returns.
@@ -26,6 +30,7 @@ public protocol WriterFactory: Sendable {
 public final class NullWriter: Writer, @unchecked Sendable {
     public var timecode: String? { nil }
     public var framesWritten: Int { 0 }
+    public var framesDropped: Int { 0 }
     public var drift: Double? { nil }
     public init() {}
     public func handle(_ sampleBuffer: CMSampleBuffer) {}

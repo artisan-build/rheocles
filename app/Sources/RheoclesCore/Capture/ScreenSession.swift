@@ -1,6 +1,7 @@
 import AppKit
 import CoreMedia
 import Foundation
+import QuartzCore
 import ScreenCaptureKit
 import os
 
@@ -18,12 +19,86 @@ final class ScreenSession: NSObject, StreamSession, SCStreamDelegate, SCStreamOu
     private var size = (0, 0)
     private var rate = 60.0
     private let queue = DispatchQueue(label: "rheocles.capture.screen")
+    /// A ~1 fps floor while a writer is attached: ScreenCaptureKit delivers
+    /// a frame only when the content changes, so a static screen (a prompter
+    /// holding a page) would deliver nothing after the first — the file would
+    /// never span the take, and on a crash no fragment would ever have
+    /// flushed, leaving it unrecoverable. Re-feeding the last frame keeps the
+    /// timeline moving and the fragments coming.
+    private var keepalive: DispatchSourceTimer?
     private let sinkLock = OSAllocatedUnfairLock<(any FrameSink)?>(initialState: nil)
     private let frames = OSAllocatedUnfairLock(initialState: 0)
+    /// The most recent complete frame. ScreenCaptureKit delivers a frame
+    /// only when the content changes, so a writer attached to a static
+    /// screen (a prompter holding a page) would otherwise wait forever for
+    /// its first frame; it gets this one, re-stamped with the time it
+    /// joined.
+    private let lastFrame = NSLock()
+    /// Guarded by `lastFrame`; CMSampleBuffer is not Sendable, so no lock box.
+    nonisolated(unsafe) private var lastComplete: CMSampleBuffer?
+    /// `CACurrentMediaTime` of the last real (non-keepalive) frame.
+    private var lastDelivered: Double = 0
 
     var sink: (any FrameSink)? {
         get { sinkLock.withLock { $0 } }
-        set { sinkLock.withLock { $0 = newValue } }
+        set {
+            sinkLock.withLock { $0 = newValue }
+            if let newValue {
+                lastFrame.lock()
+                let last = lastComplete
+                lastFrame.unlock()
+                if let last, let restamped = Self.restamp(last) { newValue.handle(restamped) }
+                startKeepalive()
+            } else {
+                stopKeepalive()
+            }
+        }
+    }
+
+    /// Re-feed the last complete frame if the device has sent nothing for a
+    /// second, so a static screen still produces ~1 fps.
+    private func startKeepalive() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.keepalive?.cancel()
+            let timer = DispatchSource.makeTimerSource(queue: self.queue)
+            timer.schedule(deadline: .now() + 1, repeating: 1)
+            timer.setEventHandler { [weak self] in
+                guard let self, let sink = self.sink else { return }
+                self.lastFrame.lock()
+                let last = self.lastComplete
+                let stamp = self.lastDelivered
+                self.lastFrame.unlock()
+                // Only if the real device has gone quiet.
+                if CACurrentMediaTime() - stamp > 0.75, let last, let restamped = Self.restamp(last)
+                {
+                    sink.handle(restamped)
+                }
+            }
+            timer.resume()
+            self.keepalive = timer
+        }
+    }
+
+    private func stopKeepalive() {
+        queue.async { [weak self] in
+            self?.keepalive?.cancel()
+            self?.keepalive = nil
+        }
+    }
+
+    /// A copy of a frame carrying the current host time.
+    static func restamp(_ sample: CMSampleBuffer) -> CMSampleBuffer? {
+        var timing = CMSampleTimingInfo(
+            duration: CMSampleBufferGetDuration(sample),
+            presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()),
+            decodeTimeStamp: .invalid)
+        var copy: CMSampleBuffer?
+        CMSampleBufferCreateCopyWithNewTiming(
+            allocator: nil, sampleBuffer: sample, sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleBufferOut: &copy)
+        return copy
     }
 
     var framesSeen: Int { frames.withLock { $0 } }
@@ -106,6 +181,7 @@ final class ScreenSession: NSObject, StreamSession, SCStreamDelegate, SCStreamOu
     }
 
     func stop() async {
+        stopKeepalive()
         try? await stream?.stopCapture()
         stream = nil
     }
@@ -128,6 +204,10 @@ final class ScreenSession: NSObject, StreamSession, SCStreamDelegate, SCStreamOu
             SCFrameStatus(rawValue: status) == .complete
         else { return }
         frames.withLock { $0 += 1 }
+        lastFrame.lock()
+        lastComplete = sampleBuffer
+        lastDelivered = CACurrentMediaTime()
+        lastFrame.unlock()
         sink?.handle(sampleBuffer)
     }
 }

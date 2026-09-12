@@ -609,7 +609,18 @@ components:
           format: date-time
         timecode:
           type: string
-          description: Time-of-day timecode of the first written frame.
+          description: >
+            Start timecode HH:MM:SS:FF — the LOCAL time of day (the machine's
+            own midnight) of the first written frame, nearest frame. The
+            manifest's created/started/stopped are UTC.
+        timeReference:
+          type: integer
+          description: >
+            Audio only. BWF TimeReference: samples since LOCAL midnight at the
+            first sample — the sample-exact form of `timecode`.
+        framesDropped:
+          type: integer
+          description: Video only. Frames the encoder was not ready for. Absent when zero.
         framesWritten:
           type: integer
         drift:

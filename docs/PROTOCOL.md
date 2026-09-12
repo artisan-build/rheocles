@@ -4,10 +4,11 @@ Every command is reachable over both transports, and every event reaches
 both. One command table, two encoders: this document describes the table
 once and the two encodings once.
 
-**Status:** current with the code through task 4 step 4 (`GET /`, auth,
-framing, streams, arm/disarm, takes, the `stream` and `take` events).
-Takes reserve paths and keep a truthful manifest; the files themselves are
-step 5, so until then every stream's `framesWritten` is 0. Sections marked *planned* describe what the next steps add and are
+**Status:** current with the code through task 4 step 5 (`GET /`, auth,
+framing, streams, arm/disarm, takes, real writers, the `stream` and `take`
+events). Takes record real files: HEVC or ProRes MOV with a time-of-day
+`tmcd` track and 1 s fragments, Broadcast Wave audio with a `bext`
+`TimeReference`. Sections marked *planned* describe what the next steps add and are
 what the front ends build against; they change here before they change in
 the code.
 
@@ -298,6 +299,47 @@ the output root holds, up to 50):
 [ { "id": "20260912T040433-fd9q", "name": "Episode 12", "state": "complete",
     "created": "2026-09-12T04:04:33.235Z", "destination": "takes/2026-09-11/210433-episode-12", "streams": 5 } ]
 ```
+
+### Files and clocks
+
+Every armed stream lands as its own file, started on the cue and stamped so
+an editor syncs them with no manifest (spec §4, §8).
+
+- **Video** (displays, windows, cameras) → QuickTime MOV, **HEVC** by
+  default or **ProRes 422** (`settings.codec`, one setting for the whole
+  take), written with a 1 s `movieFragmentInterval` so a crash leaves a
+  playable file, plus a **`tmcd` timecode track**.
+- **Audio** (microphones, system audio) → **Broadcast Wave**, 48 kHz 24-bit
+  LPCM, separate files, with a `bext` chunk. Video files carry no audio.
+- **`timecode`** is the file's start timecode as `HH:MM:SS:FF` — the
+  **local time of day** (the machine's own midnight) of the first written
+  frame, rounded to the nearest frame. It counts at the integer frame rate
+  (59.94 and 60.00024 both count in 60; the file's frame timing carries the
+  exact rate).
+- **`timeReference`** (audio only) is the BWF `TimeReference`: samples since
+  **local** midnight at the first sample — the sample-exact form of the same
+  time of day.
+- **The manifest's `created`, `started`, `stopped` are UTC** ISO 8601 with
+  milliseconds; `t` values are seconds from the cue. Across midnight the
+  manifest is authoritative: a file that started before midnight and a file
+  that joined after disagree by 24 h in timecode, but the manifest's UTC
+  times do not (spec §8).
+- **`framesWritten`** counts frames (video) or samples (audio) actually
+  written; **`framesDropped`** (video, absent when zero) counts frames the
+  encoder was not ready for under load — the timeline stays correct.
+- **`drift`** is delivered frames × nominal frame duration versus the
+  timeline they span, in seconds: ~0 for a camera at its rate, negative for
+  a capture card fed a slower signal. It is **absent for displays and
+  windows**, whose frame cadence is content-driven and where drift is
+  meaningless. Audio `drift` is samples ÷ rate versus host elapsed.
+
+A stream that delivered no frames while armed writes no file and finishes
+the take `incomplete` with a per-stream `error` (`no frames arrived`) — a
+camera with the lid closed, say. Its live `framesSeen` in `GET /streams`
+stays 0 while armed, which is the signal a client watches. Screens deliver a
+frame only when the content changes; a ~1 fps keepalive re-feeds the last
+frame so a static screen (a prompter holding a page) still spans the take
+and still flushes fragments, so it too is crash-recoverable.
 
 ## Encodings
 
