@@ -1,13 +1,13 @@
 /* Code blocks: expressive-code renders them; we restate the ground so a dark
- * block on the limestone page uses the app's panel colours, not GitHub's. */
+ * block on the limestone page uses the brand's code tokens, not GitHub's. */
 .expressive-code {
-	--ec-frm-edBg: var(--panel);
-	--ec-frm-edActTabBg: var(--panel);
-	--ec-frm-tbBg: var(--field);
-	--ec-frm-edActTabFg: var(--bone);
+	--ec-frm-edBg: var(--code-ground);
+	--ec-frm-edActTabBg: var(--code-ground);
+	--ec-frm-tbBg: var(--code-inset);
+	--ec-frm-edActTabFg: var(--code-text);
 	--ec-frm-edTabBrdCol: transparent;
 	--ec-brdCol: transparent;
-	--ec-codeFg: var(--bone);
+	--ec-codeFg: var(--code-text);
 	margin: 1.25rem 0;
 }
 .expressive-code .frame.has-title .header {
