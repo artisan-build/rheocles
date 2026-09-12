@@ -1,0 +1,116 @@
+/*
+ * The popover, styled as rheocles.com is (docs/BRAND.md): limestone ground,
+ * ink, the Aegean signature, and a 4 px Aegean rule along the top — the
+ * site header's border-top — so the popover and the site open the same way.
+ * Dark is for the daemon's data strip only, the way the site's code blocks
+ * are dark. The Swift popover (app/Sources/Rheocles/MenuBarView.swift) is
+ * the reference rendering; sizes here are its points, one to one.
+ *
+ * Views name the role, not the pigment, so a palette change stays here.
+ */
+@font-face { font-family: "Fraunces"; src: url("fonts/Fraunces[SOFT,WONK,opsz,wght].ttf") format("truetype"); font-weight: 100 900; }
+@font-face { font-family: "Instrument Sans"; src: url("fonts/InstrumentSans[wdth,wght].ttf") format("truetype"); font-weight: 100 900; }
+@font-face { font-family: "IBM Plex Mono"; src: url("fonts/IBMPlexMono-Regular.ttf") format("truetype"); font-weight: 400; }
+@font-face { font-family: "IBM Plex Mono"; src: url("fonts/IBMPlexMono-Medium.ttf") format("truetype"); font-weight: 500; }
+
+:root {
+  /* ground — the plaster */
+  --ground: #FAF2E4; --inset: #EFE5D2; --sink: #E0D4BE; --line: #DED0B8;
+  /* ink */
+  --ink: #2A211A; --ink-soft: #4E4034; --ink-faint: #6B5C4C;
+  /* the signature — Aegean blue on lime plaster */
+  --aegean: #2E5C86; --aegean-soft: #5F8FB8; --aegean-deep: #244A6B; --wash: #E4ECF3;
+  /* states — a small language the icon and the popover both speak */
+  --ochre: #C9903A; --ochre-ink: #8A5E1A; --oxide: #B4453A; --olive: #6E7A52;
+  /* a value we do not have */
+  --script: #7A6A59;
+  /* dark blocks on the light page — the daemon's data strip, nowhere else */
+  --block: #1C1611; --block-field: #2B211A; --block-bone: #EFE3D0; --block-body: #CDBBA3; --block-aegean: #6FA3D6;
+
+  --wordmark: "Fraunces", ui-serif, Georgia, serif;
+  --body: "Instrument Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body {
+  width: 344px; background: var(--ground); color: var(--ink);
+  font: 11.5px/1.35 var(--body); -webkit-font-smoothing: antialiased;
+  user-select: none; overflow: hidden; display: flex; flex-direction: column;
+}
+.top-rule { height: 4px; background: var(--aegean); flex: none; }
+.rule { height: 1px; background: var(--line); flex: none; }
+
+/* header */
+header { display: flex; align-items: center; gap: 9px; padding: 11px 14px; flex: none; }
+.mark { width: 20px; height: 20px; flex: none; color: var(--aegean); }
+.mark[data-tone="armed"] { color: var(--ochre); }
+.mark[data-tone="recording"] { color: var(--oxide); }
+.mark[data-tone="launching"] { color: var(--aegean); opacity: .5; }
+.mark[data-tone="down"] { color: var(--script); }
+.wordmark { font: 700 15px/1 var(--wordmark); font-variation-settings: "SOFT" 30, "WONK" 1, "opsz" 24; color: var(--ink); }
+.say { font: 9px/1 var(--mono); color: var(--ink-faint); margin-left: -2px; }
+.spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 999px; font: 500 10.5px/1.2 var(--body); }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill[data-tone="idle"] { color: var(--script); background: rgba(122,106,89,.12); }
+.pill[data-tone="armed"] { color: var(--ochre-ink); background: rgba(138,94,26,.12); }
+.pill[data-tone="recording"], .pill[data-tone="down"] { color: var(--oxide); background: rgba(180,69,58,.12); }
+.pill[data-tone="launching"] { color: var(--aegean); background: rgba(46,92,134,.12); }
+.gear { width: 20px; height: 20px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-faint); padding: 0; display: grid; place-items: center; cursor: default; }
+.gear[aria-pressed="true"] { color: var(--aegean); background: var(--wash); }
+
+/* centre */
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.panel { padding: 12px 14px; background: var(--inset); min-height: 142px; display: flex; flex-direction: column; gap: 9px; }
+.panel[data-state="launching"] { justify-content: center; }
+.kicker-row { display: flex; align-items: baseline; gap: 8px; }
+.kicker { font: 500 9px/1 var(--mono); letter-spacing: 1.1px; text-transform: uppercase; color: var(--aegean); width: 58px; flex: none; }
+.word { font: 11px/1 var(--mono); }
+.word[data-tone="launching"] { color: var(--aegean); }
+.word[data-tone="down"] { color: var(--oxide); }
+.prose { font: 10.5px/1.4 var(--body); color: var(--ink-faint); }
+.prose.why { color: var(--ink-soft); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pulse { display: flex; gap: 5px; height: 5px; }
+.pulse i { width: 5px; height: 5px; border-radius: 50%; background: var(--aegean); animation: pulse 1.24s ease-in-out infinite; }
+.pulse i:nth-child(2) { animation-delay: .16s; } .pulse i:nth-child(3) { animation-delay: .32s; }
+@keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: .95; } }
+.down-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
+.path { font: 9px/1 var(--mono); color: var(--script); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+
+/* GET / as a list — task 1's centre; the stream list replaces it (task 2) */
+.discovery { padding: 4px 0; overflow-y: auto; flex: 1; }
+.section { font: 500 9px/1 var(--mono); letter-spacing: 1.1px; text-transform: uppercase; color: var(--aegean); padding: 9px 14px 4px; }
+.field { display: flex; align-items: baseline; gap: 10px; padding: 0 14px; height: 24px; }
+.field b { font: 500 11.5px/1 var(--body); color: var(--ink); width: 92px; flex: none; }
+.field span { font: 9.5px/1 var(--mono); color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.field span.absent { color: var(--script); }
+.empty { font: 10.5px/1.4 var(--body); color: var(--script); padding: 10px 14px; }
+
+/* the take bar — Record arrives with task 3; the bar keeps its place */
+.takebar { display: flex; align-items: center; gap: 10px; height: 46px; padding: 8px 14px; background: var(--inset); flex: none; }
+
+/* the daemon's data strip: GET / under everything, on the code-block ground */
+.strip { background: var(--block); color: var(--block-body); font: 9.5px/1.5 var(--mono); padding: 9px 14px; flex: none; white-space: nowrap; overflow: hidden; }
+.strip .row { display: flex; gap: 6px; align-items: center; }
+.strip .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--block-aegean); flex: none; }
+.strip .bone { color: var(--block-bone); }
+.strip .absent { color: var(--script); }
+.strip .root { padding-left: 11px; overflow: hidden; text-overflow: ellipsis; }
+
+/* controls */
+footer { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; flex: none; }
+.error { font: 9.5px/1.3 var(--mono); color: var(--oxide); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.error:empty { display: none; }
+.foot-row { display: flex; align-items: center; gap: 8px; }
+.wire { font: 9px/1 var(--mono); color: var(--script); }
+
+/* the site's pill button, from shapes */
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 999px; border: 1.2px solid var(--aegean); background: transparent; color: var(--aegean); font: 600 11px/1.2 var(--body); cursor: default; }
+.btn.filled { background: var(--aegean); color: var(--ground); }
+.btn.oxide { border-color: var(--oxide); color: var(--oxide); }
+.btn.oxide.filled { background: var(--oxide); color: var(--ground); }
+.btn:disabled { border-color: var(--script); color: var(--script); background: transparent; }
+.btn:active:not(:disabled) { opacity: .8; }
