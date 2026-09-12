@@ -22,13 +22,12 @@ let package = Package(
     products: [
         .library(name: "RheoclesCore", targets: ["RheoclesCore"]),
         .executable(name: "rheocles-core", targets: ["rheocles-core"]),
-        // .executable(name: "Rheocles", targets: ["Rheocles"]),   ← Rheo App
+        .executable(name: "Rheocles", targets: ["Rheocles"]),
     ],
     targets: [
         .target(name: "RheoclesCore"),
         .executableTarget(name: "rheocles-core", dependencies: ["RheoclesCore"]),
-        // Rheo App adds the menu bar app target here:
-        // .executableTarget(name: "Rheocles", dependencies: ["RheoclesCore"]),
+        .executableTarget(name: "Rheocles", dependencies: ["RheoclesCore"]),
         .testTarget(name: "RheoclesCoreTests", dependencies: ["RheoclesCore"]),
     ]
 )
