@@ -58,6 +58,7 @@ public final class VideoWriter: Writer, @unchecked Sendable {
 
     public var framesWritten: Int { lock.withLock { frames } }
     public var framesDropped: Int { lock.withLock { dropped } }
+    public func sampleLevelDb() -> Double? { nil }
 
     /// Delivered frames × nominal frame duration versus the timeline they
     /// span, in seconds: zero for a camera delivering exactly its rate,
@@ -144,8 +145,9 @@ public final class VideoWriter: Writer, @unchecked Sendable {
             settings[AVVideoCodecKey] = AVVideoCodecType.proRes422
         case .hevc:
             settings[AVVideoCodecKey] = AVVideoCodecType.hevc
-            // Provisional tier until step 9 measures: 0.15 bits per pixel per
-            // frame, the same figure the disk pre-flight uses.
+            // 0.15 bits per pixel per frame — the HEVC tier measured in
+            // docs/CAPTURE.md as visually transparent versus ProRes 422 at
+            // both 1080p and 4K, and the figure the disk pre-flight uses.
             let bitrate = Double(dims.width) * Double(dims.height) * max(frameRate, 1) * 0.15
             settings[AVVideoCompressionPropertiesKey] = [
                 AVVideoAverageBitRateKey: Int(bitrate),

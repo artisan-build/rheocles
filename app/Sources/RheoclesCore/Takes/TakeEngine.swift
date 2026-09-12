@@ -148,8 +148,28 @@ public actor TakeEngine {
         }
     }
 
-    /// The manifest of the active take, if any.
-    public var activeManifest: Manifest? { live?.manifest }
+    /// The manifest of the active take, if any, refreshed with each writer's
+    /// current frame count, drift and timecode — the manifest is live while
+    /// recording (spec §11), not frozen at the cue.
+    public var activeManifest: Manifest? { live.map(decorated) }
+
+    /// The live manifest with each recording stream's current stats folded in.
+    private func decorated(_ live: Live) -> Manifest {
+        var manifest = live.manifest
+        for index in manifest.streams.indices {
+            guard let writer = live.writers[manifest.streams[index].id] else { continue }
+            manifest.streams[index].framesWritten = writer.framesWritten
+            manifest.streams[index].framesDropped =
+                writer.framesDropped > 0 ? writer.framesDropped : nil
+            manifest.streams[index].drift = writer.drift
+            if manifest.streams[index].timecode == nil {
+                manifest.streams[index].timecode = writer.timecode
+            }
+            manifest.streams[index].timeReference =
+                manifest.streams[index].timeReference ?? (writer as? AudioWriter)?.bwfTimeReference
+        }
+        return manifest
+    }
 
     // MARK: Create
 
@@ -442,7 +462,7 @@ public actor TakeEngine {
     // MARK: Read
 
     public func manifest(_ id: String) async throws -> Manifest {
-        if let current = live, current.manifest.id == id { return current.manifest }
+        if let current = live, current.manifest.id == id { return decorated(current) }
         if let past = recent.first(where: { $0.id == id }) { return past }
         if let onDisk = scanDisk().first(where: { $0.id == id }) { return onDisk }
         throw APIError.notFound("no such take: \(id)")
@@ -606,8 +626,8 @@ public actor TakeEngine {
         }
     }
 
-    /// Rough bits per pixel per frame until step 9 measures the tiers:
-    /// HEVC high quality ≈ 0.15, ProRes 422 ≈ 2.4 (147 Mb/s at 1080p30).
+    /// Bits per pixel per frame: HEVC 0.15 (the measured transparent tier,
+    /// docs/CAPTURE.md), ProRes 422 ≈ 2.4 (147 Mb/s at 1080p30).
     static func estimateBytes(for stream: StreamInfo, codec: Manifest.Codec, seconds: Double)
         -> Int64
     {

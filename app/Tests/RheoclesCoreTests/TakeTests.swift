@@ -15,6 +15,7 @@ final class FakeWriter: Writer, @unchecked Sendable {
     var framesWritten: Int { lock.withLock { frames } }
     var framesDropped: Int { 0 }
     var drift: Double? { 0.001 }
+    func sampleLevelDb() -> Double? { -20 }
     func handle(_ sampleBuffer: CMSampleBuffer) { lock.withLock { frames += 1 } }
     func finish() async -> String? {
         lock.withLock { finished = true }

@@ -3,7 +3,8 @@ import RheoclesCore
 
 // rheocles-core — the headless daemon.
 //
-//   rheocles-core [--http-port 7447] [--ws-port 7448] [--output-root DIR] [--token-file FILE]
+//   rheocles-core [--http-port 7447] [--ws-port 7448] [--output-root DIR]
+//                 [--token-file FILE] [--settings-file FILE]
 //
 // Binds both transports on loopback, provisions the bearer token, and waits.
 // Front ends launch this if nothing answers on the port and share it if
@@ -17,7 +18,8 @@ func opt(_ name: String) -> String? {
 
 if args.contains("--help") || args.contains("-h") {
     print(
-        "usage: rheocles-core [--http-port N] [--ws-port N] [--output-root DIR] [--token-file FILE]"
+        "usage: rheocles-core [--http-port N] [--ws-port N] [--output-root DIR] "
+            + "[--token-file FILE] [--settings-file FILE]"
     )
     exit(0)
 }
@@ -40,6 +42,9 @@ if let p = opt("--ws-port").flatMap(UInt16.init) { configuration.wsPort = p }
 if let root = opt("--output-root") { configuration.outputRoot = URL(fileURLWithPath: root) }
 if let file = opt("--token-file") {
     configuration.tokenStore = TokenStore(fileURL: URL(fileURLWithPath: file))
+}
+if let file = opt("--settings-file") {
+    configuration.settingsFileURL = URL(fileURLWithPath: file)
 }
 
 let server: Server

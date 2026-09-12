@@ -1,3 +1,4 @@
+import CoreMedia
 import Foundation
 import Testing
 
@@ -44,6 +45,38 @@ struct JoinLeaveTests {
         #expect(await w.engine.activeManifest?.state == .recording)
         let final = try await w.engine.stop(id)
         #expect(final.state == .complete)
+    }
+
+    @Test("The manifest is live while recording: framesWritten reflects the writer, not the cue")
+    func liveManifest() async throws {
+        let w = try await world()
+        try await w.registry.arm("camera:fake")
+        let id = try await w.engine.record(.init()).take.id
+        // Push frames through the take's writer, as a device would.
+        let writer = try #require(w.writers.made["camera:fake"]?.1)
+        for _ in 0..<7 { writer.handle(Self.dummyFrame()) }
+        let live = try await w.engine.manifest(id)
+        #expect(live.state == .recording)
+        #expect(live.streams.first?.framesWritten == 7, "GET /takes/{id} shows live frames, not 0")
+        _ = try await w.engine.stop(id)
+    }
+
+    private static func dummyFrame() -> CMSampleBuffer {
+        var timing = CMSampleTimingInfo(
+            duration: .init(value: 1, timescale: 30),
+            presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()),
+            decodeTimeStamp: .invalid)
+        var format: CMFormatDescription?
+        CMVideoFormatDescriptionCreate(
+            allocator: nil, codecType: kCMVideoCodecType_H264, width: 16, height: 16,
+            extensions: nil,
+            formatDescriptionOut: &format)
+        var sample: CMSampleBuffer?
+        CMSampleBufferCreateReady(
+            allocator: nil, dataBuffer: nil, formatDescription: format, sampleCount: 1,
+            sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 0,
+            sampleSizeArray: nil, sampleBufferOut: &sample)
+        return sample!
     }
 
     @Test("Join on a stream already recording is 409")

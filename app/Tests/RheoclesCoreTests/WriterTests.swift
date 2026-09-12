@@ -276,6 +276,25 @@ struct WriterTests {
         #expect(sample(3) == 8_388_607)
     }
 
+    @Test("Audio: sampleLevelDb dispatches through `any Writer` (not the nil default)")
+    func levelThroughProtocol() async throws {
+        let url = temp("level.wav")
+        let writer: any Writer = AudioWriter(url: url)
+        let asbd = AudioStreamBasicDescription(
+            mSampleRate: 48000, mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsAlignedHigh,
+            mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4, mChannelsPerFrame: 1,
+            mBitsPerChannel: 24, mReserved: 0)
+        var bytes: [UInt8] = []
+        for _ in 0..<480 { bytes += [0x00, 0x00, 0x00, 0x40] }  // ~0.5 FS
+        writer.handle(
+            try audio(bytes, asbd: asbd, frames: 480, pts: HostClock.shared.nowHostSeconds))
+        let level = writer.sampleLevelDb()
+        #expect(level != nil, "held as `any Writer`, the audio level must not be the nil default")
+        #expect((level ?? -200) > -12 && (level ?? 0) < 0, "about -6 dBFS")
+        _ = await writer.finish()
+    }
+
     @Test("Audio: an unsupported format is refused with a reason")
     func unsupported() async throws {
         let writer = AudioWriter(url: temp("bad.wav"))

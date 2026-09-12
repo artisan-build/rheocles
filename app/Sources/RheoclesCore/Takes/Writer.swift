@@ -13,15 +13,15 @@ public protocol Writer: FrameSink {
     var framesDropped: Int { get }
     /// Frames × frame duration versus host elapsed, once measurable.
     var drift: Double? { get }
-    /// Close the file. The manifest is written after this returns.
-    func finish() async -> String?
-}
-
-extension Writer {
     /// Peak level since the last call, in dBFS, for audio streams; nil for
     /// video and before any samples. Reading resets the peak, so the `levels`
-    /// event shows the loudest moment of each interval.
-    public func sampleLevelDb() -> Double? { nil }
+    /// event shows the loudest moment of each interval. A protocol
+    /// requirement, not an extension default — an extension default is
+    /// statically dispatched and would hide AudioWriter's real level behind
+    /// nil when the writer is held as `any Writer`.
+    func sampleLevelDb() -> Double?
+    /// Close the file. The manifest is written after this returns.
+    func finish() async -> String?
 }
 
 public protocol WriterFactory: Sendable {
@@ -41,6 +41,7 @@ public final class NullWriter: Writer, @unchecked Sendable {
     public var drift: Double? { nil }
     public init() {}
     public func handle(_ sampleBuffer: CMSampleBuffer) {}
+    public func sampleLevelDb() -> Double? { nil }
     public func finish() async -> String? { nil }
 }
 

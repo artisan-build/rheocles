@@ -59,7 +59,10 @@ PLIST
     --entitlements "$ROOT/Scripts/Rheocles.entitlements" --sign "$SIGN" "$APP"
   codesign --verify --strict "$APP"
   rm -f "$LOG"
-  open -n --stdout "$LOG" --stderr "$LOG" -a "$APP" --args "$@"
+  # Isolate the dev daemon's settings and token in dist/, so --output-root and
+  # rotations never touch the user's real ~/Library/Application Support files.
+  open -n --stdout "$LOG" --stderr "$LOG" -a "$APP" --args \
+    --settings-file "$DIST/dev-settings.json" --token-file "$DIST/dev-token" "$@"
   sleep 1
   cat "$LOG"
   ;;
