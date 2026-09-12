@@ -40,6 +40,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/Rheocles" "$APP/Contents/MacOS/Rheocles"
 cp "$BIN/rheocles-core" "$APP/Contents/Resources/rheocles-core"
+# The family's faces, OFL, registered by the app at launch (Brand.swift).
+cp -R "$ROOT/Sources/Rheocles/Fonts" "$APP/Contents/Resources/Fonts"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

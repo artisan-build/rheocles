@@ -3,21 +3,22 @@ import SwiftUI
 
 /// The popover behind the menu bar icon.
 ///
-/// Task 1 shape: who the daemon is and whether it is answering. The streams,
-/// the Record button and the settings arrive in the tasks that follow; the
-/// frame they land in is this one — header, a centre panel with exactly one
-/// state showing, controls beneath — so that the layout is judged now in the
-/// grid it will keep.
+/// Header, a centre panel with exactly one state showing, controls beneath.
+/// The centre is the stream list when the daemon is up — every stream with
+/// its arm switch, armed unmistakable in ochre — and the daemon's condition
+/// when it is not. The Record button and the settings arrive with the takes
+/// (tasks 3–4) in the same grid.
 ///
-/// Dark, on the family's shared grounds, with the Aegean signature where
-/// Sonocles has terracotta. The 3 pt rule along the top is the site header's
-/// `border-top`, so the popover and rheocles.com open the same way.
+/// Styled as rheocles.com is: limestone ground, ink, the Aegean signature,
+/// and a 4 pt Aegean rule along the top — the site header's `border-top` —
+/// so the popover and the site open the same way. Dark is for the daemon's
+/// data strip only, the way the site's code blocks are dark.
 struct MenuBarView: View {
     let daemon: DaemonModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Rectangle().fill(Brand.aegean).frame(height: 3)
+            Rectangle().fill(Brand.aegean).frame(height: 4)
             header
             rule
             centre
@@ -25,28 +26,31 @@ struct MenuBarView: View {
             controls
         }
         .frame(width: 344)
-        .background(Brand.panel)
+        .background(Brand.ground)
+        // The pulse is every three seconds; the list should be current the
+        // moment it is looked at.
+        .task { await daemon.check() }
     }
 
     private var rule: some View {
-        Rectangle().fill(Brand.field).frame(height: 1)
+        Rectangle().fill(Brand.line).frame(height: 1)
     }
 
     // MARK: - header
 
     private var header: some View {
         HStack(alignment: .center, spacing: 9) {
-            RheoclesMark(streams: .solid, weight: 3.4)
+            RheoclesMark(streams: armedCount > 0 ? .outline : .solid, weight: 3.4)
                 .foregroundStyle(markColour)
                 .frame(width: 20, height: 20)
 
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text("Rheocles")
                     .font(Type.wordmark(15))
-                    .foregroundStyle(Brand.bone)
+                    .foregroundStyle(Brand.ink)
                 Text("REE-oh-kleez")
                     .font(Type.mono(9))
-                    .foregroundStyle(Brand.script)
+                    .foregroundStyle(Brand.inkFaint)
             }
 
             Spacer()
@@ -57,9 +61,13 @@ struct MenuBarView: View {
         .padding(.vertical, 11)
     }
 
+    private var armedCount: Int {
+        daemon.status == .running ? daemon.armedStreams.count : 0
+    }
+
     private var markColour: Color {
         switch daemon.status {
-        case .running: Brand.aegean
+        case .running: armedCount > 0 ? Brand.ochre : Brand.aegean
         case .launching: Brand.aegean.opacity(0.5)
         case .down: Brand.script
         }
@@ -67,7 +75,7 @@ struct MenuBarView: View {
 
     private var stateLabel: String {
         switch daemon.status {
-        case .running: "Idle"
+        case .running: armedCount > 0 ? "Armed · \(armedCount)" : "Idle"
         case .launching: "Launching"
         case .down: "Down"
         }
@@ -75,7 +83,7 @@ struct MenuBarView: View {
 
     private var stateColour: Color {
         switch daemon.status {
-        case .running: Brand.script
+        case .running: armedCount > 0 ? Brand.ochreInk : Brand.script
         case .launching: Brand.aegean
         case .down: Brand.oxide
         }
@@ -84,53 +92,48 @@ struct MenuBarView: View {
     // MARK: - centre
 
     @ViewBuilder private var centre: some View {
-        Group {
-            switch daemon.status {
-            case .running: running
-            case .launching: launching
-            case .down(let why): down(why)
+        switch daemon.status {
+        case .running:
+            VStack(spacing: 0) {
+                StreamList(daemon: daemon)
+                daemonStrip
             }
+        case .launching:
+            launching.modifier(CentrePanel())
+        case .down(let why):
+            down(why).modifier(CentrePanel())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Brand.slip)
     }
 
-    /// `GET /`, field by field. Kickers on the left, values in mono on the
-    /// right: numbers should look like numbers.
-    private var running: some View {
+    /// `GET /` under the streams: the daemon is answering, its version, whose
+    /// it is, how much room there is, and where files go.
+    private var daemonStrip: some View {
         let d = daemon.discovery
-        return VStack(alignment: .leading, spacing: 6) {
-            field("daemon") {
-                HStack(spacing: 6) {
-                    Text("running")
-                        .foregroundStyle(Brand.verdigris)
-                    Text("·").foregroundStyle(Brand.script)
-                    Text(d?.version ?? "··")
-                    Text("·").foregroundStyle(Brand.script)
-                    Text(daemon.startedByUs ? "ours" : "shared")
-                        .foregroundStyle(Brand.body)
-                }
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Circle().fill(Brand.Block.aegean).frame(width: 5, height: 5)
+                Text("rheocles-core \(d?.version ?? "··")")
+                    .foregroundStyle(Brand.Block.bone)
+                Text("·")
+                Text(daemon.startedByUs ? "ours" : "shared")
+                Text("·")
+                Text(d?.freeBytes.map { "\(Self.bytes($0)) free" } ?? "free ··")
+                    .foregroundStyle(d?.freeBytes == nil ? Brand.script : Brand.Block.bone)
             }
-            field("host") { Text(d?.hostname ?? "··") }
-            field("machine") { Text(d?.machineId ?? "··").truncationMode(.middle) }
-            field("output") { Text(d.map { Self.abbreviate($0.outputRoot) } ?? "··") }
-            field("free") {
-                Text(d?.freeBytes.map(Self.bytes) ?? "··")
-                    .foregroundStyle(d?.freeBytes == nil ? Brand.script : Brand.bone)
+            HStack(spacing: 6) {
+                Text("→")
+                Text(d.map { Self.abbreviate($0.outputRoot) } ?? "··")
+                    .truncationMode(.middle)
             }
-            field("api") {
-                HStack(spacing: 6) {
-                    Text("http :\(String(d?.ports.http ?? 0))")
-                    Text("·").foregroundStyle(Brand.script)
-                    Text("ws :\(String(d?.ports.ws ?? 0))")
-                    Text("·").foregroundStyle(Brand.script)
-                    Text(d?.auth ?? "··")
-                }
-            }
+            .padding(.leading, 11)
         }
-        .frame(height: 118, alignment: .top)
+        .lineLimit(1)
+        .font(Type.mono(9.5))
+        .foregroundStyle(Brand.Block.body)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Brand.Block.panel)
     }
 
     private var launching: some View {
@@ -146,7 +149,7 @@ struct MenuBarView: View {
                 "Nothing answered on :\(String(Rheocles.defaultHTTPPort)), so the bundled rheocles-core is being started."
             )
             .font(Type.body(10.5))
-            .foregroundStyle(Brand.script)
+            .foregroundStyle(Brand.inkFaint)
             .fixedSize(horizontal: false, vertical: true)
         }
         .frame(height: 118, alignment: .center)
@@ -162,7 +165,7 @@ struct MenuBarView: View {
             }
             Text(why)
                 .font(Type.body(10.5))
-                .foregroundStyle(Brand.body)
+                .foregroundStyle(Brand.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineLimit(3)
             Spacer(minLength: 0)
@@ -179,38 +182,46 @@ struct MenuBarView: View {
         .frame(height: 118, alignment: .top)
     }
 
-    private func field(_ label: String, @ViewBuilder value: () -> some View) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            kicker(label)
-            value()
-                .font(Type.mono(11))
-                .foregroundStyle(Brand.bone)
-                .lineLimit(1)
-        }
-    }
-
     private func kicker(_ label: String) -> some View {
         Text(label.uppercased())
             .font(Type.kicker())
             .kerning(1.1)
-            .foregroundStyle(Brand.script)
+            .foregroundStyle(Brand.aegean)
             .frame(width: 58, alignment: .leading)
     }
 
     // MARK: - controls
 
     private var controls: some View {
-        HStack {
-            Text("token · \(Self.abbreviate(daemon.tokenFile.path))")
-                .font(Type.mono(9))
-                .foregroundStyle(Brand.script)
-                .lineLimit(1)
-                .truncationMode(.middle)
+        VStack(alignment: .leading, spacing: 8) {
+            // An arm call the daemon refused, in the daemon's words. Cleared
+            // by the next call; the list itself is already re-read and true.
+            if let error = daemon.armError ?? daemon.streamsError {
+                Text(error)
+                    .font(Type.mono(9.5))
+                    .foregroundStyle(Brand.oxide)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            Spacer()
+            HStack(spacing: 8) {
+                Button {
+                    daemon.showWindows.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Checkbox(on: daemon.showWindows)
+                        Text("Show windows")
+                            .font(Type.body(11))
+                            .foregroundStyle(Brand.inkSoft)
+                    }
+                }
+                .buttonStyle(.plain)
 
-            PillButton("Quit", colour: Brand.body, filled: false) {
-                NSApplication.shared.terminate(nil)
+                Spacer()
+
+                PillButton("Quit", colour: Brand.aegean, filled: false) {
+                    NSApplication.shared.terminate(nil)
+                }
             }
         }
         .padding(.horizontal, 14)
@@ -219,11 +230,13 @@ struct MenuBarView: View {
 
     // MARK: - formatting
 
+    /// Decimal units, one decimal: what Finder says, to the digit that
+    /// matters for "is there room for this take".
     static func bytes(_ count: Int64) -> String {
-        let f = ByteCountFormatter()
-        f.countStyle = .file
-        f.allowedUnits = [.useGB, .useTB, .useMB]
-        return f.string(fromByteCount: count)
+        let gb = Double(count) / 1_000_000_000
+        if gb >= 1000 { return String(format: "%.2f TB", gb / 1000) }
+        if gb >= 1 { return String(format: "%.1f GB", gb) }
+        return String(format: "%.0f MB", gb * 1000)
     }
 
     static func abbreviate(_ path: String) -> String {
@@ -254,7 +267,7 @@ struct PillButton: View {
         Button(action: action) {
             Text(label)
                 .font(Type.body(11, .semibold))
-                .foregroundStyle(filled ? Brand.slip : colour)
+                .foregroundStyle(filled ? Brand.ground : colour)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background(
@@ -293,5 +306,37 @@ struct WorkingPulse: View {
         }
         .frame(height: 5)
         .onAppear { bright = true }
+    }
+}
+
+/// The centre panel's frame for the states that are prose rather than a list.
+struct CentrePanel: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Brand.inset)
+    }
+}
+
+/// A checkbox from shapes, for the same reason as the switch.
+struct Checkbox: View {
+    let on: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(on ? Brand.aegean : Brand.ground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .strokeBorder(on ? Brand.aegean : Brand.script, lineWidth: 1))
+            if on {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Brand.ground)
+            }
+        }
+        .frame(width: 13, height: 13)
     }
 }

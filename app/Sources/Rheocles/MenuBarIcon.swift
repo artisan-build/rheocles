@@ -16,10 +16,13 @@ import SwiftUI
 /// dimmed idle state survives that because dimming is opacity — which is
 /// alpha, which is exactly what a template keeps.
 ///
-/// Three states (spec §12, BRAND § Mark): idle dims the whole mark to 40 %,
-/// armed draws the streams in outline, recording fills them. Whole-mark
-/// dimming rather than per-stroke because per-stroke reads at 64 pt in a
-/// review and not at 18 pt in a menu bar, which is the only size that counts.
+/// Three states (spec §12): idle dims the whole mark to 40 %, armed is the
+/// mark at full strength, recording adds a filled dot at the bar's foot.
+/// BRAND's outline-versus-fill for armed-versus-recording is kept for the
+/// popover, where the mark is big enough for it; at 18 pt it did not read,
+/// and Len chose opacity and a dot instead. Whole-mark dimming rather than
+/// per-stroke for the same reason: per-stroke reads at 64 pt in a review
+/// and not at 18 pt in a menu bar, which is the only size that counts.
 @MainActor
 enum MenuBarIcon {
     enum State: Hashable {
@@ -52,10 +55,10 @@ enum MenuBarIcon {
             mark = RheoclesMark(streams: .solid, weight: 3.2)
             opacity = 0.4
         case .armed:
-            mark = RheoclesMark(streams: .outline, weight: 3.2)
+            mark = RheoclesMark(streams: .solid, weight: 3.2)
             opacity = 1
         case .recording(let late):
-            mark = RheoclesMark(streams: .solid, lateJoined: late, weight: 3.2)
+            mark = RheoclesMark(streams: .solid, lateJoined: late, cueDot: true, weight: 3.2)
             opacity = 1
         }
 

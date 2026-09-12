@@ -12,12 +12,12 @@ import SwiftUI
 /// Drawn rather than shipped as an asset because it is five strokes, and a
 /// vector that scales exactly beats a PDF that needs a build step.
 ///
-/// Three renderings, from `docs/BRAND.md` § Mark: the streams solid (idle,
-/// which the icon then dims as a whole; and recording), or as outlines
-/// (armed — live, not yet writing). The bar is the cue and stays solid in
-/// every state; it is not a stream. A late-joined stream is a shorter stroke
-/// that starts to the right of the bar, so the icon can tell the truth about
-/// the take without the popover being opened.
+/// The streams are drawn solid or, for armed in the popover where there is
+/// room for it, as outlines (`docs/BRAND.md` § Mark: live, not yet writing).
+/// The bar is the cue and stays solid in every state; it is not a stream.
+/// Recording adds a filled dot at the bar's foot. A late-joined stream is a
+/// shorter stroke that starts to the right of the bar, so the icon can tell
+/// the truth about the take without the popover being opened.
 struct RheoclesMark: View {
     enum Streams {
         case solid
@@ -27,6 +27,10 @@ struct RheoclesMark: View {
     var streams: Streams = .solid
     /// Indices (0–3, top to bottom) of streams that joined late.
     var lateJoined: Set<Int> = []
+    /// Recording: the bar stops short and a filled dot sits at its foot — a
+    /// record light under the cue. Len's call for the 18 pt icon, where an
+    /// outline-versus-fill difference did not read.
+    var cueDot = false
     /// Stroke width in points at 32 pt; scales with the mark.
     var weight: CGFloat = 3
 
@@ -51,9 +55,15 @@ struct RheoclesMark: View {
             ZStack(alignment: .topLeading) {
                 Path { path in
                     path.move(to: CGPoint(x: Self.barX * k, y: 4 * k))
-                    path.addLine(to: CGPoint(x: Self.barX * k, y: 28 * k))
+                    path.addLine(to: CGPoint(x: Self.barX * k, y: (cueDot ? 25 : 28) * k))
                 }
                 .stroke(style: style)
+
+                if cueDot {
+                    Circle()
+                        .frame(width: 4.6 * k, height: 4.6 * k)
+                        .position(x: Self.barX * k, y: 30.2 * k)
+                }
 
                 ForEach(Array(Self.strokes.enumerated()), id: \.offset) { index, s in
                     let late = lateJoined.contains(index)
