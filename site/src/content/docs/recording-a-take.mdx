@@ -109,7 +109,7 @@ Rheocles/                              ← output root, one field on GET /
 
 | kind | container | `codec` | carries its time as |
 |---|---|---|---|
-| camera, display, window | QuickTime `.mov`, a fragment every second | `hevc` (default) or `prores` — ProRes 422, one setting for the whole take | a `tmcd` track, local time of day, one sample per frame |
+| camera, display, window | QuickTime `.mov`, a fragment every second | `hevc` or `prores` (ProRes 422), one setting for the whole take — `codec` on create, else the daemon's `settings.codec` | a `tmcd` track, local time of day, one sample per frame |
 | microphone, system audio | Broadcast Wave `.wav`, sizes patched every second | `pcm_s24le`, 48 kHz | `bext` `TimeReference`, samples since local midnight |
 
 Video files carry no audio track; audio is always its own file. Streams

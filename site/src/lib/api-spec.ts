@@ -20,6 +20,7 @@ export interface Endpoint {
 	description?: string;
 	request?: Field[];
 	response?: string; // example JSON
+	responseTypes?: string[]; // content types the YAML lists for the 2xx
 	responseFields?: Field[]; // from the YAML schema
 	responseNote?: string;
 	errors?: { code: string; when: string }[];

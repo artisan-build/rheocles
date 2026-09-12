@@ -6,8 +6,9 @@ import { Code } from 'astro-expressive-code/components';
 import type { Endpoint } from '../lib/api-spec';
 interface Props {
 	endpoint: Endpoint;
+	badges?: boolean; // pinned / planned chips — only worth showing while both exist
 }
-const { endpoint: e } = Astro.props;
+const { endpoint: e, badges = true } = Astro.props;
 const slug = `${e.method}-${e.path}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const responseLang = e.method === 'WS' || e.path === '/events' ? 'txt' : 'json';
 // Descriptions from the YAML use backticks for identifiers.
@@ -23,8 +24,8 @@ const inline = (t: string) =>
 	<h3 class="ep__head">
 		<span class:list={['ep__method', `ep__method--${e.method.toLowerCase()}`]}>{e.method}</span>
 		<code class="ep__path">{e.path}</code>
-		{e.pinned && <span class="ep__badge ep__badge--pinned">pinned</span>}
-		{e.planned && <span class="ep__badge ep__badge--planned">planned</span>}
+		{badges && e.pinned && <span class="ep__badge ep__badge--pinned">pinned</span>}
+		{badges && e.planned && <span class="ep__badge ep__badge--planned">planned</span>}
 	</h3>
 	<div class="ep__grid">
 		<div class="ep__prose">
@@ -50,7 +51,7 @@ const inline = (t: string) =>
 				e.errors && (
 					<dl class="ep__errors">
 						{e.errors.map((er) => (
-							<div><dt>{er.code}</dt><dd>{er.when}</dd></div>
+							<div><dt>{er.code}</dt><dd set:html={inline(er.when)} /></div>
 						))}
 					</dl>
 				)
@@ -59,6 +60,13 @@ const inline = (t: string) =>
 		<div class="ep__code">
 			{e.response && <Code code={e.response} lang={responseLang} title={e.method === 'WS' ? 'frames' : 'response'} />}
 			{e.responseNote && <p class="ep__note">{e.responseNote}</p>}
+			{
+				e.responseTypes && e.responseTypes.length > 1 && (
+					<p class="ep__note">
+						Answers {e.responseTypes.map((t, i) => (<><code>{t}</code>{i < e.responseTypes!.length - 1 ? ' or ' : ''}</>))}.
+					</p>
+				)
+			}
 			{e.ws && <Code code={e.ws} lang="json" title="over WebSocket" />}
 		</div>
 	</div>
