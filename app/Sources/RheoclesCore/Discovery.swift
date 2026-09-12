@@ -38,7 +38,7 @@ public struct Discovery: Codable, Sendable, Equatable {
 
     /// The kernel's host UUID — stable across reboots and renames, unlike the
     /// hostname, and readable without IOKit.
-    static func machineIdentifier() -> String {
+    public static func machineIdentifier() -> String {
         var uuid = uuid_t(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         var timeout = timespec(tv_sec: 0, tv_nsec: 0)
         guard gethostuuid(&uuid, &timeout) == 0 else { return "unknown" }
@@ -47,7 +47,7 @@ public struct Discovery: Codable, Sendable, Equatable {
 
     /// "Important usage" capacity: what the system would actually let us
     /// write, after purgeable space is reclaimed, not the raw free count.
-    static func freeBytes(at url: URL) -> Int64? {
+    public static func freeBytes(at url: URL) -> Int64? {
         var probe = url.standardizedFileURL
         while !FileManager.default.fileExists(atPath: probe.path), probe.pathComponents.count > 1 {
             probe.deleteLastPathComponent()

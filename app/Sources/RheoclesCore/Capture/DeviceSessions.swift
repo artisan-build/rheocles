@@ -84,12 +84,12 @@ class AVCaptureStreamSession: NSObject, StreamSession, @unchecked Sendable {
 
 /// A camera held live.
 ///
-/// Holds `lockForConfiguration` for the whole armed period and puts the
-/// device's own format back after the session's preset has had its say, so
-/// the device keeps the format it had: S1 showed that whoever configures
-/// last owns the format, that a second opener silently changes what the
-/// first receives, and that the lock prevents it. "Native" is therefore the
-/// device's active format at arm time. (`inputPriority` is iOS-only.)
+/// Holds `lockForConfiguration` for the whole armed period: S1 showed that
+/// whoever configures last owns the format, that a second opener silently
+/// changes what the first receives, and that the lock prevents it. "Native"
+/// is deterministic — the device's largest format, at the signal's rate
+/// where the device reports one and otherwise the format's maximum capped
+/// at 60 — never whatever the last app left the device set to.
 final class CameraSession: AVCaptureStreamSession, AVCaptureVideoDataOutputSampleBufferDelegate,
     @unchecked Sendable
 {
@@ -122,9 +122,7 @@ final class CameraSession: AVCaptureStreamSession, AVCaptureVideoDataOutputSampl
         output.alwaysDiscardsLateVideoFrames = false
         output.setSampleBufferDelegate(self, queue: queue)
 
-        // What the device has now is what we record.
-        let native = device.activeFormat
-        let nativeInterval = device.activeVideoMinFrameDuration
+        let native = Self.nativeFormat(of: device)
 
         session.beginConfiguration()
         guard session.canAddInput(input), session.canAddOutput(output) else {
@@ -135,6 +133,7 @@ final class CameraSession: AVCaptureStreamSession, AVCaptureVideoDataOutputSampl
         session.addOutput(output)
         session.commitConfiguration()
 
+        // After the session's preset has had its say, and held from here on.
         do {
             try device.lockForConfiguration()
             locked = true
@@ -142,11 +141,10 @@ final class CameraSession: AVCaptureStreamSession, AVCaptureVideoDataOutputSampl
             throw CaptureError.deviceUnavailable(
                 "\(info.name): could not hold the configuration lock")
         }
-        if device.formats.contains(native) {
-            device.activeFormat = native
-            if nativeInterval.isValid, nativeInterval.seconds > 0 {
-                device.activeVideoMinFrameDuration = nativeInterval
-            }
+        if let native {
+            device.activeFormat = native.format
+            device.activeVideoMinFrameDuration = native.frameDuration
+            device.activeVideoMaxFrameDuration = native.frameDuration
         }
         session.startRunning()
         guard session.isRunning else {
@@ -169,6 +167,45 @@ final class CameraSession: AVCaptureStreamSession, AVCaptureVideoDataOutputSampl
         from connection: AVCaptureConnection
     ) {
         deliver(sampleBuffer)
+    }
+
+    /// The largest format by pixels; among equals, uncompressed over
+    /// compressed and the higher rate. The rate is the format's maximum
+    /// capped at 60 — a capture card advertises 120 and duplicates a 30 fps
+    /// signal to fill it (S1), and AVFoundation cannot see the signal's own
+    /// rate, so 60 is the honest ceiling until step 5 measures delivery.
+    static func nativeFormat(of device: AVCaptureDevice) -> (
+        format: AVCaptureDevice.Format, frameDuration: CMTime
+    )? {
+        func pixels(_ f: AVCaptureDevice.Format) -> Int {
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            return Int(d.width) * Int(d.height)
+        }
+        func rate(_ f: AVCaptureDevice.Format) -> Double {
+            f.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0
+        }
+        func uncompressed(_ f: AVCaptureDevice.Format) -> Bool {
+            let sub = CMFormatDescriptionGetMediaSubType(f.formatDescription)
+            return sub == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+                || sub == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+                || sub == kCVPixelFormatType_422YpCbCr8
+                || sub == kCVPixelFormatType_422YpCbCr8_yuvs || sub == kCVPixelFormatType_32BGRA
+        }
+        guard
+            let best = device.formats.max(by: { a, b in
+                (pixels(a), uncompressed(a) ? 1 : 0, rate(a)) < (
+                    pixels(b), uncompressed(b) ? 1 : 0, rate(b)
+                )
+            })
+        else { return nil }
+        // Ranges are discrete on UVC devices (144, 120, 60, 59.94, 50, 30…):
+        // take the fastest one at or under 60 and use its own duration.
+        let chosen =
+            best.videoSupportedFrameRateRanges.filter { $0.maxFrameRate <= 60.5 }
+            .max { $0.maxFrameRate < $1.maxFrameRate }
+            ?? best.videoSupportedFrameRateRanges.min { $0.maxFrameRate < $1.maxFrameRate }
+        let duration = chosen?.minFrameDuration ?? CMTime(value: 1, timescale: 30)
+        return (best, duration)
     }
 }
 

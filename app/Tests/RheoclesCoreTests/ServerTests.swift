@@ -21,24 +21,35 @@ struct ServerTests {
     }
 
     /// Both transports up, both handed the same dispatcher, fake devices.
+    /// Random spare ports, retried: something else on the machine may hold
+    /// the pair.
     private func running() throws -> Server {
-        var configuration = Server.Configuration()
-        configuration.catalog = FakeCatalog()
-        configuration.sessionFactory = FakeFactory()
-        configuration.permissions = {
-            Permissions(camera: .authorized, microphone: .denied, screen: .notDetermined)
+        var lastError: Error?
+        for _ in 0..<5 {
+            var configuration = Server.Configuration()
+            configuration.catalog = FakeCatalog()
+            configuration.sessionFactory = FakeFactory()
+            configuration.writerFactory = FakeWriterFactory()
+            configuration.freeBytes = { _ in 1 << 40 }
+            configuration.permissions = {
+                Permissions(camera: .authorized, microphone: .denied, screen: .notDetermined)
+            }
+            let base = UInt16.random(in: 20000...60000)
+            configuration.httpPort = base
+            configuration.wsPort = base + 1
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("rheocles-tests-\(UUID().uuidString)", isDirectory: true)
+            configuration.tokenStore = TokenStore(fileURL: dir.appendingPathComponent("token"))
+            configuration.outputRoot = dir
+            do {
+                let server = try Server(configuration: configuration)
+                try server.start()
+                return server
+            } catch {
+                lastError = error
+            }
         }
-        // Spare ports, away from the real 7447/7448 in case a daemon is up.
-        let base = UInt16.random(in: 20000...60000)
-        configuration.httpPort = base
-        configuration.wsPort = base + 1
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rheocles-tests-\(UUID().uuidString)", isDirectory: true)
-        configuration.tokenStore = TokenStore(fileURL: dir.appendingPathComponent("token"))
-        configuration.outputRoot = dir
-        let server = try Server(configuration: configuration)
-        try server.start()
-        return server
+        throw lastError!
     }
 
     private func get(_ server: Server, _ path: String, token: String?) async throws -> (Int, Data) {
@@ -128,6 +139,52 @@ struct ServerTests {
         #expect(try await post(server, "/streams/nope/arm", #"{"armed": true}"#).0 == 404)
         #expect(try await post(server, "/streams/camera:fake/arm", "").0 == 400)
         #expect(try await post(server, "/streams/camera:fake/arm", #"{"armed": "yes"}"#).0 == 400)
+    }
+
+    @Test("Takes over HTTP: create 201, start, stop, read back, list; take events on WebSocket")
+    func takes() async throws {
+        let server = try running()
+        defer { server.stop() }
+        let task = socket(server)
+        _ = try await roundTrip(task, #"{"auth": "\#(server.token)"}"#)
+        _ = try await post(server, "/streams/camera:fake/arm", #"{"armed": true}"#)
+        _ = try await task.receive()  // the stream event
+
+        let (status, data) = try await post(
+            server, "/takes", #"{"name": "Ep 1", "expectedDuration": 60}"#)
+        #expect(status == 201)
+        let created = try Manifest.decoder.decode(TakeEngine.Created.self, from: data)
+        #expect(
+            created.take.state == .created && created.take.streams.first?.path == "fake-camera.mov")
+        let id = created.take.id
+        guard case .string(let createdEvent) = try await task.receive() else {
+            Issue.record("no event"); return
+        }
+        #expect(
+            createdEvent.contains(#""event":"take""#)
+                && createdEvent.contains(#""state":"created""#))
+
+        let (s2, d2) = try await post(server, "/takes/\(id)/start", "")
+        #expect(s2 == 200)
+        #expect(try Manifest.decode(d2).state == .recording)
+        let (s3, d3) = try await get(server, "/takes/\(id)", token: server.token)
+        #expect(s3 == 200)
+        #expect(try Manifest.decode(d3).state == .recording)
+        #expect(try await post(server, "/takes", "{}").0 == 409, "one active take")
+        let (s4, d4) = try await post(server, "/takes/\(id)/stop", "")
+        #expect(s4 == 200)
+        #expect(try Manifest.decode(d4).state == .complete)
+        #expect(try await post(server, "/takes/\(id)/stop", "").0 == 409, "already stopped")
+        let (s5, d5) = try await get(server, "/takes", token: server.token)
+        #expect(s5 == 200)
+        #expect(try Manifest.decoder.decode([TakeEngine.Summary].self, from: d5).map(\.id) == [id])
+        #expect(try await get(server, "/takes/nope", token: server.token).0 == 404)
+
+        let (s6, d6) = try await post(server, "/record", #"{"name": "one click"}"#)
+        #expect(s6 == 201)
+        #expect(
+            try Manifest.decoder.decode(TakeEngine.Created.self, from: d6).take.state == .recording)
+        task.cancel(with: .normalClosure, reason: nil)
     }
 
     @Test("Arming is announced on SSE and on WebSocket")

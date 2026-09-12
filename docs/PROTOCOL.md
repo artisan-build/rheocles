@@ -4,8 +4,10 @@ Every command is reachable over both transports, and every event reaches
 both. One command table, two encoders: this document describes the table
 once and the two encodings once.
 
-**Status:** current with the code through task 4 step 3 (`GET /`, auth,
-framing, `GET /streams`, arm/disarm, the `stream` event). Sections marked *planned* describe what the next steps add and are
+**Status:** current with the code through task 4 step 4 (`GET /`, auth,
+framing, streams, arm/disarm, takes, the `stream` and `take` events).
+Takes reserve paths and keep a truthful manifest; the files themselves are
+step 5, so until then every stream's `framesWritten` is 0. Sections marked *planned* describe what the next steps add and are
 what the front ends build against; they change here before they change in
 the code.
 
@@ -49,12 +51,12 @@ next request.
 | `GET /` | discovery: name, version, hostname, machine id, output root, free bytes, auth mode, ports | step 1 |
 | `GET /streams` | every stream with armed state, plus what macOS lets this process see | step 2 |
 | `POST /streams/{id}/arm` | `{ "armed": true\|false }` — device live or not; never stamps, never writes | step 3 |
-| `POST /takes` | create: snapshot the armed set, reserve paths, write the manifest; nothing records | *planned*, step 4 |
-| `POST /takes/{id}/start` | the cue | *planned*, step 4 |
-| `POST /takes/{id}/stop` | finalize every writer and the manifest | *planned*, step 4 |
-| `POST /record` | create + start, the one-click form | *planned*, step 4 |
-| `GET /takes/{id}` | the manifest, live while recording | *planned*, step 4 |
-| `GET /takes` | recent takes | *planned*, step 4 |
+| `POST /takes` | create: snapshot the armed set, reserve paths, pre-flight the disk, write the manifest; nothing records | step 4 |
+| `POST /takes/{id}/start` | the cue | step 4 |
+| `POST /takes/{id}/stop` | finalize every writer and the manifest | step 4 |
+| `POST /record` | create + start, the one-click form | step 4 |
+| `GET /takes/{id}` | the manifest, live while recording | step 4 |
+| `GET /takes` | recent takes, newest first | step 4 |
 | `POST /takes/{id}/join` | `{ "stream": id }` — arms if needed, starts that stream's writer now | *planned*, step 6 |
 | `POST /takes/{id}/leave` | `{ "stream": id }` — finalizes that file; the stream stays armed | *planned*, step 6 |
 | `POST /takes/{id}/markers` | `{ "label": "…" }` → `{ "t": seconds from the cue, "label" }` | *planned*, step 6 |
@@ -147,6 +149,14 @@ Windows are filtered to on-screen, titled, normal-layer windows of real
 applications at least 64×64 points. The list is long and volatile by
 nature; the popover hides it behind a setting (spec §5).
 
+What each grant needs, verified on macOS 26.6 with the signed dev bundle
+(spec §4 asked): camera — `NSCameraUsageDescription` +
+`com.apple.security.device.camera`; microphone —
+`NSMicrophoneUsageDescription` + `com.apple.security.device.audio-input`;
+system audio — `NSAudioCaptureUsageDescription`, no further entitlement,
+prompted as "System Audio Recording" on the first tap; screen and windows —
+no key and no entitlement, ScreenCaptureKit prompts itself.
+
 **Side effect:** the first `GET /streams` in a daemon process whose `screen`
 permission is `notDetermined` raises the system's Screen Recording prompt,
 once. Without the grant there are no displays to list, so there would be no
@@ -195,6 +205,100 @@ Armed streams cost CPU and hold their devices. Five armed at once (a 4K
 display, a window, a camera, a microphone, system audio) idle at roughly a
 quarter of a core on an M1.
 
+### Takes
+
+The manifest is the take (spec §2, §9). `POST /takes` writes it with
+`state: created` and answers it; every later state change rewrites it
+atomically (temp file + rename), so `manifest.json` is always either the
+previous complete version or the next. Clients hold the id; every path in
+the answer is relative — the take folder to the output root, each file to
+the take folder.
+
+```json
+→ POST /takes  { "name": "Episode 12", "expectedDuration": 3600 }
+← 201 {
+  "take": {
+    "id": "20260912T040433-fd9q",
+    "name": "Episode 12",
+    "state": "created",
+    "created": "2026-09-12T04:04:33.235Z",
+    "outputRoot": "/Users/gopher/Movies/Rheocles",
+    "destination": "takes/2026-09-11/210433-episode-12",
+    "version": "0.1.0",
+    "machine": { "hostname": "lens-macbook-pro.local", "machineId": "CD3B7EE5-…" },
+    "streams": [
+      { "id": "display:F65F9C53-…", "kind": "display", "name": "Prompter XL", "model": "vendor 9353 model 6433",
+        "path": "prompter-xl.mov", "codec": "hevc",
+        "format": { "video": { "width": 1920, "height": 1080, "maxFrameRate": 60 } },
+        "framesWritten": 0, "events": [] },
+      { "id": "microphone:…", "kind": "microphone", "name": "Scarlett 2i2 USB", "model": "Scarlett 2i2 USB:1235:8210",
+        "path": "scarlett-2i2-usb.wav", "codec": "pcm_s24le",
+        "format": { "audio": { "sampleRate": 48000, "channels": 2 } },
+        "framesWritten": 0, "events": [] }
+    ],
+    "markers": [],
+    "settings": { "codec": "hevc", "expectedDuration": 3600 }
+  },
+  "warnings": []
+}
+```
+
+**Request fields**, all optional: `name`; `destination`, a folder relative
+to the output root (default `takes/<yyyy-MM-dd>/<HHmmss>[-<name slug>]`,
+local date and time); `files`, a map of stream id → file name relative to
+the take folder (default: the stream's name slugged, `.mov` for video and
+`.wav` for audio, `window-<bundle id>.mov` for windows, `-2`, `-3` on
+collision); `codec`, `hevc` (default) or `prores`, one setting for the whole
+take; `expectedDuration` in seconds for the pre-flight (default 1800);
+`overwrite`.
+
+**Rules**
+
+- The armed set is snapshotted at create. Arming after create does not add
+  a stream to the take; `join` (step 6) does.
+- **Same destination twice → `409 conflict`** unless `overwrite: true`. A
+  destination is taken if the folder exists and is not empty. Never
+  silently suffixed.
+- **Disk pre-flight**: the armed set's bitrates × `expectedDuration` are
+  estimated (rough until step 9 measures the tiers); if free space is short
+  → `507 insufficient_storage` and nothing is created; if it is under twice
+  the estimate the take is created with a `warnings` line.
+- **One active take.** While a take is `recording`, `POST /takes` and
+  `POST /record` answer `409 take_active` naming it. A take that was created
+  but never started is **superseded** by the next create: its manifest is
+  rewritten `incomplete` with reason `superseded before start`, since nothing
+  but the manifest exists on disk.
+- `POST /takes` with no armed streams is `400 bad_request`.
+- Timestamps are UTC ISO 8601 with milliseconds; `t` values are seconds from
+  the cue to the millisecond. The manifest is the authoritative clock across
+  midnight (spec §8).
+
+**Start** — `POST /takes/{id}/start` — is the cue. `started` is stamped,
+every stream's writer starts on frames that are already flowing, each
+stream gets `started` and a `{ "t": 0, "type": "join" }` event, and the
+manifest reads `recording`. A stream that is no longer armed at the cue is
+recorded with `error: "not armed at the cue"` and the take finishes
+`incomplete`. `409` if the take is not `created`, or is not the active take.
+
+**Stop** — `POST /takes/{id}/stop` — finalizes every writer, detaches it
+from its stream (the stream stays armed), stamps `stopped`, fills
+`timecode`, `framesWritten` and `drift` per stream, appends a `leave` event,
+and writes the final manifest: `complete`, or `incomplete` with `reason`
+listing every stream's error. `409` if the take is not `recording`.
+
+**Record** — `POST /record` — is create followed by start in one call, with
+the same body and answer as create.
+
+**Read** — `GET /takes/{id}` answers the manifest at any time: live while
+recording, from disk afterwards. `GET /takes` lists recent takes newest
+first (the active one, then this process's finished ones, then whatever
+the output root holds, up to 50):
+
+```json
+[ { "id": "20260912T040433-fd9q", "name": "Episode 12", "state": "complete",
+    "created": "2026-09-12T04:04:33.235Z", "destination": "takes/2026-09-11/210433-episode-12", "streams": 5 } ]
+```
+
 ## Encodings
 
 ### HTTP
@@ -237,11 +341,12 @@ status in the status line, WebSocket in the frame's `status`.
 | 403 | `permission_denied` | macOS has not granted the device class this stream needs |
 | 404 | `not_found` | no such route or stream; *planned*: no such take |
 | 405 | `method_not_allowed` | the path exists, the method does not; the message names what would |
-| 409 | `conflict` | *planned*: destination already exists, a take already active |
+| 409 | `conflict` | destination already exists; a take is not in the state the verb needs |
+| 409 | `take_active` | a take is recording; stop it first |
 | 500 | `internal` | a handler threw something that is not an `APIError` |
 | 501 | `unsupported` | this kind cannot be captured yet |
 | 503 | `device_unavailable` | the device is gone, busy, or refused the configuration |
-| 507 | `insufficient_storage` | *planned*: disk pre-flight refused the take |
+| 507 | `insufficient_storage` | the disk pre-flight refused the take |
 
 ## Events
 
@@ -252,7 +357,8 @@ Every event has an `event` key naming its kind and no `id`.
 | event | since | carries |
 |---|---|---|
 | `stream` | step 3 | `stream`: the `StreamInfo` as it now is, on every change of armed state |
-| `state`, `levels`, `drift`, `join`, `leave`, `marker`, `error` | *planned*, step 6 | shapes land here before step 6 ships |
+| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) |
+| `levels`, `drift`, `join`, `leave`, `marker`, `error` | *planned*, step 6 | shapes land here before step 6 ships |
 
 ```json
 { "event": "stream", "stream": { "id": "microphone:…", "kind": "microphone", "armed": true, "active": { … }, "framesSeen": 0, … } }

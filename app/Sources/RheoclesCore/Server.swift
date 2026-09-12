@@ -19,6 +19,10 @@ public final class Server: Sendable {
         /// How arming opens a device. Tests hand in sessions that only
         /// remember what they were told.
         public var sessionFactory: any SessionFactory = DeviceSessionFactory()
+        /// How a take's files get written. Null until step 5; tests keep it null.
+        public var writerFactory: any WriterFactory = NullWriterFactory()
+        /// Free space on a volume, for the disk pre-flight. Tests fake it.
+        public var freeBytes: @Sendable (URL) -> Int64? = { Discovery.freeBytes(at: $0) }
 
         public init() {}
     }
@@ -30,6 +34,7 @@ public final class Server: Sendable {
     public let ws: WebSocketServer
 
     public let registry: Registry
+    public let takes: TakeEngine
 
     public init(configuration: Configuration = Configuration()) throws {
         self.configuration = configuration
@@ -49,10 +54,24 @@ public final class Server: Sendable {
             http.broadcast(event)
             ws.broadcast(event)
         }
+        let takes = TakeEngine(
+            registry: registry, outputRoot: configuration.outputRoot,
+            writerFactory: configuration.writerFactory,
+            machine: .init(
+                hostname: ProcessInfo.processInfo.hostName, machineId: Discovery.machineIdentifier()
+            ),
+            freeBytes: configuration.freeBytes
+        ) { manifest in
+            let event = Event.take(manifest)
+            http.broadcast(event)
+            ws.broadcast(event)
+        }
         self.http = http
         self.ws = ws
         self.registry = registry
-        dispatcher = Dispatcher(Server.routes(configuration: configuration, registry: registry))
+        self.takes = takes
+        dispatcher = Dispatcher(
+            Server.routes(configuration: configuration, registry: registry, takes: takes))
         router.dispatcher = dispatcher
     }
 
@@ -77,7 +96,9 @@ public final class Server: Sendable {
     }
 
     /// The command table. Order is the order `commands` lists them in.
-    static func routes(configuration: Configuration, registry: Registry) -> [Command] {
+    static func routes(configuration: Configuration, registry: Registry, takes: TakeEngine)
+        -> [Command]
+    {
         [
             Command("GET", "/") { _ in
                 Response(
@@ -97,6 +118,30 @@ public final class Server: Sendable {
                 let stream = body.armed ? try await registry.arm(id) : try await registry.disarm(id)
                 return Response(json: stream)
             },
+            Command("POST", "/takes") { request in
+                let body =
+                    request.body == nil
+                    ? TakeEngine.CreateRequest() : try request.decode(TakeEngine.CreateRequest.self)
+                return Response(status: 201, json: try await takes.create(body))
+            },
+            Command("GET", "/takes") { _ in
+                Response(json: await takes.list())
+            },
+            Command("GET", "/takes/{id}") { request in
+                Response(json: try await takes.manifest(request.params["id"] ?? ""))
+            },
+            Command("POST", "/takes/{id}/start") { request in
+                Response(json: try await takes.start(request.params["id"] ?? ""))
+            },
+            Command("POST", "/takes/{id}/stop") { request in
+                Response(json: try await takes.stop(request.params["id"] ?? ""))
+            },
+            Command("POST", "/record") { request in
+                let body =
+                    request.body == nil
+                    ? TakeEngine.CreateRequest() : try request.decode(TakeEngine.CreateRequest.self)
+                return Response(status: 201, json: try await takes.record(body))
+            },
         ]
     }
 
@@ -112,11 +157,15 @@ public final class Server: Sendable {
         }
     }
 
-    /// Release every device and drop every client.
+    /// Stop any take, release every device and drop every client.
     public func stop() {
         let armed = self.registry
+        let takes = self.takes
         let done = DispatchSemaphore(value: 0)
         Task {
+            if let active = await takes.activeManifest, active.state == .recording {
+                _ = try? await takes.stop(active.id)
+            }
             await armed.disarmAll()
             done.signal()
         }

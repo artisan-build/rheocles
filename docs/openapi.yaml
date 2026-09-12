@@ -18,6 +18,9 @@ security:
 # Events, as delivered on GET /events (SSE `data:` lines) and to every
 # authenticated WebSocket client — the same bytes on both.
 x-events:
+  - event: take
+    description: A take changed state — created, recording, complete or incomplete. Carries the manifest.
+    example: { event: take, take: { id: 20260912T040433-fd9q, name: Episode 12, state: recording, created: '2026-09-12T04:04:33.235Z', started: '2026-09-12T04:04:33.347Z', outputRoot: /Users/gopher/Movies/Rheocles, destination: takes/2026-09-11/210433-episode-12, version: 0.1.0, machine: { hostname: lens-macbook-pro.local, machineId: CD3B7EE5-5E6C-5155-854A-72E4728555F7 }, streams: [], markers: [], settings: { codec: hevc } } }
   - event: stream
     description: A stream's armed state changed.
     example: { event: stream, stream: { id: 'microphone:BuiltInMicrophoneDevice', kind: microphone, name: MacBook Pro Microphone, model: Digital Mic, capabilities: { audio: { sampleRate: 48000, channels: 1 } }, armed: true, active: { audio: { sampleRate: 48000, channels: 1 } }, framesSeen: 0 } }
@@ -103,7 +106,175 @@ paths:
       x-ws:
         request: { id: 3, method: POST, path: '/streams/camera:0x2300000fd9009c/arm', body: { armed: true } }
         response: { id: 3, status: 200, body: { id: 'camera:0x2300000fd9009c', kind: camera, name: Elgato 4K X, model: UVC Camera VendorID_4057 ProductID_156, capabilities: { video: { width: 3840, height: 2160, maxFrameRate: 30 } }, armed: true, active: { video: { width: 1280, height: 720, maxFrameRate: 120 } }, framesSeen: 0 } }
+  /takes:
+    post:
+      operationId: createTake
+      summary: Create a take — snapshot the armed set, reserve paths, pre-flight the disk, write the manifest. Nothing records.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TakeRequest'
+      responses:
+        '201':
+          description: The manifest (state `created`) and any pre-flight warnings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TakeCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Destination already exists (code `conflict`), or a take is recording (code `take_active`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '507':
+          description: The disk pre-flight refused the take.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 4, method: POST, path: /takes, body: { name: Episode 12, expectedDuration: 3600 } }
+        response: { id: 4, status: 201, body: { take: { id: 20260912T040433-fd9q, name: Episode 12, state: created, created: '2026-09-12T04:04:33.235Z', outputRoot: /Users/gopher/Movies/Rheocles, destination: takes/2026-09-11/210433-episode-12, version: 0.1.0, machine: { hostname: lens-macbook-pro.local, machineId: CD3B7EE5-5E6C-5155-854A-72E4728555F7 }, streams: [ { id: 'microphone:AppleUSBAudioEngine_Focusrite_Scarlett_2i2_USB_Y8CABR91C1CA8A_1_2', kind: microphone, name: Scarlett 2i2 USB, model: 'Scarlett 2i2 USB:1235:8210', path: scarlett-2i2-usb.wav, codec: pcm_s24le, format: { audio: { sampleRate: 48000, channels: 2 } }, framesWritten: 0, events: [] } ], markers: [], settings: { codec: hevc, expectedDuration: 3600 } }, warnings: [] } }
+    get:
+      operationId: listTakes
+      summary: Recent takes, newest first.
+      responses:
+        '200':
+          description: Up to 50 summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TakeSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      x-ws:
+        request: { id: 5, method: GET, path: /takes }
+        response: { id: 5, status: 200, body: [ { id: 20260912T040433-fd9q, name: Episode 12, state: complete, created: '2026-09-12T04:04:33.235Z', destination: takes/2026-09-11/210433-episode-12, streams: 5 } ] }
+  /takes/{id}:
+    get:
+      operationId: getTake
+      summary: The manifest — live while recording, from disk afterwards.
+      parameters:
+        - $ref: '#/components/parameters/takeId'
+      responses:
+        '200':
+          description: The manifest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      x-ws:
+        request: { id: 6, method: GET, path: /takes/20260912T040433-fd9q }
+        response: { id: 6, status: 200, body: { id: 20260912T040433-fd9q, state: recording } }
+  /takes/{id}/start:
+    post:
+      operationId: startTake
+      summary: The cue. Every armed stream's writer starts on frames that are already flowing.
+      parameters:
+        - $ref: '#/components/parameters/takeId'
+      responses:
+        '200':
+          description: The manifest, now `recording`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The take is not `created`, or is not the active take.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 7, method: POST, path: /takes/20260912T040433-fd9q/start }
+        response: { id: 7, status: 200, body: { id: 20260912T040433-fd9q, state: recording, started: '2026-09-12T04:04:33.347Z' } }
+  /takes/{id}/stop:
+    post:
+      operationId: stopTake
+      summary: Finalize every writer and the manifest. Streams stay armed.
+      parameters:
+        - $ref: '#/components/parameters/takeId'
+      responses:
+        '200':
+          description: The final manifest — `complete`, or `incomplete` with a reason.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The take is not `recording`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 8, method: POST, path: /takes/20260912T040433-fd9q/stop }
+        response: { id: 8, status: 200, body: { id: 20260912T040433-fd9q, state: complete, stopped: '2026-09-12T04:04:35.402Z' } }
+  /record:
+    post:
+      operationId: record
+      summary: Create and start in one call — the popover's Record button.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TakeRequest'
+      responses:
+        '201':
+          description: The manifest (state `recording`) and any pre-flight warnings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TakeCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Destination already exists (code `conflict`), or a take is recording (code `take_active`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '507':
+          description: The disk pre-flight refused the take.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 9, method: POST, path: /record, body: { name: quick } }
+        response: { id: 9, status: 201, body: { take: { id: 20260912T040500-k2pm, state: recording }, warnings: [] } }
 components:
+  parameters:
+    takeId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
   securitySchemes:
     bearer:
       type: http
@@ -155,6 +326,8 @@ components:
             - not_found
             - method_not_allowed
             - conflict
+            - take_active
+            - write_failed
             - internal
             - unsupported
             - device_unavailable
@@ -262,6 +435,200 @@ components:
     PermissionStatus:
       type: string
       enum: [authorized, denied, restricted, notDetermined]
+    TakeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        destination:
+          type: string
+          description: Take folder relative to the output root. Default `takes/<yyyy-MM-dd>/<HHmmss>[-<name>]`.
+        files:
+          type: object
+          description: File name per stream id, relative to the take folder.
+          additionalProperties:
+            type: string
+        codec:
+          type: string
+          enum: [hevc, prores]
+        expectedDuration:
+          type: number
+          description: Seconds, for the disk pre-flight. Default 1800.
+        overwrite:
+          type: boolean
+          description: Reuse a destination that already exists. Never silently suffixed.
+    TakeCreated:
+      type: object
+      required: [take, warnings]
+      additionalProperties: false
+      properties:
+        take:
+          $ref: '#/components/schemas/Manifest'
+        warnings:
+          type: array
+          items:
+            type: string
+    TakeSummary:
+      type: object
+      required: [id, state, created, destination, streams]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          $ref: '#/components/schemas/TakeState'
+        created:
+          type: string
+          format: date-time
+        destination:
+          type: string
+        streams:
+          type: integer
+    TakeState:
+      type: string
+      enum: [created, recording, complete, incomplete]
+    Manifest:
+      type: object
+      description: The manifest is the take. Rewritten atomically on every state change.
+      required: [id, state, created, outputRoot, destination, version, machine, streams, markers, settings]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          $ref: '#/components/schemas/TakeState'
+        reason:
+          type: string
+          description: Present only when `incomplete`.
+        created:
+          type: string
+          format: date-time
+        started:
+          type: string
+          format: date-time
+        stopped:
+          type: string
+          format: date-time
+        outputRoot:
+          type: string
+          description: Absolute, as it was at create.
+        destination:
+          type: string
+          description: Take folder, relative to the output root.
+        version:
+          type: string
+        machine:
+          type: object
+          required: [hostname, machineId]
+          additionalProperties: false
+          properties:
+            hostname:
+              type: string
+            machineId:
+              type: string
+        streams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManifestStream'
+        markers:
+          type: array
+          items:
+            type: object
+            required: [t, label]
+            additionalProperties: false
+            properties:
+              t:
+                type: number
+                description: Seconds from the cue.
+              label:
+                type: string
+        settings:
+          type: object
+          required: [codec]
+          additionalProperties: false
+          properties:
+            codec:
+              type: string
+              enum: [hevc, prores]
+            expectedDuration:
+              type: number
+    ManifestStream:
+      type: object
+      required: [id, kind, name, model, path, codec, format, framesWritten, events]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [display, window, camera, microphone, systemAudio]
+        name:
+          type: string
+        model:
+          type: string
+        path:
+          type: string
+          description: Relative to the take folder.
+        codec:
+          type: string
+          description: hevc, prores, or pcm_s24le.
+        format:
+          type: object
+          additionalProperties: false
+          properties:
+            video:
+              type: object
+              required: [width, height, maxFrameRate]
+              additionalProperties: false
+              properties:
+                width:
+                  type: integer
+                height:
+                  type: integer
+                maxFrameRate:
+                  type: number
+            audio:
+              type: object
+              required: [sampleRate, channels]
+              additionalProperties: false
+              properties:
+                sampleRate:
+                  type: number
+                channels:
+                  type: integer
+        started:
+          type: string
+          format: date-time
+        stopped:
+          type: string
+          format: date-time
+        timecode:
+          type: string
+          description: Time-of-day timecode of the first written frame.
+        framesWritten:
+          type: integer
+        drift:
+          type: number
+          description: Frames × frame duration versus host elapsed, seconds.
+        events:
+          type: array
+          items:
+            type: object
+            required: [t, type]
+            additionalProperties: false
+            properties:
+              t:
+                type: number
+              type:
+                type: string
+                enum: [join, leave]
+        error:
+          type: string
     Discovery:
       type: object
       required: [name, version, hostname, machineId, outputRoot, auth, ports]

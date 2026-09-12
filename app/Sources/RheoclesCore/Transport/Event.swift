@@ -10,6 +10,11 @@ public enum Event {
         encode(["event": "stream", "stream": stream])
     }
 
+    /// A take changed state (created, recording, complete, incomplete).
+    public static func take(_ manifest: Manifest) -> String {
+        encode(["event": "take", "take": manifest])
+    }
+
     private static func encode(_ fields: [String: any Encodable & Sendable]) -> String {
         struct Box: Encodable {
             let fields: [String: any Encodable & Sendable]
