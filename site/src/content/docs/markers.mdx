@@ -8,7 +8,7 @@ import Cards from '../../components/Cards.astro';
 import Card from '../../components/Card.astro';
 
 ```sh
-curl -s -H "$H" -X POST localhost:7447/takes/tk_7f3a/markers -d '{"label": "cold-open out"}'
+curl -s -H "$H" -X POST localhost:7447/takes/20260912T040433-fd9q/markers -d '{"label": "cold-open out"}'
 ```
 
 ```json title="→ 201, and the manifest now has"
@@ -56,13 +56,13 @@ retake:
 
 Because every marker's `t` is from the cue and every file's timecode is from
 the same host clock, a marker converts to a timecode in any file by adding
-`t` to that file's `timecode` — including a file that joined late, whose own
-`started` is just later.
+`t` to the take's `started` — or, for a file that joined late, by
+subtracting that stream's own join `t` first.
 
 ## Markers are not join and leave
 
-A stream joining a take is recorded per stream in `events[]`, with a `t` of
-its own. A marker is a note about the take. They are separate lists because
+A stream joining or leaving a take is recorded per stream in its `events[]`
+as `{ t, type }`. A marker is a note about the take. They are separate lists because
 they answer different questions — *what was written when* versus *what
 happened when* — and because a client should not have to filter one out of
 the other.

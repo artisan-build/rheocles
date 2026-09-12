@@ -74,12 +74,26 @@ another, which is the intended behaviour. If something *else* is on 7447,
 the app says so and will not start a daemon until the port is free. Sonocles
 is on 7357 and 7358 and does not collide.
 
-## `409` on create
+## `409 conflict` on create
 
-`POST /takes` was refused because the destination already exists, or a take
-is already recording. Rheocles never silently suffixes a path — a client
-that named a path meant it. Pass `overwrite: true` if you meant to replace
-it, or name it something else. One active take at a time in the MVP.
+The destination already exists and is not empty. Rheocles never silently
+suffixes a path — a client that named a path meant it. Pass `overwrite:
+true` if you meant to replace it, or name it something else. The same code
+answers `start` on a take that is not `created` and `stop` on one that is
+not `recording`.
+
+## `409 take_active` on create
+
+A take is recording, and the error names it. One active take at a time in
+the MVP; stop it first. A take that was *created* but never started does
+not block — the next create supersedes it and its manifest reads
+`incomplete`, reason `superseded before start`.
+
+## The manifest says `superseded before start`
+
+You created a take, never cued it, and created another. Nothing but the
+manifest ever existed for the first one, so it is marked and left. It is
+not an error; it is the record of a take that did not happen.
 
 ## Create refused for disk space
 
@@ -99,8 +113,7 @@ and the manifest is truthful about what it has.
 ## The manifest says `recording` and nothing is running
 
 The daemon died mid-take. The files are fragmented MOVs and play to their
-last fragment; the manifest has every stream's `started`, `timecode` and
-last known frame count. Nothing needs reconstructing — but nothing will mark
+last fragment; the manifest has every stream's `started` and `timecode`. Nothing needs reconstructing — but nothing will mark
 the take `complete` either, and the state is the honest one.
 
 ## Requests answer `401`
@@ -119,10 +132,11 @@ UTC — see [Timecode and sync](/docs/timecode-and-sync#midnight).
 
 ## Two files are a frame apart
 
-Look at `driftMs` for each stream in the manifest. A capture device's clock
-is not the host's, and a long take can drift by a frame or two; the number
-is measured per stream and is there to conform with. `null` means it was
-not measured — a stream that wrote no frames — and is not the same as `0`.
+Look at `drift` for each stream in the manifest, in seconds. A capture
+device's clock is not the host's, and a long take can drift by a frame or
+two; the number is measured per stream and is there to conform with. An
+absent `drift` means it was not measured — a stream that wrote no frames —
+and is not the same as `0`.
 
 ## Six cameras are still armed
 

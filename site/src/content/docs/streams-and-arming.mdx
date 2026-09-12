@@ -144,7 +144,7 @@ already existed. Disarming a joined stream implies `leave`. Nothing else is
 implicit.
 
 ```sh title="late join"
-T=localhost:7447/takes/tk_7f3a
+T=localhost:7447/takes/20260912T040433-fd9q
 curl -s -H "$H" -X POST $T/join  -d '{"stream": "window:11597"}'
 curl -s -H "$H" -X POST $T/leave -d '{"stream": "window:11597"}'
 ```

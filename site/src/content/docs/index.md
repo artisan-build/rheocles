@@ -23,13 +23,13 @@ together, with no compositor in the way.
 TOKEN="$(cat ~/Library/Application\ Support/Rheocles/token)"
 H="Authorization: Bearer $TOKEN"
 
-curl -s -H "$H" -X POST localhost:7447/takes -d '{"name":"ep12"}'   # → id, paths. Not recording.
-curl -s -H "$H" -X POST localhost:7447/takes/$ID/start              # the cue
+curl -s -H "$H" -X POST localhost:7447/takes -d '{"name":"Episode 12"}'   # → the manifest. Not recording.
+curl -s -H "$H" -X POST localhost:7447/takes/$ID/start                    # the cue
 curl -s -H "$H" -X POST localhost:7447/takes/$ID/stop
 ```
 
-Every armed stream is now its own file under the output root, and the
-manifest says so.
+Every armed stream is now its own file in the take folder, and the manifest
+says so.
 
 ## Where to go next
 

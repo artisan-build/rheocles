@@ -105,10 +105,11 @@ B=localhost:7447
 curl -s -H "$H" $B/streams                                  # ids and armed state
 curl -s -H "$H" -X POST $B/streams/camera:0x2300000fd9009c/arm -d '{"armed":true}'
 
-curl -s -H "$H" -X POST $B/takes -d '{"name":"ep12"}'       # → id and every path; not recording
-curl -s -H "$H" -X POST $B/takes/tk_7f3a/start              # the cue
-curl -s -H "$H" -X POST $B/takes/tk_7f3a/stop
-curl -s -H "$H" $B/takes/tk_7f3a                            # the manifest
+curl -s -H "$H" -X POST $B/takes -d '{"name":"Episode 12"}'   # → the manifest: id, paths; not recording
+T=$B/takes/20260912T040433-fd9q
+curl -s -H "$H" -X POST $T/start                              # the cue
+curl -s -H "$H" -X POST $T/stop
+curl -s -H "$H" $T                                            # the manifest
 ```
 
 <Cards>
