@@ -1,9 +1,16 @@
 # Plates
 
-Illustrations for rheocles.com. **Nothing here has been generated.** Every run
-costs money; Len approves each one explicitly, by name and count, through the
-orchestrator. Until then the landing page shows a flat placeholder in each
-plate's proportions (`src/components/Plate.astro`) so the page rhythm is real.
+Illustrations for rheocles.com. Every run costs money; Len approves each one
+explicitly, by name and count, through the orchestrator. The prompts live in
+`art/make.py` (the source of truth — a bare run generates only what is
+approved and missing); this file is the copy people read. A plate without an
+image renders as a flat placeholder in its proportions
+(`src/components/Plate.astro`).
+
+**Generated 11 Sep 2026, one run, gpt-image-2 at `high`:** hero, stone, rig →
+`src/assets/plates/`. One first-pass note: the rig plate has a planter pot at
+the right edge, which the "no vases" rule did not anticipate. It reads as a
+plant, not a Sonocles pot; left as is.
 
 The register is Sonocles' `STYLE_FLAT` with the source shifted from Attic vase
 painting to Minoan fresco — see `docs/BRAND.md` § The plates. The style block
@@ -11,8 +18,8 @@ below is shared by every prompt; each plate is the subject paragraph plus the
 style block. Both of Sonocles' expensive lessons apply, plus one of ours:
 **no lettering, ever; everyone clothed; no vases.**
 
-Proposed first run: **3 plates, 1 image each** (hero, stone, rig). If the hero
-lands, the remaining one is a second pass.
+The first run was **3 plates, 1 image each** (hero, stone, rig). The two under
+*Later* are written but not approved; `make.py` reaches them only by `--only`.
 
 ## Style — appended to every prompt
 
