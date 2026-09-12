@@ -130,6 +130,22 @@ struct StreamRow: View {
         return take.writing.contains { $0.id == stream.id }
     }
 
+    private var recording: Bool { daemon.take?.isRecording == true }
+    private var stalled: Bool { daemon.stalled.contains(stream.id) }
+
+    /// While writing: frames written and measured drift, from the last
+    /// `levels` event. Drift absent is `··`, never zero.
+    private var liveDetail: String? {
+        guard writing, let status = daemon.streamStatus[stream.id] else { return nil }
+        let drift = status.drift.map { String(format: "%+.0f ms", $0 * 1000) } ?? "··"
+        // Audio counts sample frames: say it as time, the way a recorder does.
+        if let audio = stream.capabilities.audio, audio.sampleRate > 0 {
+            let seconds = Double(status.framesWritten) / audio.sampleRate
+            return "\(seconds.clock) · \(drift)"
+        }
+        return "\(status.framesWritten) fr · \(drift)"
+    }
+
     var body: some View {
         HStack(spacing: 9) {
             Rectangle()
@@ -147,11 +163,20 @@ struct StreamRow: View {
                     .foregroundStyle(shownArmed ? Brand.ochreInk : Brand.ink)
                     .lineLimit(1)
                 HStack(spacing: 8) {
-                    Text(detail)
+                    Text(liveDetail ?? detail)
                         .font(Type.mono(9.5))
                         .foregroundStyle(Brand.inkFaint)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if stalled {
+                        Text("STALLED")
+                            .font(Type.kicker(8))
+                            .kerning(0.8)
+                            .foregroundStyle(Brand.ground)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(Brand.oxide))
+                    }
                     // Levels flow only while armed; before the first
                     // reading the meter is empty and the number is absent.
                     if stream.armed, stream.capabilities.audio != nil {
@@ -161,6 +186,23 @@ struct StreamRow: View {
             }
 
             Spacer(minLength: 8)
+
+            // While recording, the API's join and leave (spec §6) are here
+            // too — principle 1, everything reachable from both. Leave keeps
+            // the stream armed; join arms a cold stream first.
+            if recording {
+                if writing {
+                    PillButton("Leave", colour: Brand.oxide, filled: false, compact: true) {
+                        daemon.leave(stream.id)
+                    }
+                    .disabled(daemon.takeBusy)
+                } else {
+                    PillButton("Join", colour: Brand.ochreInk, filled: false, compact: true) {
+                        daemon.join(stream.id)
+                    }
+                    .disabled(daemon.takeBusy)
+                }
+            }
 
             if stream.capabilities.video != nil {
                 PreviewButton(on: daemon.previewing == stream.id) {

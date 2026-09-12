@@ -56,6 +56,13 @@ struct API: Sendable {
             "POST", path, body: body.map { try JSONEncoder().encode($0) } ?? nil, decoder: decoder)
     }
 
+    func patch<T: Decodable>(
+        _ path: String, _ body: some Encodable, as type: T.Type = T.self,
+        decoder: JSONDecoder = JSONDecoder()
+    ) async throws -> T {
+        try await send("PATCH", path, body: try JSONEncoder().encode(body), decoder: decoder)
+    }
+
     /// A POST whose answer the caller does not need — the app re-reads the
     /// state it changed rather than trusting an echo (brief, rule 1).
     func post(_ path: String, _ body: some Encodable) async throws {
