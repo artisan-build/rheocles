@@ -24,7 +24,7 @@ final class PushingSession: StreamSession, @unchecked Sendable {
     func start() async throws {
         guard deliversFrames else { return }
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "push"))
-        t.schedule(deadline: .now() + 0.05, repeating: 0.05)
+        t.schedule(deadline: .now(), repeating: 0.02)
         t.setEventHandler { [weak self] in
             guard let self, let sink else { return }
             if info.capabilities.video != nil {
