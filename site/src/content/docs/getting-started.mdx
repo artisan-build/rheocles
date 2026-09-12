@@ -1,0 +1,122 @@
+---
+title: Getting started
+description: Install it, let macOS ask its questions, find the token, and record one take two ways — from the popover and from a shell.
+draft: true
+---
+import Callout from '../../components/Callout.astro';
+import Cards from '../../components/Cards.astro';
+import Card from '../../components/Card.astro';
+
+Rheocles is a menu bar app that bundles a headless daemon, `rheocles-core`. The
+app is a thin client of the daemon over the same API you get. Launch the app
+and the daemon comes up on `localhost:7447`; quit the app and it stays until
+nothing is talking to it.
+
+## Install
+
+```sh title="Homebrew — not live until the first release"
+brew install --cask artisan-build/tap/rheocles
+```
+
+Or the disk image from the [releases page](https://github.com/artisan-build/rheocles/releases).
+The app, every nested binary and the disk image are Developer ID signed,
+notarized and stapled; Gatekeeper opens it without a right-click.
+
+**Requirements.** Apple Silicon, macOS 15 Sequoia or later. The floor is
+Sequoia because that is where `SCRecordingOutput` and process-level Core
+Audio taps became dependable, and Rheocles uses both.
+
+## Permissions
+
+The first time you arm a stream of each kind, macOS asks. Rheocles never asks
+ahead of time; it asks when a device is about to go live, so the prompt makes
+sense when it appears.
+
+| you arm | macOS asks for | where it lives afterwards |
+|---|---|---|
+| a camera | Camera | System Settings → Privacy & Security → Camera |
+| a microphone | Microphone | … → Microphone |
+| system audio | Audio capture | … → Screen & System Audio Recording |
+| a display or window | Screen recording | … → Screen & System Audio Recording |
+
+<Callout kind="trap" title="If Rheocles is not in the list">
+An app that has never asked does not appear in a Privacy pane at all. An empty
+list means "never asked", not "denied". If you arm a camera and nothing
+prompts, see [Troubleshooting](/docs/troubleshooting#nothing-prompts-and-nothing-records).
+</Callout>
+
+## The token
+
+Every request needs a bearer token, on every transport. You do not have to go
+and get it. It is written to
+
+```
+~/Library/Application Support/Rheocles/token
+```
+
+with mode `0600`, so any app running as you can read it and is paired with
+zero clicks. That is how Pteroprompter and the NativePHP app pair. Anything
+that cannot read a file gets the same token as a pairing code in the popover's
+settings, where it can also be rotated — rotation invalidates the old one for
+everyone.
+
+```sh
+TOKEN="$(cat ~/Library/Application\ Support/Rheocles/token)"
+curl -s -H "Authorization: Bearer $TOKEN" localhost:7447/
+```
+
+```json title="GET / — discovery"
+{ "hostname": "studio.local", "machine": "…", "version": "0.1.0",
+  "outputRoot": "/Users/len/Movies/Rheocles", "freeBytes": 812345678912,
+  "auth": "bearer" }
+```
+
+Everything Rheocles ever tells you about a file is a path **relative to
+`outputRoot`**. Store the relative path; join it to the root only if you need
+an absolute one.
+
+## The first take, from the popover
+
+1. Click the mark in the menu bar. Every stream on the machine is listed —
+   cameras, microphones, displays, system audio. Windows are hidden until
+   *Show windows* is on in settings.
+2. Toggle **arm** on the ones you want. The row changes to ochre and the
+   menu bar mark draws in outline: the device is live and costing CPU.
+3. Press **Record**. Every armed stream starts writing. The mark fills, the
+   elapsed clock runs.
+4. Press **Stop**. The take folder under the output root has one file per
+   stream and a `manifest.json` that describes them.
+
+## The first take, from a shell
+
+The popover's Record button is the one-click form, `POST /record`. The
+two-step form is what a client uses when it needs to know where the files will
+be before frame one:
+
+```sh title="create, cue, stop"
+H="Authorization: Bearer $(cat ~/Library/Application\ Support/Rheocles/token)"
+B=localhost:7447
+
+curl -s -H "$H" $B/streams                                  # ids and armed state
+curl -s -H "$H" -X POST $B/streams/cam-1a2b/arm -d '{"armed":true}'
+
+curl -s -H "$H" -X POST $B/takes -d '{"name":"ep12"}'       # → id and every path; not recording
+curl -s -H "$H" -X POST $B/takes/tk_7f3a/start              # the cue
+curl -s -H "$H" -X POST $B/takes/tk_7f3a/stop
+curl -s -H "$H" $B/takes/tk_7f3a                            # the manifest
+```
+
+<Cards>
+	<Card title="Recording a take" href="/docs/recording-a-take">
+		Create, start, stop; the one-click form; what lands on disk.
+	</Card>
+	<Card title="Streams and arming" href="/docs/streams-and-arming" tone="ochre">
+		Armed means live. The three verbs, and joining a take late.
+	</Card>
+	<Card title="The API" href="/docs/api">
+		Two transports, one command set, the events stream.
+	</Card>
+	<Card title="Timecode and sync" href="/docs/timecode-and-sync" tone="olive">
+		Why the files line up in an editor without the manifest.
+	</Card>
+</Cards>

@@ -1,0 +1,14 @@
+---
+// A grid of Card. Two columns at desktop, one at phone width.
+---
+
+<div class="cards"><slot /></div>
+
+<style>
+	.cards {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+		gap: 1rem;
+		margin: 1.4rem 0;
+	}
+</style>

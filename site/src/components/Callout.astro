@@ -1,0 +1,50 @@
+---
+// A boxed aside. `note` is the default; `trap` is for the things that cost a
+// take (ochre); `rule` is for a sentence the spec requires in these words.
+interface Props {
+	kind?: 'note' | 'trap' | 'rule';
+	title?: string;
+}
+const { kind = 'note', title } = Astro.props;
+---
+
+<aside class:list={['callout', `callout--${kind}`]}>
+	{title && <p class="callout__title">{title}</p>}
+	<div class="callout__body"><slot /></div>
+</aside>
+
+<style>
+	.callout {
+		margin: 1.4rem 0;
+		padding: 0.9rem 1.1rem;
+		border-radius: 0 10px 10px 0;
+		border-left: 3px solid var(--aegean);
+		background: var(--aegean-wash);
+		font-size: 0.93rem;
+	}
+	.callout--trap {
+		border-left-color: var(--ochre);
+		background: color-mix(in oklab, var(--ochre) 14%, var(--limestone));
+	}
+	.callout--rule {
+		border-left-color: var(--oxide);
+		background: color-mix(in oklab, var(--oxide) 9%, var(--limestone));
+	}
+	.callout__title {
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+		margin: 0 0 0.4rem;
+	}
+	.callout--trap .callout__title {
+		color: var(--ochre-ink);
+	}
+	.callout--rule .callout__title {
+		color: var(--oxide);
+	}
+	.callout__body :global(p:last-child) {
+		margin-bottom: 0;
+	}
+</style>

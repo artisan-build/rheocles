@@ -1,0 +1,117 @@
+---
+title: Streams and arming
+description: Every input on the machine is a stream with a stable id. Armed means the device is live. Three verbs, and only these.
+draft: true
+---
+import Callout from '../../components/Callout.astro';
+import Cards from '../../components/Cards.astro';
+import Card from '../../components/Card.astro';
+
+`GET /streams` lists every input Rheocles can record, with a stable id, a
+kind, a human name, a model, a capability summary, and whether it is armed.
+Nothing in the list is on until you arm it.
+
+## Kinds
+
+| kind | what | how it is found |
+|---|---|---|
+| `display` | every screen, and screen-like devices such as the Elgato Prompter | ScreenCaptureKit |
+| `window` | an individual window | ScreenCaptureKit, a different filter |
+| `camera` | every video device, including Continuity Camera and external UVC | AVFoundation |
+| `microphone` | every audio input device | AVFoundation |
+| `system` | what the machine is playing, as one stream | a Core Audio tap |
+
+```json title="GET /streams (one entry)"
+{ "id": "dsp-5e6f", "kind": "display", "name": "Elgato Prompter",
+  "model": "Elgato Prompter (1920×1080 @ 60)", "armed": true,
+  "can": { "video": true, "audio": false } }
+```
+
+Three identity fields — id, name, model — are all recorded in the manifest,
+because display ids change across reconnects and a take must stay legible
+after the hardware does.
+
+Windows are supported by the engine and the API from day one and hidden in
+the popover behind a *Show windows* setting: window lists are long and
+volatile, and the UI for choosing one well is a later design pass. Per-process
+audio is later too; `system` is the whole output for now.
+
+## Armed means live
+
+An armed stream has its capture session **running** — frames flowing,
+discarded — so that when the cue comes the writer starts on frames that
+already exist, rather than waiting hundreds of milliseconds for a device to
+spin up. That is the entire reason there is an arm button rather than only a
+record button: arming is what makes "on one cue" true.
+
+```sh
+curl -s -H "$H" -X POST localhost:7447/streams/cam-1a2b/arm -d '{"armed": true}'
+```
+
+<Callout kind="trap" title="Armed costs you">
+Armed streams use CPU and hold their devices while armed. A camera that is
+armed is a camera other apps may not get. The popover shows armed state in
+ochre and the menu bar mark draws in outline, so nobody leaves six cameras
+live overnight by accident. Disarm what you are not about to record.
+</Callout>
+
+## Three verbs, and only these
+
+| verb | when | does | stamps? |
+|---|---|---|---|
+| `arm` / `disarm` | any time | device live or not | never |
+| `join` | while a take is active | starts that stream's writer **now**, adds its file to the manifest | with the time it actually began |
+| `leave` | while a take is active | finalises that stream's file and marks it complete; the stream stays armed; the take continues for the others | the file's end |
+
+`start` on a take is `join` for every armed stream at once. That is the cue.
+
+`join` on a stream that is not yet armed arms it first, so one call gets a
+cold stream into a running take — it just does not get there on frames that
+already existed. Disarming a joined stream implies `leave`. Nothing else is
+implicit.
+
+```sh title="late join"
+T=localhost:7447/takes/tk_7f3a
+curl -s -H "$H" -X POST $T/join  -d '{"stream": "win-9c0d"}'
+curl -s -H "$H" -X POST $T/leave -d '{"stream": "win-9c0d"}'
+```
+
+## Late join
+
+A file that started four minutes into the take is stamped four minutes into
+the take, and an editor places it at four minutes. Nothing about one stream's
+timing depends on another's — each file carries its own time-of-day timecode
+from its own first written frame, and the manifest records each stream's
+`started` separately. See [Timecode and sync](/docs/timecode-and-sync).
+
+<Callout kind="rule" title="What late joining is for">
+Late joining is for saving CPU on a heavy stream you already know will not
+need edit flexibility. It is not a way to script a take. Arm everything you
+might want, record, and cut in the edit; a script that toggles windows in and
+out of a take mid-read has misunderstood the tool.
+</Callout>
+
+The honest case: a 4K display capture that is only needed for a two-minute
+demo in the middle of an hour-long take. Leave it unarmed so the cue does not
+take it, `join` it a moment before the demo — which arms it, and costs the
+spin-up — and `leave` it after, and the other fifty-eight minutes do not cost
+an encoder. The dishonest case is anything where the join and leave are the
+edit.
+
+## What the popover shows
+
+| state | row | menu bar mark |
+|---|---|---|
+| idle | dim | whole mark at 40 % |
+| armed | ochre, level meter live for audio | strokes in outline |
+| recording | oxide, elapsed time | strokes filled |
+| joined late | oxide | a shorter stroke, starting right of the bar |
+
+<Cards>
+	<Card title="Recording a take" href="/docs/recording-a-take">
+		The cue in context: create, start, stop.
+	</Card>
+	<Card title="Takes and the manifest" href="/docs/takes-and-the-manifest">
+		Where join and leave events land.
+	</Card>
+</Cards>
