@@ -29,5 +29,6 @@ let package = Package(
         .executableTarget(name: "rheocles-core", dependencies: ["RheoclesCore"]),
         .executableTarget(name: "Rheocles", dependencies: ["RheoclesCore"], exclude: ["Fonts"]),
         .testTarget(name: "RheoclesCoreTests", dependencies: ["RheoclesCore"]),
+        .testTarget(name: "RheoclesTests", dependencies: ["Rheocles"]),
     ]
 )

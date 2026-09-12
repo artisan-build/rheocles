@@ -119,6 +119,61 @@ enum Preview {
                             armError: "POST /streams/camera:4kx/arm → 404 not_found: no such route")
                     ))
             ),
+            (
+                "armed-named",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, takeName: "ep12")))
+            ),
+            (
+                "recording",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "display:56A96CFC", "camera:4kx", "microphone:scarlett",
+                                "systemAudio:system",
+                            ]),
+                            permissions: granted, take: manifest(state: "recording", elapsed: 257)))
+                )
+            ),
+            (
+                "recording-late-join",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "display:56A96CFC", "camera:4kx", "microphone:scarlett",
+                                "systemAudio:system",
+                            ]),
+                            permissions: granted,
+                            take: manifest(state: "recording", elapsed: 257, lateJoin: 2))))
+            ),
+            (
+                "take-complete",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, take: manifest(state: "complete", elapsed: 743))))
+            ),
+            (
+                "take-incomplete",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted,
+                            take: manifest(
+                                state: "incomplete", elapsed: 88, reason: "disk full"))))
+            ),
             ("launching", AnyView(MenuBarView(daemon: .staged(.launching)))),
             (
                 "daemon-down",
@@ -127,6 +182,62 @@ enum Preview {
                         daemon: .staged(.down("rheocles-core exited with status 1"))))
             ),
         ]
+    }
+
+    /// A manifest in the daemon's shape (PROTOCOL § Takes), with the cue
+    /// `elapsed` seconds ago so the counter shows a real duration. `lateJoin`
+    /// names the index of one stream that joined four minutes in.
+    private static func manifest(
+        state: String, elapsed: Double, lateJoin: Int? = nil, reason: String? = nil
+    ) -> Manifest {
+        let iso = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+        let now = Date()
+        let cue = now.addingTimeInterval(-elapsed)
+        let over = state == "complete" || state == "incomplete"
+        let stopped = over ? ", \"stopped\": \"\(iso.format(now))\"" : ""
+        let files = [
+            (
+                "display:56A96CFC", "display", "BenQ PD3220U", "benq-pd3220u.mov", "hevc",
+                "\"video\": { \"width\": 3840, \"height\": 2160, \"maxFrameRate\": 60 }"
+            ),
+            (
+                "camera:4kx", "camera", "Elgato 4K X", "elgato-4k-x.mov", "hevc",
+                "\"video\": { \"width\": 3840, \"height\": 2160, \"maxFrameRate\": 30 }"
+            ),
+            (
+                "microphone:scarlett", "microphone", "Scarlett 2i2 USB", "scarlett-2i2-usb.wav",
+                "pcm_s24le", "\"audio\": { \"sampleRate\": 48000, \"channels\": 2 }"
+            ),
+            (
+                "systemAudio:system", "systemAudio", "System audio", "system-audio.wav",
+                "pcm_s24le", "\"audio\": { \"sampleRate\": 48000, \"channels\": 2 }"
+            ),
+        ]
+        let streams = files.enumerated().map { index, f in
+            let began = index == lateJoin ? cue.addingTimeInterval(240) : cue
+            return """
+                { "id": "\(f.0)", "kind": "\(f.1)", "name": "\(f.2)", "model": "…",
+                  "path": "\(f.3)", "codec": "\(f.4)", "format": { \(f.5) },
+                  "started": "\(iso.format(began))"\(stopped),
+                  "framesWritten": 7710, "events": [ { "t": \(index == lateJoin ? 240 : 0), "type": "join" } ] }
+                """
+        }
+        let json = """
+            {
+              "id": "20260911T140217-7f3a", "name": "ep12", "state": "\(state)",
+              \(reason.map { "\"reason\": \"\($0)\"," } ?? "")
+              "created": "\(iso.format(cue.addingTimeInterval(-8)))",
+              "started": "\(iso.format(cue))"\(stopped),
+              "outputRoot": "\(FileManager.default.homeDirectoryForCurrentUser.path)/Movies/Rheocles",
+              "destination": "takes/2026-09-11/140217-ep12",
+              "version": "0.1.0",
+              "machine": { "hostname": "lens-macbook-pro.local", "machineId": "CD3B7EE5" },
+              "streams": [\(streams.joined(separator: ","))],
+              "markers": [],
+              "settings": { "codec": "hevc" }
+            }
+            """
+        return try! Manifest.wireDecoder.decode(Manifest.self, from: Data(json.utf8))
     }
 
     /// This Mac's streams as `rheocles-core --list-streams` reported them on

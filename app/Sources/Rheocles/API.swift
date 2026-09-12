@@ -41,26 +41,43 @@ struct API: Sendable {
         return URLSession(configuration: configuration)
     }()
 
-    func get<T: Decodable>(_ path: String, as type: T.Type = T.self) async throws -> T {
-        try await send("GET", path, body: nil)
+    func get<T: Decodable>(
+        _ path: String, as type: T.Type = T.self, decoder: JSONDecoder = JSONDecoder()
+    ) async throws -> T {
+        try await send("GET", path, body: nil, decoder: decoder)
     }
 
     @discardableResult
-    func post<T: Decodable>(_ path: String, _ body: (some Encodable)?, as type: T.Type = T.self)
-        async throws -> T
-    {
-        try await send("POST", path, body: body.map { try JSONEncoder().encode($0) } ?? nil)
+    func post<T: Decodable>(
+        _ path: String, _ body: (some Encodable)?, as type: T.Type = T.self,
+        decoder: JSONDecoder = JSONDecoder()
+    ) async throws -> T {
+        try await send(
+            "POST", path, body: body.map { try JSONEncoder().encode($0) } ?? nil, decoder: decoder)
     }
 
     /// A POST whose answer the caller does not need — the app re-reads the
     /// state it changed rather than trusting an echo (brief, rule 1).
     func post(_ path: String, _ body: some Encodable) async throws {
-        _ = try await send("POST", path, body: try JSONEncoder().encode(body)) as Data
+        _ =
+            try await send(
+                "POST", path, body: try JSONEncoder().encode(body), decoder: JSONDecoder())
+            as Data
     }
 
-    private func send<T: Decodable>(_ method: String, _ path: String, body: Data?) async throws
-        -> T
-    {
+    /// The event stream's URL. `EventSource`-style clients cannot set a
+    /// header, so the token goes in the query (PROTOCOL § Authentication).
+    var eventsURL: URL? {
+        guard let token else { return nil }
+        var components = URLComponents(
+            url: base.appending(path: "/events"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "access_token", value: token)]
+        return components?.url
+    }
+
+    private func send<T: Decodable>(
+        _ method: String, _ path: String, body: Data?, decoder: JSONDecoder
+    ) async throws -> T {
         var request = URLRequest(url: base.appending(path: path))
         request.httpMethod = method
         if let token {
@@ -87,7 +104,7 @@ struct API: Sendable {
         case 200..<300:
             if T.self == Data.self { return data as! T }
             do {
-                return try JSONDecoder().decode(T.self, from: data)
+                return try decoder.decode(T.self, from: data)
             } catch {
                 throw Failure.malformed("\(method) \(path): \(error)")
             }

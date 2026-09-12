@@ -71,7 +71,9 @@ struct StreamList: View {
         case .display where permissions.screen != .authorized:
             return PermissionNudge(
                 capability: "Screen Recording", status: permissions.screen,
-                consequence: "displays and windows are not listed",
+                consequence: daemon.startedByUs
+                    ? "displays and windows are not listed; the daemon restarts once granted"
+                    : "displays and windows are not listed; grant it, then relaunch the daemon",
                 pane: "Privacy_ScreenCapture")
         case .camera where permissions.camera == .denied || permissions.camera == .restricted:
             return PermissionNudge(
@@ -118,10 +120,17 @@ struct StreamRow: View {
         daemon.pending?.id == stream.id
     }
 
+    /// In the active take and writing: the bar goes oxide. Armed but not
+    /// in the take (it was armed after the cue) stays ochre.
+    private var writing: Bool {
+        guard let take = daemon.take, take.isRecording else { return false }
+        return take.writing.contains { $0.id == stream.id }
+    }
+
     var body: some View {
         HStack(spacing: 9) {
             Rectangle()
-                .fill(shownArmed ? Brand.ochre : .clear)
+                .fill(writing ? Brand.oxide : shownArmed ? Brand.ochre : .clear)
                 .frame(width: 3)
 
             Image(systemName: stream.kind.symbol)
