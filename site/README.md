@@ -17,3 +17,18 @@ Deploys on every push to `main` touching `site/` via
 
 Brand: `../docs/BRAND.md`. Docs tree: `src/lib/docs-nav.ts`. Pages written
 ahead of the code carry `draft: true` and render with a banner.
+
+## What the build produces
+
+- Pages under `src/pages/` and `src/content/docs/`; the docs tree order is
+  `src/lib/docs-nav.ts`.
+- The API reference at `/docs/api/reference` from `../docs/openapi.yaml`
+  (every route the YAML pins) merged with `src/lib/api-spec.ts` (routes the
+  spec names that the YAML does not have yet, marked *planned*). The YAML is
+  read at build time, so a change to it needs a site deploy to show.
+- A social card per page under `/og/…png` (`src/pages/og/[...slug].ts`,
+  astro-og-canvas, fonts in `src/assets/og-fonts/` under the OFL).
+- `sitemap-index.xml`, `robots.txt`, `404.html`, the favicon set
+  (`public/`, rasterised once from the mark).
+
+Plates: `../art/make.py`; prompts and the approval log in `ART.md`.

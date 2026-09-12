@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import expressiveCode from 'astro-expressive-code';
 import pagefind from 'astro-pagefind';
+import sitemap from '@astrojs/sitemap';
 
 // Plain Astro, deliberately not Starlight. The docs are a designed product
 // surface with the same header as the landing page, a sidebar we control, and
@@ -30,5 +31,7 @@ export default defineConfig({
 		}),
 		mdx(),
 		pagefind(),
+		// Excludes the generated social cards; they are images, not pages.
+		sitemap({ filter: (page) => !page.includes('/og/') }),
 	],
 });

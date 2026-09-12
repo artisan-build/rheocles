@@ -19,22 +19,47 @@ Nothing in the list is on until you arm it.
 | `window` | an individual window | ScreenCaptureKit, a different filter |
 | `camera` | every video device, including Continuity Camera and external UVC | AVFoundation |
 | `microphone` | every audio input device | AVFoundation |
-| `system` | what the machine is playing, as one stream | a Core Audio tap |
+| `systemAudio` | what the machine is playing, as one stream | a Core Audio tap |
 
-```json title="GET /streams (one entry)"
-{ "id": "dsp-5e6f", "kind": "display", "name": "Elgato Prompter",
-  "model": "Elgato Prompter (1920×1080 @ 60)", "armed": true,
-  "can": { "video": true, "audio": false } }
+```json title="GET /streams"
+{ "streams": [
+    { "id": "display:56A96CFC-7F21-168E-0857-D6964E3302DB", "kind": "display",
+      "name": "BenQ PD3220U", "model": "vendor 2513 model 32813",
+      "capabilities": { "video": { "width": 3840, "height": 2160, "maxFrameRate": 60 } },
+      "armed": false },
+    { "id": "microphone:Scarlett_2i2", "kind": "microphone",
+      "name": "Scarlett 2i2 USB", "model": "Scarlett 2i2 USB:1235:8210",
+      "capabilities": { "audio": { "sampleRate": 48000, "channels": 2 } },
+      "armed": true } ],
+  "permissions": { "camera": "notDetermined", "microphone": "authorized", "screen": "authorized" } }
 ```
+
+**Ids are `<kind>:<identifier>`**, URL-safe, and stable for as long as the
+thing they name is: cameras and microphones use the device's unique id,
+displays their CoreGraphics UUID (which survives reconnects where the display
+number does not), windows their window number, which survives nothing and is
+not meant to. The order is fixed — displays, windows, cameras, microphones,
+system audio — so the list is stable between calls as devices come and go.
 
 Three identity fields — id, name, model — are all recorded in the manifest,
 because display ids change across reconnects and a take must stay legible
 after the hardware does.
 
+`capabilities.video` is native pixels and the highest advertised rate; the
+signal's real rate can be lower, and the writer follows the frames, not this
+field. Recording is always 48 kHz 24-bit BWF whatever `capabilities.audio`
+says the device is doing.
+
+`permissions` is what macOS has let this process do — `authorized`,
+`denied`, `restricted` or `notDetermined`. Screen Recording gates displays
+and windows both: with `screen` anything but `authorized` the list simply
+has none, and this field is how a client tells "no displays" from "not
+allowed to see them".
+
 Windows are supported by the engine and the API from day one and hidden in
 the popover behind a *Show windows* setting: window lists are long and
 volatile, and the UI for choosing one well is a later design pass. Per-process
-audio is later too; `system` is the whole output for now.
+audio is later too; `systemAudio` is the whole output for now.
 
 ## Armed means live
 
@@ -45,7 +70,7 @@ spin up. That is the entire reason there is an arm button rather than only a
 record button: arming is what makes "on one cue" true.
 
 ```sh
-curl -s -H "$H" -X POST localhost:7447/streams/cam-1a2b/arm -d '{"armed": true}'
+curl -s -H "$H" -X POST localhost:7447/streams/camera:0x2300000fd9009c/arm -d '{"armed": true}'
 ```
 
 <Callout kind="trap" title="Armed costs you">
@@ -72,8 +97,8 @@ implicit.
 
 ```sh title="late join"
 T=localhost:7447/takes/tk_7f3a
-curl -s -H "$H" -X POST $T/join  -d '{"stream": "win-9c0d"}'
-curl -s -H "$H" -X POST $T/leave -d '{"stream": "win-9c0d"}'
+curl -s -H "$H" -X POST $T/join  -d '{"stream": "window:11597"}'
+curl -s -H "$H" -X POST $T/leave -d '{"stream": "window:11597"}'
 ```
 
 ## Late join
