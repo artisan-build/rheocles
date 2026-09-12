@@ -1,7 +1,6 @@
 ---
 title: Getting started
 description: Install it, let macOS ask its questions, find the token, and record one take two ways — from the popover and from a shell.
-draft: true
 ---
 import Callout from '../../components/Callout.astro';
 import Cards from '../../components/Cards.astro';
@@ -14,13 +13,15 @@ nothing is talking to it.
 
 ## Install
 
-```sh title="Homebrew — not live until the first release"
+```sh title="Homebrew"
 brew install --cask artisan-build/tap/rheocles
 ```
 
-Or the disk image from the [releases page](https://github.com/artisan-build/rheocles/releases).
-The app, every nested binary and the disk image are Developer ID signed,
-notarized and stapled; Gatekeeper opens it without a right-click.
+Or [download the disk image](https://github.com/artisan-build/rheocles/releases/latest/download/Rheocles.dmg) — every release is on the
+[releases page](https://github.com/artisan-build/rheocles/releases) with a
+zip and checksums beside it. The app, every nested binary and the disk
+image are Developer ID signed, notarized and stapled; Gatekeeper opens it
+without a right-click.
 
 **Requirements.** Apple Silicon, macOS 15 Sequoia or later. The floor is
 Sequoia because that is where `SCRecordingOutput` and process-level Core

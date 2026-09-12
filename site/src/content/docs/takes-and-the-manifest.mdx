@@ -45,11 +45,17 @@ to be reconstructed.
 | `created` | paths reserved, manifest written, nothing recording |
 | `recording` | the cue has happened; writers are live |
 | `complete` | stopped cleanly; every file finalised |
-| `incomplete` | stopped by a failure, or superseded before it started; `reason` says which; every file is playable as far as it got |
+| `incomplete` | stopped by a failure, superseded before it started, or cut short by the daemon going away; `reason` says which; every file is playable as far as it got |
 
-A manifest that still says `recording` when nothing is running is a crash,
-and that is what it should say. A take created and never started is
-superseded by the next create and reads `incomplete` with reason
+A daemon asked to quit — `SIGINT` or `SIGTERM` — finalises the active take
+first: every writer closes and the manifest reads `incomplete`, reason
+`daemon stopped`, so a cleanly stopped daemon never leaves a take saying
+`recording`. A manifest that *does* still say `recording` or `created` when
+the daemon next launches is from one that died without finalising — a
+crash, a `kill -9`, a power cut — and is rewritten `incomplete`, reason
+`daemon died`, on that launch. A recovered take is never served as the live
+take; `stop` or a marker against it is a `409`. A take created and never
+started is superseded by the next create and reads `incomplete` with reason
 `superseded before start`.
 
 ## The shape
