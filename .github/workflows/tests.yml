@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   test:
-    # macos-26 for the SDK, not the OS floor. The package targets macOS 14,
+    # macos-26 for the SDK, not the OS floor. The package targets macOS 15,
     # but the Apple baseline engine needs macOS 26 declarations to compile at
     # all — on an older runner it is conditionally compiled out and never
     # gets checked.

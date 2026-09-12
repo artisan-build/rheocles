@@ -6,10 +6,11 @@ name: Release
 #
 # SIGNING, AND WHY IT MATTERS MORE HERE THAN USUALLY
 #
-# This app needs the microphone, and macOS keys that permission to the app's
-# code signature. An ad-hoc signature changes on every build, so an ad-hoc
-# release is a different app to TCC every time — the permission does not carry
-# over and the prompt returns. It also will not pass Gatekeeper on a download.
+# This app needs the camera, the microphone and screen recording, and macOS
+# keys those permissions to the app's code signature. An ad-hoc signature
+# changes on every build, so an ad-hoc release is a different app to TCC every
+# time — the permissions do not carry over and the prompts return. It also
+# will not pass Gatekeeper on a download.
 #
 # So the workflow signs properly when the secrets are present and degrades
 # loudly when they are not. Set these to get a distributable build:
@@ -131,7 +132,7 @@ jobs:
       - name: Warn if unsigned
         if: steps.have.outputs.cert != 'true'
         run: |
-          echo "::warning title=Ad-hoc signature::No APPLE_CERT_P12_BASE64 secret, so this build is ad-hoc signed. It will not pass Gatekeeper, and macOS will treat every rebuild as a different app for microphone permission."
+          echo "::warning title=Ad-hoc signature::No APPLE_CERT_P12_BASE64 secret, so this build is ad-hoc signed. It will not pass Gatekeeper, and macOS will treat every rebuild as a different app for camera, microphone and screen recording permission."
 
       - name: Notarize the app
         if: steps.have.outputs.cert == 'true' && steps.have.outputs.notary == 'true'
@@ -222,13 +223,13 @@ jobs:
         run: |
           VER="${{ steps.v.outputs.tag }}"
           {
-            echo "Apple Silicon, macOS 14 or later. Models download on first run (~219 MB)."
+            echo "Apple Silicon, macOS 15 or later."
             echo ""
             echo "Always-current download:"
             echo "https://github.com/artisan-build/rheocles/releases/latest/download/Rheocles.dmg"
             if [ "${{ steps.have.outputs.cert }}" != "true" ]; then
               echo ""
-              echo "**This build is ad-hoc signed.** macOS will refuse to open it normally — right-click the app and choose Open, and expect the microphone prompt again after every update."
+              echo "**This build is ad-hoc signed.** macOS will refuse to open it normally — right-click the app and choose Open, and expect the camera, microphone and screen recording prompts again after every update."
             fi
           } > "$RUNNER_TEMP/notes.md"
           gh release create "$VER" \
