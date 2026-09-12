@@ -1,0 +1,18 @@
+{
+  // Cloudflare Pages (Direct Upload) for rheocles.com.
+  //
+  // Astro builds into dist/, so that is the output directory — unlike Sonocles'
+  // site, where the source directory is the output. Deploy with `make deploy`
+  // from the repo root, or let the workflow do it on a push that touches site/.
+  //
+  // The custom domain is attached once, via the API — wrangler 4 removed the
+  // `pages domain` subcommand:
+  //     curl -X POST \
+  //       ".../accounts/$ACCOUNT/pages/projects/rheocles/domains" \
+  //       -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+  //       --data '{"name":"rheocles.com"}'
+  // Already done for rheocles.com and www.rheocles.com.
+  "name": "rheocles",
+  "compatibility_date": "2026-09-01",
+  "pages_build_output_dir": "./dist"
+}
