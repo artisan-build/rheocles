@@ -401,7 +401,18 @@ final class DaemonModel {
             } else {
                 Task { await refreshStreams() }
             }
-        case "state", "join", "leave", "marker", "error":
+        case "take":
+            // The manifest, on every state change.
+            if let payload = message.json["take"],
+                let data = try? JSONSerialization.data(withJSONObject: payload),
+                let manifest = try? Manifest.wireDecoder.decode(Manifest.self, from: data)
+            {
+                take = manifest
+                tick(recording: manifest.isRecording)
+            } else {
+                Task { await discoverActiveTake() }
+            }
+        case "levels", "drift", "join", "leave", "marker", "error":
             // Planned (step 6). Until their shapes land, any of them means
             // the take changed: re-read it.
             Task { await discoverActiveTake() }

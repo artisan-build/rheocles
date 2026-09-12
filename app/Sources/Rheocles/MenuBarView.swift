@@ -436,7 +436,7 @@ struct TakeBar: View {
 
     private var live: some View {
         HStack(spacing: 8) {
-            Text(take?.take.name ?? "··")
+            Text(take?.name ?? "··")
                 .font(Type.body(11.5, .semibold))
                 .foregroundStyle(Brand.ink)
                 .lineLimit(1)
@@ -451,17 +451,17 @@ struct TakeBar: View {
     }
 
     private func finished(_ take: Manifest) -> some View {
-        let complete = take.take.state == "complete"
+        let complete = take.state == .complete
         let tone = complete ? Brand.olive : Brand.oxide
         // One Text, so it truncates as one line rather than word by word.
         var line =
-            Text(take.take.name ?? take.take.id).foregroundColor(Brand.inkSoft) + Text(" · ")
-            + Text(take.take.state ?? "··").foregroundColor(tone)
+            Text(take.name ?? take.id).foregroundColor(Brand.inkSoft) + Text(" · ")
+            + Text(take.state.rawValue).foregroundColor(tone)
         if let elapsed = take.elapsed(at: daemon.now) {
             line = line + Text(" · \(elapsed.clock)")
         }
         line = line + Text(" · \(take.streams.count) files")
-        if let reason = take.take.reason {
+        if let reason = take.reason {
             line = line + Text(" — \(reason)").foregroundColor(Brand.oxide)
         }
         return HStack(spacing: 6) {

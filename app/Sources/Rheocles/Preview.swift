@@ -184,7 +184,7 @@ enum Preview {
         ]
     }
 
-    /// A manifest in the docs' shape (takes-and-the-manifest), with the cue
+    /// A manifest in the daemon's shape (PROTOCOL § Takes), with the cue
     /// `elapsed` seconds ago so the counter shows a real duration. `lateJoin`
     /// names the index of one stream that joined four minutes in.
     private static func manifest(
@@ -194,31 +194,50 @@ enum Preview {
         let now = Date()
         let cue = now.addingTimeInterval(-elapsed)
         let over = state == "complete" || state == "incomplete"
-        let ids = [
-            ("display:56A96CFC", "display", "BenQ PD3220U", "ep12/display-benq.mov"),
-            ("camera:4kx", "camera", "Elgato 4K X", "ep12/cam-elgato-4k-x.mov"),
-            ("microphone:scarlett", "microphone", "Scarlett 2i2 USB", "ep12/mic-scarlett.wav"),
-            ("systemAudio:system", "systemAudio", "System audio", "ep12/system-audio.wav"),
+        let stopped = over ? ", \"stopped\": \"\(iso.format(now))\"" : ""
+        let files = [
+            (
+                "display:56A96CFC", "display", "BenQ PD3220U", "benq-pd3220u.mov", "hevc",
+                "\"video\": { \"width\": 3840, \"height\": 2160, \"maxFrameRate\": 60 }"
+            ),
+            (
+                "camera:4kx", "camera", "Elgato 4K X", "elgato-4k-x.mov", "hevc",
+                "\"video\": { \"width\": 3840, \"height\": 2160, \"maxFrameRate\": 30 }"
+            ),
+            (
+                "microphone:scarlett", "microphone", "Scarlett 2i2 USB", "scarlett-2i2-usb.wav",
+                "pcm_s24le", "\"audio\": { \"sampleRate\": 48000, \"channels\": 2 }"
+            ),
+            (
+                "systemAudio:system", "systemAudio", "System audio", "system-audio.wav",
+                "pcm_s24le", "\"audio\": { \"sampleRate\": 48000, \"channels\": 2 }"
+            ),
         ]
-        let streams = ids.enumerated().map { index, s in
-            let started = index == lateJoin ? cue.addingTimeInterval(240) : cue
+        let streams = files.enumerated().map { index, f in
+            let began = index == lateJoin ? cue.addingTimeInterval(240) : cue
             return """
-                { "id": "\(s.0)", "kind": "\(s.1)", "name": "\(s.2)", "path": "\(s.3)",
-                  "started": "\(iso.format(started))"\(over ? ", \"stopped\": \"\(iso.format(now))\"" : ""),
-                  "timecode": "14:02:17:00", "frames": 7710, "driftMs": null }
+                { "id": "\(f.0)", "kind": "\(f.1)", "name": "\(f.2)", "model": "…",
+                  "path": "\(f.3)", "codec": "\(f.4)", "format": { \(f.5) },
+                  "started": "\(iso.format(began))"\(stopped),
+                  "framesWritten": 7710, "events": [ { "t": \(index == lateJoin ? 240 : 0), "type": "join" } ] }
                 """
         }
         let json = """
             {
-              "take": { "id": "tk_7f3a", "name": "ep12", "state": "\(state)",
-                        "created": "\(iso.format(cue.addingTimeInterval(-8)))",
-                        "started": "\(iso.format(cue))"\(over ? ", \"stopped\": \"\(iso.format(now))\"" : "")
-                        \(reason.map { ", \"reason\": \"\($0)\"" } ?? "") },
+              "id": "20260911T140217-7f3a", "name": "ep12", "state": "\(state)",
+              \(reason.map { "\"reason\": \"\($0)\"," } ?? "")
+              "created": "\(iso.format(cue.addingTimeInterval(-8)))",
+              "started": "\(iso.format(cue))"\(stopped),
+              "outputRoot": "\(FileManager.default.homeDirectoryForCurrentUser.path)/Movies/Rheocles",
+              "destination": "takes/2026-09-11/140217-ep12",
+              "version": "0.1.0",
+              "machine": { "hostname": "lens-macbook-pro.local", "machineId": "CD3B7EE5" },
               "streams": [\(streams.joined(separator: ","))],
-              "markers": []
+              "markers": [],
+              "settings": { "codec": "hevc" }
             }
             """
-        return try! Manifest.decoder.decode(Manifest.self, from: Data(json.utf8))
+        return try! Manifest.wireDecoder.decode(Manifest.self, from: Data(json.utf8))
     }
 
     /// This Mac's streams as `rheocles-core --list-streams` reported them on

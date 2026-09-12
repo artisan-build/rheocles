@@ -8,8 +8,28 @@ import Testing
 @Suite("Icon state")
 @MainActor
 struct IconStateTests {
-    private func manifest(_ json: String) throws -> Manifest {
-        try Manifest.decoder.decode(Manifest.self, from: Data(json.utf8))
+    /// A manifest in the daemon's shape with only what a test varies.
+    private func manifest(
+        state: String, started: String? = "2026-09-11T14:02:17.004Z", stopped: String? = nil,
+        streams: [(id: String, started: String)] = []
+    ) throws -> Manifest {
+        let files = streams.map {
+            """
+            { "id": "\($0.id)", "kind": "camera", "name": "x", "model": "x", "path": "x.mov",
+              "codec": "hevc", "format": {}, "started": "\($0.started)", "framesWritten": 0,
+              "events": [] }
+            """
+        }
+        let json = """
+            { "id": "tk_1", "state": "\(state)", "created": "2026-09-11T14:02:09.412Z",
+              \(started.map { "\"started\": \"\($0)\"," } ?? "")
+              \(stopped.map { "\"stopped\": \"\($0)\"," } ?? "")
+              "outputRoot": "/tmp", "destination": "takes/x", "version": "0.1.0",
+              "machine": { "hostname": "h", "machineId": "m" },
+              "streams": [\(files.joined(separator: ","))], "markers": [],
+              "settings": { "codec": "hevc" } }
+            """
+        return try Manifest.wireDecoder.decode(Manifest.self, from: Data(json.utf8))
     }
 
     @Test("Launching or down is idle, whatever else is known")
@@ -26,47 +46,38 @@ struct IconStateTests {
 
     @Test("A recording take is recording; a finished one is not")
     func recording() throws {
-        let live = try manifest(
-            """
-            { "take": { "id": "tk_1", "state": "recording", "started": "2026-09-11T14:02:17.004Z" },
-              "streams": [] }
-            """)
+        let live = try manifest(state: "recording")
         #expect(
             MenuBarIcon.State.derive(status: .running, take: live, armedCount: 2)
                 == .recording(lateJoined: []))
 
-        let done = try manifest(
-            """
-            { "take": { "id": "tk_1", "state": "complete", "started": "2026-09-11T14:02:17.004Z",
-                        "stopped": "2026-09-11T14:14:40.501Z" }, "streams": [] }
-            """)
+        let done = try manifest(state: "complete", stopped: "2026-09-11T14:14:40.501Z")
         #expect(MenuBarIcon.State.derive(status: .running, take: done, armedCount: 2) == .armed)
         #expect(MenuBarIcon.State.derive(status: .running, take: done, armedCount: 0) == .idle)
+        #expect(done.elapsed(at: Date()).map { Int($0) } == 743)
     }
 
     @Test("A stream that started after the cue is a late join, by position")
     func lateJoin() throws {
         let take = try manifest(
-            """
-            { "take": { "id": "tk_1", "state": "recording", "started": "2026-09-11T14:02:17.004Z" },
-              "streams": [
-                { "id": "camera:a", "started": "2026-09-11T14:02:17.004Z" },
-                { "id": "window:b", "started": "2026-09-11T14:06:17.021Z" },
-                { "id": "microphone:c", "started": "2026-09-11T14:02:17.010Z" }
-              ] }
-            """)
+            state: "recording",
+            streams: [
+                ("camera:a", "2026-09-11T14:02:17.004Z"),
+                ("window:b", "2026-09-11T14:06:17.021Z"),
+                ("microphone:c", "2026-09-11T14:02:17.010Z"),
+            ])
         #expect(take.lateJoined == [1])
+        #expect(take.writing.count == 3)
         #expect(
             MenuBarIcon.State.derive(status: .running, take: take, armedCount: 3)
                 == .recording(lateJoined: [1]))
-        #expect(take.elapsed(at: Date(timeIntervalSince1970: 1_789_135_337.004 + 100)) != nil)
     }
 
-    @Test("Absent fields decode as absent, never as a failure")
-    func lenientManifest() throws {
-        let bare = try manifest(#"{ "take": { "id": "tk_2" } }"#)
-        #expect(bare.take.state == nil)
+    @Test("Before the cue there is no elapsed time and nothing is late")
+    func createdOnly() throws {
+        let bare = try manifest(state: "created", started: nil)
         #expect(bare.isRecording == false)
+        #expect(bare.isOver == false)
         #expect(bare.elapsed(at: Date()) == nil)
         #expect(bare.lateJoined.isEmpty)
     }
