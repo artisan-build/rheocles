@@ -75,7 +75,7 @@ superseded by the next create and reads `incomplete` with reason
       "started": "2026-09-12T04:04:41.004Z",
       "stopped": "2026-09-12T04:17:04.501Z",
       "timecode": "21:04:41:00",
-      "framesWritten": 0,
+      "framesWritten": 44610,
       "events": [ { "t": 0, "type": "join" }, { "t": 743.497, "type": "leave" } ]
     },
     {
@@ -86,7 +86,9 @@ superseded by the next create and reads `incomplete` with reason
       "started": "2026-09-12T04:04:41.004Z",
       "stopped": "2026-09-12T04:17:04.501Z",
       "timecode": "21:04:41:00",
-      "framesWritten": 0,
+      "timeReference": 3642288192,
+      "framesWritten": 35687856,
+      "drift": 0.0004,
       "events": [ { "t": 0, "type": "join" }, { "t": 743.497, "type": "leave" } ]
     }
   ],
@@ -94,13 +96,6 @@ superseded by the next create and reads `incomplete` with reason
   "settings": { "codec": "hevc", "expectedDuration": 3600 }
 }
 ```
-
-<Callout kind="note" title="framesWritten is 0 until step 5">
-The manifest, the states and every timestamp are real from step 4. The
-writers land in step 5; until then `framesWritten` is `0`, `drift` is
-absent, and the files a stopped take leaves have no frames in them. The
-manifest says exactly that, which is the point of it.
-</Callout>
 
 The shape is pinned by `docs/openapi.yaml` (`Manifest`, `ManifestStream`)
 and rendered field by field on the [reference](/docs/api/reference#takes).
@@ -114,7 +109,7 @@ Where this page and the reference disagree, the reference is right.
 | `name` | what you called it, if you did |
 | `state` | one of the four above |
 | `reason` | only when `incomplete`: what happened, listing every stream's error |
-| `created` `started` `stopped` | host times, UTC ISO 8601 with milliseconds; `started` is the cue |
+| `created` `started` `stopped` | **UTC** ISO 8601 with milliseconds; `started` is the cue. The one place the manifest is UTC and the files are local: across midnight, this is the authority |
 | `outputRoot` | absolute, **as it was at create** — so a moved root does not orphan the take |
 | `destination` | the take folder, relative to the output root |
 | `version` | the Rheocles that wrote it |
@@ -130,9 +125,11 @@ Where this page and the reference disagree, the reference is right.
 | `codec` | `hevc`, `prores`, or `pcm_s24le` |
 | `format` | `video` or `audio`, as recorded — the device's `active` format at the cue |
 | `started` `stopped` | this stream's own host times — a late joiner's `started` is later than the take's |
-| `timecode` | the time-of-day timecode of the first written frame, as stamped into the file |
-| `framesWritten` | frames written; `0` until step 5 |
-| `drift` | frames × frame duration versus host elapsed, in seconds — **absent until measured, never zero by default** |
+| `timecode` | `HH:MM:SS:FF`, the **local** time of day of the first written frame, as stamped into the file |
+| `timeReference` | audio only: the BWF `TimeReference`, samples since local midnight at the first sample |
+| `framesWritten` | frames (video) or samples (audio) actually written |
+| `framesDropped` | video, absent when zero: frames the encoder was not ready for under load |
+| `drift` | seconds: delivered frames × nominal frame duration versus the timeline they span — **absent for displays and windows**, whose cadence is content-driven; absent until measured, never zero by default |
 | `events[]` | `{ t, type }`: `join` and `leave`, `t` in seconds from the cue to the millisecond |
 | `error` | only when something went wrong for this stream — `not armed at the cue`, a write failure |
 
@@ -146,7 +143,7 @@ owns `label`, and Rheocles never interprets it. See [Markers](/docs/markers)
 
 ```sh
 curl -s -H "$H" localhost:7447/takes/20260912T040433-fd9q \
-  | jq '.streams[] | {path, timecode, framesWritten}'
+  | jq '.streams[] | {path, timecode, framesWritten, drift}'
 ```
 
 ```json title="GET /takes — recent takes, newest first"

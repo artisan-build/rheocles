@@ -107,8 +107,30 @@ the most.
 
 A write failed mid-take — the disk filled, a volume unmounted, a device
 disappeared — and Rheocles stopped cleanly rather than continuing with a
-lie. `reason` says what. Every file is playable up to the last fragment,
-and the manifest is truthful about what it has.
+lie. `reason` says what, and each affected stream carries its own `error`.
+Every file is playable up to the last fragment, and the manifest is
+truthful about what it has.
+
+## A stream says `no frames arrived`
+
+It was armed and delivered nothing for the whole take — a camera with its
+lid closed, a display that went to sleep, a window that was minimised. It
+wrote no file, and the take finished `incomplete` naming it. The warning
+was there before the cue: that stream's `framesSeen` in `GET /streams` sat
+at `0` while armed. Watch it, or let the popover watch it for you.
+
+## `framesDropped` is not zero
+
+The encoder was not ready for those frames under load. The timeline is
+still correct — the frames are missing, not shifted — so sync holds; what
+you have is a stutter. Fewer armed streams, ProRes instead of HEVC, or a
+less busy machine.
+
+## A display's file has no `drift`
+
+By design. A screen delivers a frame only when its content changes, so its
+cadence is the content's and drift means nothing. `drift` is reported for
+cameras and microphones, whose devices have clocks of their own.
 
 ## The manifest says `recording` and nothing is running
 
@@ -132,11 +154,11 @@ UTC — see [Timecode and sync](/docs/timecode-and-sync#midnight).
 
 ## Two files are a frame apart
 
-Look at `drift` for each stream in the manifest, in seconds. A capture
-device's clock is not the host's, and a long take can drift by a frame or
-two; the number is measured per stream and is there to conform with. An
-absent `drift` means it was not measured — a stream that wrote no frames —
-and is not the same as `0`.
+Look at `drift` for each camera and microphone in the manifest, in seconds.
+A capture device's clock is not the host's, and a long take can drift by a
+frame or two; the number is measured per stream and is there to conform
+with. An absent `drift` means it was not measured — a display or window,
+or a stream that wrote no frames — and is not the same as `0`.
 
 ## Six cameras are still armed
 
