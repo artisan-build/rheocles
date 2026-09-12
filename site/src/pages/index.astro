@@ -1,14 +1,50 @@
 ---
-// Landing page. Task 2 ships the hero so the placeholder on rheocles.com is
-// replaced by something true; the sections follow in task 3.
+// The landing page, per docs/BRAND.md and the approved IA. Illustrations are
+// placeholders until the runs in site/ART.md are approved.
+import { Code } from 'astro-expressive-code/components';
 import Base from '../layouts/Base.astro';
+import Section from '../components/Section.astro';
+import Plate from '../components/Plate.astro';
+import CueDiagram from '../components/CueDiagram.astro';
+
+const manifest = `{
+  "take": { "id": "tk_7f3a", "name": "ep12", "state": "recording",
+            "created": "2026-09-11T14:02:09Z", "started": "2026-09-11T14:02:17Z" },
+  "streams": [
+    { "id": "cam-1a2b", "kind": "camera", "name": "FaceTime HD Camera",
+      "path": "ep12/cam-facetime.mov", "codec": "hevc",
+      "started": "2026-09-11T14:02:17.004Z", "timecode": "14:02:17:00",
+      "frames": 21540, "driftMs": -3 },
+    { "id": "win-9c0d", "kind": "window", "name": "Keynote",
+      "path": "ep12/window-keynote.mov", "codec": "hevc",
+      "started": "2026-09-11T14:06:17.021Z", "timecode": "14:06:17:00",
+      "frames": 7200, "driftMs": null }
+  ],
+  "markers": [ { "t": 38.7, "label": "cold-open out" } ]
+}`;
+
+const api = `TOKEN="$(cat ~/Library/Application\\ Support/Rheocles/token)"
+H="Authorization: Bearer $TOKEN"
+
+curl -s -H "$H" -X POST localhost:7447/takes -d '{"name":"ep12"}'
+#   → { "id": "tk_7f3a", "files": { "cam-1a2b": "ep12/cam-facetime.mov", … } }
+#     paths reserved, manifest written. Nothing is recording.
+
+T=localhost:7447/takes/tk_7f3a
+curl -s -H "$H" -X POST $T/start                                  # the cue
+curl -s -H "$H" -X POST $T/markers -d '{"label":"cold-open out"}'
+curl -s -H "$H" -X POST $T/stop`;
+
+const events = `// the same command set, both transports live at once
+const es = new EventSource('http://127.0.0.1:7447/events')   // SSE
+const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 ---
 
 <Base
 	title="Rheocles — every stream, its own file, on one cue"
 	description="Rheocles records every camera, microphone, display and window on your Mac at once — each to its own file, started on one cue and stamped with time-of-day timecode. Free, open source, MIT."
 >
-	<section class="hero wrap wrap--wide">
+	<section class="hero wrap">
 		<p class="pill">Free · Open source · MIT</p>
 		<h1 class="hero__title">
 			Every stream, its own file,<br />
@@ -23,7 +59,9 @@ import Base from '../layouts/Base.astro';
 			<strong>No compositor.</strong> The layout is a decision for the edit, not for the moment the
 			light goes red. Arm what you might want, cue once, cut later.
 		</p>
-		<p class="hero__note">Loopback only. An HTTP and WebSocket API, one bearer token, zero clicks to pair.</p>
+		<p class="hero__note">
+			Loopback only. An HTTP and WebSocket API, one bearer token, zero clicks to pair.
+		</p>
 		<div class="hero__actions">
 			<a class="button button--primary" href="/docs">Read the docs</a>
 			<a class="button" href="https://github.com/artisan-build/rheocles">Source on GitHub</a>
@@ -34,11 +72,210 @@ import Base from '../layouts/Base.astro';
 			<code>brew install --cask artisan-build/tap/rheocles</code>
 		</p>
 	</section>
+
+	<div class="wrap">
+		<Plate
+			name="Rhea and the cradles"
+			ratio="3 / 2"
+			caption="<strong>The whole product, basically.</strong> Six children, six cradles, one hand raised. Nobody gets swallowed."
+		/>
+		<CueDiagram />
+	</div>
+
+	<Section kicker="Why it exists">
+		<h2>OBS records one stream.</h2>
+		<p class="lede">
+			A compositor decides the layout before you record and hands you one file afterwards. That
+			is fine for a live stream, where the layout is the show.
+		</p>
+		<p>
+			It is the wrong shape for a take you are going to cut. <a href="https://pteroprompter.com"
+				>Pteroprompter</a
+			> wanted the camera, the prompter screen, the microphone and the system audio as four files, started
+			together, with no compositor in the way — so the edit could decide what goes where, and a scene
+			change on the day would not be a decision baked into the footage.
+		</p>
+		<p>
+			Rheocles is that. Arm what you want, cue once, and every armed stream lands as its own file
+			with its own time-of-day timecode. The camera writes at native resolution and rate; the
+			microphone writes Broadcast Wave; nothing is scaled, mixed or laid out on the way to disk.
+		</p>
+	</Section>
+
+	<Section kicker="The distinction">
+		<h2>It is not a compositor.</h2>
+		<div class="table-scroll">
+			<table>
+				<thead>
+					<tr><th></th><th>a compositor</th><th>Rheocles</th></tr>
+				</thead>
+				<tbody>
+					<tr><td>Gives you</td><td>one file</td><td>one file per stream</td></tr>
+					<tr><td>The layout is decided</td><td>before you record</td><td>in the edit</td></tr>
+					<tr><td>Files sync</td><td>by eye</td><td>by timecode</td></tr>
+					<tr><td>A crash leaves</td><td>a corrupt file</td><td>playable files and a truthful manifest</td></tr>
+				</tbody>
+			</table>
+		</div>
+		<p class="aside">
+			If a composited stream <em>is</em> what you want, OBS is excellent and free, and you should use
+			it. Rheocles is built around the moment after the take, not the moment during it.
+		</p>
+	</Section>
+
+	<Section kicker="Arming">
+		<h2>Armed means live.</h2>
+		<p class="lede">
+			An armed stream has its capture session running — frames flowing, discarded — so that when the
+			cue comes, the writer starts on frames that already exist rather than waiting hundreds of
+			milliseconds for a device to spin up. That is the entire reason there is an arm button.
+		</p>
+		<dl class="verbs">
+			<div>
+				<dt>arm / disarm</dt>
+				<dd>Device live or not. Never stamps anything, never writes.</dd>
+			</div>
+			<div>
+				<dt>join / leave</dt>
+				<dd>
+					While a take is active. <b>Join</b> starts that stream's writer now, adds its file to the
+					manifest, and stamps it with the time it actually began. <b>Leave</b> finalises that file;
+					the stream stays armed and the take continues for the others.
+				</dd>
+			</div>
+			<div>
+				<dt>the cue</dt>
+				<dd>
+					<code>start</code> on a take joins every armed stream at once. A stream that joins four
+					minutes in is stamped four minutes in, and an editor places it at four minutes.
+				</dd>
+			</div>
+		</dl>
+		<div class="cards">
+			<div class="card card--ochre">
+				<h3>Armed costs you</h3>
+				<p>
+					Armed streams use CPU and hold their devices while armed. That is the trade, and the
+					menu bar icon makes armed state obvious so nobody leaves six cameras live overnight by
+					accident.
+				</p>
+			</div>
+			<div class="card">
+				<h3>Late joining is not a script</h3>
+				<p>
+					Late joining is for saving CPU on a heavy stream you already know will not need edit
+					flexibility. It is not a way to script a take. Arm everything you might want, record,
+					and cut in the edit; a script that toggles windows in and out of a take mid-read has
+					misunderstood the tool.
+				</p>
+			</div>
+		</div>
+	</Section>
+
+	<Section kicker="Timecode">
+		<h2>Every file carries its own time.</h2>
+		<p class="lede">
+			A time-of-day timecode track in every video file. A Broadcast Wave time reference in every
+			audio file. Both stamped from the host clock at the stream's first written frame.
+		</p>
+		<p>
+			So the files sync in an editor without the manifest, and the manifest agrees with the files.
+			Time-of-day rather than take-relative because it is the production standard: everything from
+			one day shares a timeline, and two NTP-synced capture boxes produce files that line up —
+			the remote scenario, solved as a side effect.
+		</p>
+		<p>
+			<b>Drift is measured, not assumed.</b> Frames written × frame duration against host elapsed,
+			per stream, in status events and in the manifest. An unmeasured drift is reported as absent,
+			never as zero.
+		</p>
+		<p class="aside">
+			<b>Midnight.</b> A stream that joins <em>after</em> midnight into a take that started before
+			it gets a time-of-day reference near zero, and an editor syncing by timecode will place it
+			before the take rather than after. Every camera and field recorder shares this; there is no
+			clean fix inside the files. The manifest records absolute UTC and is unaffected, and is the
+			authoritative source across midnight. Broadcast Wave files stop at 4 GB — many hours at 48
+			kHz, 24-bit, and said here so it is not a surprise.
+		</p>
+	</Section>
+
+	<Section kicker="The manifest">
+		<h2>The manifest is the take.</h2>
+		<p class="lede">
+			<code>manifest.json</code> in the take folder, written at create and rewritten atomically —
+			temp file, then rename — on every state change. At any instant it is either the previous
+			complete version or the next. A dead process leaves playable files and a truthful manifest.
+		</p>
+		<Code code={manifest} lang="json" title="ep12/manifest.json — the shape the spec describes; Engine finalises the names" />
+		<p class="aside">
+			Everything downstream consumes the manifest; nothing guesses from a folder listing. Take IDs
+			are the handle, paths are the answer, and every path is relative to the output root.
+		</p>
+	</Section>
+
+	<Section kicker="The API in one glance">
+		<h2>Create, cue, stop.</h2>
+		<p class="lede">
+			<code>POST /takes</code> reserves every file path and writes the manifest before frame one —
+			so a client knows where the files will live. <code>start</code> is the cue.
+		</p>
+		<Code code={api} lang="sh" title="localhost:7447 — three calls, one take" />
+		<Code code={events} lang="js" />
+		<p class="aside">
+			A bearer token, always, on every transport. It is provisioned to a file — mode 0600 — so any app
+			running as you is paired with zero clicks; anything that cannot read the file gets it as a
+			pairing code in the popover. Loopback only in the MVP: the threat is a web page in your
+			browser talking to <code>localhost:7447</code>, and a token is the defence.
+		</p>
+	</Section>
+
+	<Section kicker="The name">
+		<h2>Known for the flow.</h2>
+		<div class="name">
+			<div class="name__text">
+				<p class="name__greek" lang="grc">ῥέω</p>
+				<p>
+					<em>Rheō</em> is "to flow". It comes down from the Proto-Indo-European root{' '}
+					<code>*srew-</code>, which came through Germanic as the English word <b>stream</b>. So{' '}
+					<em>rheo-</em> does not resemble "stream"; it <em>is</em> "stream", two thousand years
+					upstream.
+				</p>
+				<p>
+					The <code>-cles</code> is <em>kleos</em>, renown — the same suffix as its sibling{' '}
+					<a href="https://sonocles.com">Sonocles</a>. Known for the flow.
+				</p>
+				<p class="aside">
+					Rhea, the Titaness, is attached to <em>rheō</em> by Plato, and Plato was making a pun.
+					We are borrowing it, not asserting it. Both halves are Greek this time, which Sonocles
+					could not say, and will hear about.
+				</p>
+			</div>
+			<Plate
+				name="Rhea and the stone"
+				ratio="1 / 1"
+				class="name__plate"
+				caption="<strong>The stone.</strong> Kronos swallowed his children so there would only ever be one of him. Rhea handed him a rock in a blanket and kept the sixth one separate. Roughly our position on compositing."
+			/>
+		</div>
+	</Section>
+
+	<Section kicker="Anyway">
+		<h2>Here is a Titaness<br />with a rig.</h2>
+		<p class="lede">
+			Six of them, each in their own cradle, all started on the same word. The one on the end
+			arrived four minutes late and has been placed, correctly, four minutes in.
+		</p>
+		<Plate
+			name="the rig"
+			ratio="3 / 2"
+			caption="<strong>Nobody in this picture is being swallowed.</strong> Which is, in fairness, the goal."
+		/>
+	</Section>
 </Base>
 
 <style>
 	.hero {
-		padding-block: 4.5rem 2rem;
+		padding-block: 4.5rem 1rem;
 		max-width: var(--page);
 	}
 	.hero__title {
@@ -94,5 +331,95 @@ import Base from '../layouts/Base.astro';
 		border-radius: 7px;
 		background: var(--limestone-deep);
 		color: var(--script);
+	}
+
+	.aside {
+		font-size: 0.92rem;
+		color: var(--ink-soft);
+		max-width: 40rem;
+	}
+	b {
+		font-weight: 600;
+	}
+
+	.verbs {
+		margin: 1.6rem 0 0;
+		display: grid;
+		gap: 0.2rem;
+	}
+	.verbs > div {
+		display: grid;
+		grid-template-columns: 9rem minmax(0, 1fr);
+		gap: 1rem;
+		padding: 0.85rem 0;
+		border-top: 1px solid var(--limestone-line);
+	}
+	.verbs > div:last-child {
+		border-bottom: 1px solid var(--limestone-line);
+	}
+	.verbs dt {
+		font-family: var(--mono);
+		font-size: 0.82rem;
+		color: var(--aegean);
+		padding-top: 0.15rem;
+	}
+	.verbs dd {
+		margin: 0;
+		font-size: 0.95rem;
+	}
+
+	.cards {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+		gap: 1rem;
+		margin-top: 1.8rem;
+	}
+	.card {
+		background: var(--limestone-deep);
+		border-radius: 12px;
+		padding: 1.2rem 1.3rem 0.4rem;
+		border-bottom: 3px solid var(--aegean);
+	}
+	.card--ochre {
+		border-bottom-color: var(--ochre);
+	}
+	.card h3 {
+		font-family: var(--sans);
+		font-variation-settings: normal;
+		font-weight: 600;
+		font-size: 1rem;
+		letter-spacing: 0;
+		margin-bottom: 0.5rem;
+	}
+	.card p {
+		font-size: 0.92rem;
+		color: var(--ink-soft);
+	}
+
+	.name {
+		display: grid;
+		grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+		gap: 2.5rem;
+		align-items: start;
+	}
+	.name__greek {
+		font-family: var(--display);
+		font-variation-settings: 'SOFT' 30, 'WONK' 1;
+		font-size: 2.2rem;
+		color: var(--aegean);
+		margin: 0 0 0.8rem;
+	}
+	.name__plate {
+		margin-top: 0;
+	}
+
+	@media (max-width: 640px) {
+		.verbs > div {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 0.3rem;
+		}
+		.name {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 </style>
