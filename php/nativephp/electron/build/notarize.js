@@ -18,11 +18,15 @@ export default async (context) => {
 
     console.log('aftersign hook triggered, start to notarize app.');
 
+    // Set, not merely present: the runtime passes these through as empty
+    // strings when .env does not define them, and the scaffold's `in`
+    // check then hands empty credentials to notarytool. Empty means "do
+    // not notarize"; set means "notarize, and fail if that fails".
     if (
         !(
-            'NATIVEPHP_APPLE_ID' in process.env &&
-            'NATIVEPHP_APPLE_ID_PASS' in process.env &&
-            'NATIVEPHP_APPLE_TEAM_ID' in process.env
+            process.env.NATIVEPHP_APPLE_ID &&
+            process.env.NATIVEPHP_APPLE_ID_PASS &&
+            process.env.NATIVEPHP_APPLE_TEAM_ID
         )
     ) {
         console.warn(
