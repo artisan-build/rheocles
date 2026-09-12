@@ -1,0 +1,149 @@
+---
+// Docs shell: the sibling header, a sidebar in reading order, the article,
+// and a banner when the page is written ahead of the code (draft: true).
+import Base from './Base.astro';
+import { docsNav, docsHref } from '../lib/docs-nav';
+
+interface Props {
+	id: string;
+	title: string;
+	description: string;
+	draft?: boolean;
+	existing: Set<string>;
+}
+const { id, title, description, draft = false, existing } = Astro.props;
+---
+
+<Base title={`${title} — Rheocles docs`} description={description}>
+	<div class="wrap wrap--wide docs">
+		<aside class="sidebar">
+			<p class="kicker">Docs</p>
+			<nav aria-label="Documentation">
+				<ul>
+					{
+						docsNav.map((entry) =>
+							existing.has(entry.id) ? (
+								<li class:list={{ nested: entry.id.includes('/') }}>
+									<a href={docsHref(entry.id)} aria-current={entry.id === id ? 'page' : undefined}>
+										{entry.label}
+									</a>
+								</li>
+							) : (
+								<li class:list={['soon', { nested: entry.id.includes('/') }]}>
+									<span>{entry.label}</span>
+								</li>
+							),
+						)
+					}
+				</ul>
+			</nav>
+		</aside>
+		<article class="article" data-pagefind-body>
+			{
+				draft && (
+					<p class="draft" role="note">
+						<strong>Draft.</strong> Written against the spec, ahead of the code. The words are the
+						intent; the software is not there yet.
+					</p>
+				)
+			}
+			<h1>{title}</h1>
+			<p class="lede">{description}</p>
+			<div class="prose">
+				<slot />
+			</div>
+		</article>
+	</div>
+</Base>
+
+<style>
+	.docs {
+		display: grid;
+		grid-template-columns: 200px minmax(0, 1fr);
+		gap: 3rem;
+		padding-block: 2.5rem 1rem;
+	}
+	.sidebar ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		font-family: var(--mono);
+		font-size: 0.8rem;
+	}
+	.sidebar li {
+		margin: 0 0 0.65rem;
+	}
+	.sidebar li.nested {
+		padding-left: 1rem;
+	}
+	.sidebar a {
+		color: var(--ink-soft);
+		text-decoration: none;
+	}
+	.sidebar a:hover {
+		color: var(--aegean);
+	}
+	.sidebar a[aria-current='page'] {
+		color: var(--aegean);
+	}
+	.sidebar .soon span {
+		color: var(--script);
+	}
+	.sidebar .soon span::after {
+		content: ' ·';
+	}
+	.article {
+		max-width: var(--page);
+		min-width: 0;
+	}
+	.article h1 {
+		font-size: clamp(2rem, 4.5vw, 2.6rem);
+		margin-bottom: 0.8rem;
+	}
+	.lede {
+		font-size: 1.1rem;
+		color: var(--ink-soft);
+		margin-bottom: 2rem;
+	}
+	.draft {
+		font-size: 0.9rem;
+		color: var(--ochre-ink);
+		background: color-mix(in oklab, var(--ochre) 14%, var(--limestone));
+		border-left: 3px solid var(--ochre);
+		padding: 0.7rem 1rem;
+		border-radius: 0 8px 8px 0;
+		margin-bottom: 1.6rem;
+	}
+	.prose :global(h2) {
+		font-size: 1.55rem;
+		margin: 2.4rem 0 0.8rem;
+	}
+	.prose :global(h3) {
+		font-size: 1.15rem;
+		margin: 1.8rem 0 0.6rem;
+	}
+	.prose :global(ul),
+	.prose :global(ol) {
+		padding-left: 1.3rem;
+	}
+	.prose :global(li) {
+		margin-bottom: 0.35rem;
+	}
+	@media (max-width: 760px) {
+		.docs {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 1.5rem;
+		}
+		.sidebar ul {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.4rem 1rem;
+		}
+		.sidebar li {
+			margin: 0;
+		}
+		.sidebar li.nested {
+			padding-left: 0;
+		}
+	}
+</style>

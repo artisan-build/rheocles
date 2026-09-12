@@ -1,0 +1,155 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--limestone);
+	color: var(--ink);
+	font-family: var(--sans);
+	font-size: 17px;
+	line-height: 1.55;
+	-webkit-font-smoothing: antialiased;
+	text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	min-height: 100dvh;
+	display: flex;
+	flex-direction: column;
+}
+
+main {
+	flex: 1;
+}
+
+h1,
+h2,
+h3,
+h4 {
+	font-family: var(--display);
+	font-variation-settings: 'SOFT' 30, 'WONK' 1;
+	font-weight: 700;
+	line-height: 1.08;
+	letter-spacing: -0.015em;
+	margin: 0;
+	text-wrap: balance;
+}
+
+p {
+	margin: 0 0 1em;
+}
+
+a {
+	color: var(--aegean);
+	text-decoration-color: color-mix(in oklab, var(--aegean) 40%, transparent);
+	text-underline-offset: 0.18em;
+}
+a:hover {
+	text-decoration-color: var(--aegean);
+}
+
+code,
+kbd,
+pre {
+	font-family: var(--mono);
+}
+
+/* inline code — dark blocks are expressive-code's */
+:not(pre) > code {
+	font-size: 0.86em;
+	padding: 0.1em 0.4em;
+	border-radius: 5px;
+	background: var(--limestone-deep);
+	color: var(--ink);
+}
+
+/* kicker: mono, uppercase, spaced — furniture, never competing with a heading */
+.kicker {
+	font-family: var(--mono);
+	font-size: 0.72rem;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--aegean);
+	margin: 0 0 0.9rem;
+}
+
+.wrap {
+	width: min(100% - 2 * var(--gutter), var(--page));
+	margin-inline: auto;
+}
+.wrap--wide {
+	width: min(100% - 2 * var(--gutter), var(--page-wide));
+}
+
+table {
+	border-collapse: collapse;
+	width: 100%;
+	font-size: 0.95rem;
+}
+th {
+	font-family: var(--mono);
+	font-weight: 500;
+	font-size: 0.7rem;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--ink-faint);
+	text-align: left;
+	padding: 0.5rem 0.6rem;
+	border-bottom: 1px solid var(--limestone-line);
+}
+td {
+	padding: 0.7rem 0.6rem;
+	border-bottom: 1px solid var(--limestone-line);
+	vertical-align: top;
+}
+.table-scroll {
+	overflow-x: auto;
+}
+
+.pill {
+	display: inline-block;
+	font-family: var(--mono);
+	font-size: 0.68rem;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--limestone);
+	background: var(--aegean);
+	padding: 0.42em 0.9em;
+	border-radius: 999px;
+}
+
+.button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5em;
+	font-family: var(--sans);
+	font-weight: 600;
+	font-size: 0.95rem;
+	padding: 0.75em 1.35em;
+	border-radius: 999px;
+	text-decoration: none;
+	border: 1.5px solid var(--aegean);
+	color: var(--aegean);
+	background: transparent;
+}
+.button--primary {
+	background: var(--aegean);
+	color: var(--limestone);
+}
+
+:focus-visible {
+	outline: 2px solid var(--ochre);
+	outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation: none !important;
+		transition: none !important;
+	}
+}

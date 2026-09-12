@@ -1,0 +1,78 @@
+---
+// The sibling header: mark · wordmark · pronunciation in mono · Docs · GitHub.
+// Identical on the landing page and every docs page.
+import Mark from './Mark.astro';
+const path = Astro.url.pathname;
+const inDocs = path === '/docs' || path.startsWith('/docs/');
+---
+
+<header class="header">
+	<div class="wrap wrap--wide header__row">
+		<a href="/" class="brand" aria-label="Rheocles home">
+			<Mark class="brand__mark" size={26} />
+			<span class="brand__name">Rheocles</span>
+			<span class="brand__say">REE-oh-kleez</span>
+		</a>
+		<nav class="nav" aria-label="Site">
+			<a href="/docs" aria-current={inDocs ? 'page' : undefined}>Docs</a>
+			<a href="https://github.com/artisan-build/rheocles">GitHub →</a>
+		</nav>
+	</div>
+</header>
+
+<style>
+	.header {
+		border-top: 4px solid var(--aegean);
+	}
+	.header__row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding-block: 1.1rem;
+	}
+	.brand {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.55rem;
+		color: var(--ink);
+		text-decoration: none;
+		min-width: 0;
+	}
+	.brand__mark {
+		color: var(--aegean);
+		align-self: center;
+		flex: none;
+	}
+	.brand__name {
+		font-family: var(--display);
+		font-variation-settings: 'SOFT' 30, 'WONK' 1;
+		font-weight: 700;
+		font-size: 1.35rem;
+		letter-spacing: -0.01em;
+	}
+	.brand__say {
+		font-family: var(--mono);
+		font-size: 0.72rem;
+		color: var(--ink-faint);
+	}
+	.nav {
+		display: flex;
+		gap: 1.4rem;
+		font-size: 0.9rem;
+		font-weight: 500;
+	}
+	.nav a {
+		color: var(--aegean);
+		text-decoration: none;
+	}
+	.nav a[aria-current='page'] {
+		text-decoration: underline;
+		text-underline-offset: 0.3em;
+	}
+	@media (max-width: 480px) {
+		.brand__say {
+			display: none;
+		}
+	}
+</style>
