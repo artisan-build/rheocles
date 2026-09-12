@@ -1,0 +1,32 @@
+[19:45:28.628] pid 94743 out=/Users/gopher/Code/artisan-build/rheocles/app/Scripts/spikes/s3-timecode/out/take2 seconds=15.0 fps=30 bundle=build.artisan.rheocles.spike.s3
+[19:45:28.646] mic authorization: 3 (0 notDetermined, 1 restricted, 2 denied, 3 authorized)
+[19:45:28.754] mic: Scarlett 2i2 USB | model=Scarlett 2i2 USB:1235:8210 | id=AppleUSBAudioEngine:Focusrite:Scarlett 2i2 USB:Y8CABR91C1CA8A:1,2
+[19:45:28.754] mic: Elgato 4K X | model=Elgato 4K X:0FD9:009C | id=AppleUSBAudioEngine:Elgato:Elgato 4K X:A7SNB40817BR15:3
+[19:45:28.754] mic: Elgato HD60 X | model=Elgato HD60 X:0FD9:008A | id=AppleUSBAudioEngine:Elgato:Elgato HD60 X:A00XB436216S2M:3
+[19:45:28.754] mic: MacBook Pro Microphone | model=Digital Mic | id=BuiltInMicrophoneDevice
+[19:45:28.754] using mic: Scarlett 2i2 USB
+[19:45:28.914] flash+beep scheduled for host tod 71135.000s = 19:45:35:00
+[19:45:28.915] video first frame: host tod=71128.914s -> start timecode 19:45:28:27 (frame 2133867)
+[19:45:28.925] t=0 frames=1 audioBuffers=0 audioBytes=0
+[19:45:29.919] t=1 frames=31 audioBuffers=0 audioBytes=0
+[19:45:30.919] t=2 frames=61 audioBuffers=0 audioBytes=0
+[19:45:32.055] mic session started late by design: running=true at video frame 75
+[19:45:32.064] audio format: 48000.0 Hz, 1 ch, 24 bit, 4 bytes/frame, flags 0x14
+[19:45:32.065] audio first sample: tod=71132.047s -> bext TimeReference 3414338251 samples (= 19:45:32:01 at 30 fps)
+[19:45:32.111] t=3 frames=91 audioBuffers=5 audioBytes=7680
+[19:45:32.915] t=4 frames=121 audioBuffers=81 audioBytes=124416
+[19:45:33.920] t=5 frames=151 audioBuffers=175 audioBytes=268800
+[19:45:34.098] beep scheduled in 0.947s via AVAudioPlayer.play(atTime:)
+[19:45:34.921] t=6 frames=181 audioBuffers=269 audioBytes=413184
+[19:45:35.020] first flash frame at tc 19:45:35:00 (frame 183)
+[19:45:35.916] t=7 frames=211 audioBuffers=362 audioBytes=556032
+[19:45:36.917] t=8 frames=241 audioBuffers=456 audioBytes=700416
+[19:45:37.921] t=9 frames=271 audioBuffers=550 audioBytes=844800
+[19:45:38.917] t=10 frames=301 audioBuffers=643 audioBytes=987648
+[19:45:39.918] t=11 frames=331 audioBuffers=737 audioBytes=1132032
+[19:45:40.920] t=12 frames=361 audioBuffers=831 audioBytes=1276416
+[19:45:41.918] t=13 frames=391 audioBuffers=925 audioBytes=1420800
+[19:45:42.920] t=14 frames=421 audioBuffers=1019 audioBytes=1565184
+[19:45:43.969] video finished status=2 (2 completed, 3 failed) error=none frames=450 startTC=19:45:28:27
+[19:45:43.970] audio finished: 1709568 bytes = 11.872s, TimeReference=3414338251
+[19:45:43.970] done

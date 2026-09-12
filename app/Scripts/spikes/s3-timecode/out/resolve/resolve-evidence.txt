@@ -1,0 +1,22 @@
+# DaVinci Resolve (via its scripting API through the davinci-resolve MCP), 11 Sep 2026 19:44-19:47
+# Project: "_mcp_Rheocles S3 scratch" (created fresh; Resolve had been quit by Len beforehand,
+# launched into "Untitled Project"; TWIPI untouched). timelineFrameRate set to 30.
+
+## take1 — video.mov and audio.wav started 21 ms apart
+media_pool.import_media -> imported: 2
+video.mov  clip properties: Start TC 19:34:27:27  End TC 19:34:42:27  FPS 30  Frames 450  Video Codec "H.265 Main L4.0"  Audio Ch 0
+audio.wav  clip properties: Start TC 19:34:27:27  End TC 19:34:42:27  Sample Rate 48000  Audio Bit Depth 24  Audio Codec "Linear PCM"
+           Description "Rheocles S3 spike"  Camera # "Rheocles"  Date Recorded 2026-09-11   (all read from bext)
+media_pool.auto_sync_audio(sync_method=timecode) -> success
+video.mov  "Synced Audio": audio.wav   "Audio Offset": -0.64      (expected: (70467.921 - 70467.900) s x 30 = 0.63 frames)
+timeline "S3 sync test" from the synced clip: V1 108000..108450, A1 "video.mov" 108000..108450 source start 0
+
+## take2 — audio deliberately started 3.147 s after the first video frame (a late join)
+video.mov  Start TC 19:45:28:27  End TC 19:45:43:27  Frames 450
+audio.wav  Start TC 19:45:32:01 (bext TimeReference 3414338251 = 71132.047 s)
+media_pool.auto_sync_audio(sync_method=timecode) -> success
+video.mov  "Synced Audio": audio.wav   "Audio Offset": -94.41     (expected: (71132.047 - 71128.900) s x 30 = 94.41 frames)
+timeline "S3 sync test take2" from the synced clip, rendered to out/resolve/take2-synced.mov (mov/H264, PCM audio)
+rendered audio: 2 ch, first non-silent sample at 3.147s (the BWF's late start), beep onset at 6.175s (peak 2667526)
+rendered video: flash at 6.100s
+beep - flash in the render = +74.9 ms (+2.25 frames)

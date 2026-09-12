@@ -1,0 +1,1 @@
+flash pts=6.100000s YAVG=225.65

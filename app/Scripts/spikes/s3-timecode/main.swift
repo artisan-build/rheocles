@@ -1,6 +1,10 @@
 // Spike S3 — time-of-day timecode in a MOV, matching TimeReference in a BWF.
 //
-//   s3 record --seconds N --out-dir DIR [--mic name] [--fps 30] [--beep-at 3]
+//   s3 record --seconds N --out-dir DIR [--mic name] [--fps 30] [--beep-at 3] [--audio-delay 0]
+//
+// --audio-delay starts the microphone that many seconds after the first video
+// frame, so the two files carry different start stamps and an NLE's
+// sync-by-timecode has a real offset to get right (a late join, §6).
 //
 // Writes, from one process and one host clock:
 //
@@ -434,8 +438,11 @@ case "record":
     let video = try VideoWriter(url: dir.appendingPathComponent("video.mov"), fps: fps)
     let beep = try makeBeep(url: dir.appendingPathComponent("beep.wav"))
 
-    mic.session.startRunning()
-    log("mic session running=\(mic.session.isRunning)")
+    let audioDelay = Double(opt("--audio-delay") ?? "0") ?? 0
+    if audioDelay == 0 {
+        mic.session.startRunning()
+        log("mic session running=\(mic.session.isRunning)")
+    }
 
     // Frames on a strict 1/fps cadence from host time. The flash covers the
     // whole host-clock second boundary at `beepAt` (rounded up), so its first
@@ -462,6 +469,10 @@ case "record":
             let delta = flashHost - CMClockGetTime(CMClockGetHostTimeClock()).seconds
             beep.play(atTime: beep.deviceCurrentTime + delta)
             log("beep scheduled in \(String(format: "%.3f", delta))s via AVAudioPlayer.play(atTime:)")
+        }
+        if audioDelay > 0 && !mic.session.isRunning && target - t0 >= audioDelay {
+            mic.session.startRunning()
+            log("mic session started late by design: running=\(mic.session.isRunning) at video frame \(frameIndex)")
         }
         if frameIndex % fps == 0 { log("t=\(frameIndex / fps) frames=\(video.frames) audioBuffers=\(mic.buffers) audioBytes=\(bwf.dataBytes)") }
         frameIndex += 1

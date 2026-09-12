@@ -1,0 +1,3 @@
+video start tc 19:45:28:27 -> 71128.900s tod; flash at +6.100s = 71135.000s tod = 19:45:35:00
+audio TimeReference 3414338251 -> 71132.047s tod; beep onset sample 145344 (peak 2667526, floor 8547, thresh 666881) = 71135.075s tod = 19:45:35:02
+beep - flash = +74.9 ms (+2.25 frames at 30 fps)
