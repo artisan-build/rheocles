@@ -75,6 +75,10 @@ return [
         'NATIVEPHP_AZURE_ENDPOINT',
         'NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME',
         'NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME',
+        // Development only: the dev daemon lives on 7467/7468 so it never
+        // collides with a real bundle on the protocol's 7447/7448. The
+        // bundle gets the defaults (config/rheocles.php).
+        'RHEOCLES_*',
     ],
 
     /**

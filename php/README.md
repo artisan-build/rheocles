@@ -100,13 +100,58 @@ the name) are meant to be red until the daemon is fixed.
 ## Packaging
 
 ```bash
-php artisan native:build mac arm64
+bin/sync-sidecar.sh                    # the core, freshly built
+php artisan native:build mac arm64     # signs with the Developer ID in the login keychain
 ```
 
-Then verify the entitlements from the signature, on the app **and** the
-nested binary — never from configuration:
+electron-builder finds `Developer ID Application: Artisan Build, Inc` in the
+keychain on its own; nothing in `.env` names it. Notarisation runs only
+when `NATIVEPHP_APPLE_ID`, `NATIVEPHP_APPLE_ID_PASS` and
+`NATIVEPHP_APPLE_TEAM_ID` are set, and `build/notarize.js` **fails the build
+when it fails** (the scaffold printed "done notarizing" over a caught
+error). The output is `nativephp/electron/dist/mac-arm64/Rheocles.app` and
+a DMG beside it; `RHEOCLES_*` and the Apple credentials are stripped from
+the bundled `.env`, so the bundle talks to the protocol's 7447/7448.
+
+Then verify the entitlements **from the signature**, on the app and on the
+nested core — never from configuration. Under the hardened runtime a
+missing `device.camera` or `device.audio-input` does not fail loudly: the
+app cannot prompt and never appears in Privacy & Security at all.
 
 ```bash
-codesign -d --entitlements :- nativephp/electron/dist/mac-arm64/Rheocles.app
-codesign -d --entitlements :- nativephp/electron/dist/mac-arm64/Rheocles.app/Contents/extras/rheocles-core
+APP=nativephp/electron/dist/mac-arm64/Rheocles.app
+codesign -d --entitlements :- "$APP" | grep -E "device\.(camera|audio-input)"
+codesign -d --entitlements :- "$APP/Contents/extras/rheocles-core" | grep -E "device\.(camera|audio-input)"
+codesign --verify --deep --strict --verbose=2 "$APP"
+plutil -p "$APP/Contents/Info.plist" | grep -E "UsageDescription|LSUIElement"
 ```
+
+The core inherits the bundle's TCC identity: the prompts macOS shows for
+`rheocles-core` are this bundle's usage strings, in this bundle's name,
+and the grants attach to this bundle id (`build.artisan.rheocles.php`) —
+separate from the Swift app's, and persistent across rebuilds as long as
+the signing identity stays the same. **Changing the signing identity
+changes the TCC identity** and every grant vanishes.
+
+## Lifting it into Pteroprompter
+
+This directory is a whole NativePHP app on purpose, so ptero takes files,
+not ideas. What moves and what it needs:
+
+| take | it is | it needs |
+|---|---|---|
+| `app/Rheocles/` | the daemon: lifecycle, client, SSE reader, icon state, token, home | `config/rheocles.php`; Laravel's `Http` facade; NativePHP `ChildProcess` |
+| `app/Console/Commands/Watch.php` | `rheo:watch`, the one long-lived process | started once from the native provider: `ChildProcess::artisan('rheo:watch', alias: 'rheo-watch', persistent: true)` |
+| `resources/menubar/*.png` + `bin/make-icons.swift` | the tray icon, every state | `MenuBar::icon()` at runtime — or ptero's own tray, fed by `IconState` |
+| `resources/views/menubar.blade.php`, `public/popover.css`, `public/js/state.js`, `public/js/popover.js`, `public/fonts/` | the popover; `state.js` is the pure part | a page that gets `window.RHEO` (base URL, events URL, token, published daemon state, preferences, home, token file) |
+| `routes/web.php` (everything under `/api/`, `/daemon`, `/quit`) | clicks → the daemon, in the daemon's error shape | CSRF as usual; the `PreventRegularBrowserAccess` middleware is NativePHP's |
+| `extras/rheocles-core` + `bin/sync-sidecar.sh` | the sidecar | `extraFiles` in `electron-builder.mjs`; `NATIVEPHP_EXTRAS_PATH` at runtime |
+| `nativephp/electron/build/entitlements.mac.plist`, the `extendInfo` block in `electron-builder.mjs`, `build/notarize.js`, the error handler in `src/main/index.js` | what the scaffold gets wrong for an app that records | copy the keys and the comments; they mark paid-for traps |
+| `tests/` | the stub core, the real-binary tests, the JS tests | `RHEOCLES_*` and `VIEW_COMPILED_PATH` in `phpunit.xml`; `vitest.config.js` |
+
+Rules that travel with it: PHP is never between the daemon and the DOM
+(the page holds `GET /events`; PHP handles clicks); the daemon is found
+before it is launched and only ours is ever stopped; two front ends share
+one core; the token is read from the daemon's file, again on every 401;
+the icon speaks for the daemon. The palette and type are `docs/BRAND.md`'s
+— ptero's own chrome wraps the popover, it does not restyle it.

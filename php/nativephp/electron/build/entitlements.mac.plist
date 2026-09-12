@@ -24,9 +24,10 @@
   gets applied to the nested Mach-O binaries inside the bundle — including
   extras/rheocles-core, the process that actually opens the devices. That is
   why the entitlements belong here rather than only on the outer app. Verify
-  on the built app AND the nested binary, from the signature, not from here:
-      codesign -d --entitlements :- Rheocles.app
-      codesign -d --entitlements :- Rheocles.app/Contents/extras/rheocles-core
+  on the built app AND the nested binary, from the signature, not from here
+  (php/README.md, Packaging, has the two codesign lines; they cannot be
+  quoted in this comment because a double hyphen is not legal inside XML
+  comments and AMFI refuses the whole file: "syntax error near line 28").
 -->
 <plist version="1.0">
   <dict>
