@@ -1,0 +1,157 @@
+---
+title: Takes and the manifest
+description: The manifest is the take. Everything downstream reads manifest.json; nothing guesses from a folder listing.
+draft: true
+---
+import Callout from '../../components/Callout.astro';
+import Cards from '../../components/Cards.astro';
+import Card from '../../components/Card.astro';
+
+A take is a folder under the output root with one file per stream and a
+`manifest.json` that describes them. The manifest is written when the take is
+created, rewritten on every state change, and served live by
+`GET /takes/{id}` while recording. It is the only thing a client needs to
+read.
+
+## Two rules
+
+**Take ids are the handle; paths are the answer.** A client holds `tk_7f3a`
+and asks Rheocles what that means. It never assembles a path from a naming
+convention.
+
+**Every path is relative to the output root.** The root is one field on
+`GET /`. A client that stores relative paths survives the root moving, the
+volume being renamed, and the take being copied to another machine; a client
+that stored absolutes did not.
+
+## Written atomically
+
+The manifest is rewritten as a temp file in the take folder and then renamed
+over the old one, on every state change: create, start, each join and leave,
+each marker, stop, and any failure. At any instant on disk it is either the
+previous complete version or the next. There is no moment at which a reader
+can see half a manifest.
+
+That is what makes a crash survivable rather than recoverable: a process that
+dies mid-take leaves fragmented MOVs that play to their last fragment and a
+manifest that says `recording`, with every stream's `started` and the last
+known frame counts. Nothing has to be reconstructed.
+
+## The states
+
+| `state` | meaning |
+|---|---|
+| `created` | paths reserved, manifest written, nothing recording |
+| `recording` | the cue has happened; at least one writer is live |
+| `complete` | stopped cleanly; every file finalised |
+| `incomplete` | stopped by a failure; `reason` says which; every file is playable as far as it got |
+
+A manifest that still says `recording` when nothing is running is a crash,
+and that is what it should say.
+
+## The shape
+
+```json title="ep12/manifest.json"
+{
+  "take": {
+    "id": "tk_7f3a",
+    "name": "ep12",
+    "state": "complete",
+    "created": "2026-09-11T14:02:09.412Z",
+    "started": "2026-09-11T14:02:17.004Z",
+    "stopped": "2026-09-11T14:14:40.501Z",
+    "outputRoot": "/Users/len/Movies/Rheocles",
+    "rheocles": "0.1.0",
+    "machine": { "hostname": "studio.local", "id": "…" }
+  },
+  "settings": { "codec": "hevc", "expectedDuration": 1800 },
+  "streams": [
+    {
+      "id": "cam-1a2b", "kind": "camera",
+      "name": "FaceTime HD Camera", "model": "…",
+      "path": "ep12/cam-facetime.mov",
+      "format": { "container": "mov", "codec": "hevc", "width": 1920, "height": 1080, "fps": 30 },
+      "started": "2026-09-11T14:02:17.004Z",
+      "stopped": "2026-09-11T14:14:40.501Z",
+      "timecode": "14:02:17:00",
+      "frames": 22305,
+      "driftMs": -3,
+      "events": [ { "t": 0, "event": "join" }, { "t": 743.497, "event": "leave" } ]
+    },
+    {
+      "id": "win-9c0d", "kind": "window", "name": "Keynote", "model": "…",
+      "path": "ep12/window-keynote.mov",
+      "format": { "container": "mov", "codec": "hevc", "width": 3024, "height": 1964, "fps": 60 },
+      "started": "2026-09-11T14:06:17.021Z",
+      "stopped": "2026-09-11T14:08:31.115Z",
+      "timecode": "14:06:17:00",
+      "frames": 8045,
+      "driftMs": null,
+      "events": [ { "t": 240.017, "event": "join" }, { "t": 374.111, "event": "leave" } ]
+    }
+  ],
+  "markers": [
+    { "t": 38.7, "label": "cold-open out" },
+    { "t": 251.2, "label": "demo in" }
+  ]
+}
+```
+
+<Callout kind="note" title="The shape, not yet the schema">
+This is the shape the spec describes. Field names are Engine's to finalise
+and are pinned by `docs/openapi.yaml`, which CI validates against the running
+daemon. Where this page and the reference disagree, the reference is right.
+</Callout>
+
+### `take`
+
+| field | is |
+|---|---|
+| `id` | the handle; `tk_` and a short random suffix |
+| `name` | what you called it, or what Rheocles called it |
+| `state` | one of the four above |
+| `created` `started` `stopped` | host times, UTC, ms precision; `started` is the cue |
+| `outputRoot` | the root **at the time** — so a moved root does not orphan the take |
+| `rheocles` | the version that wrote it |
+| `machine` | hostname and a stable id, for two-box setups |
+
+### `streams[]`
+
+| field | is |
+|---|---|
+| `id` `kind` `name` `model` | the three identity fields plus kind; all recorded because ids change across reconnects |
+| `path` | relative to `outputRoot` |
+| `format` | container, codec, dimensions and rate as written |
+| `started` `stopped` | this stream's own host times — a late joiner's `started` is later than the take's |
+| `timecode` | the time-of-day timecode of the first written frame, as stamped into the file |
+| `frames` | frames written |
+| `driftMs` | measured drift against the host clock — frames × frame duration versus host elapsed — or `null` if not measured. **Never zero by default.** |
+| `events[]` | joins and leaves, `t` in seconds from the cue |
+
+### `markers[]`
+
+`{ t, label }`, `t` in seconds from the cue. Rheocles stamps `t`; the client
+owns `label`, and Rheocles never interprets it. See [Markers](/docs/markers).
+
+## Reading it
+
+```sh
+curl -s -H "$H" localhost:7447/takes/tk_7f3a | jq '.streams[] | {path, timecode, driftMs}'
+```
+
+```sh
+curl -s -H "$H" localhost:7447/takes        # recent takes
+```
+
+`GET /takes/{id}` serves the manifest live while recording — `frames` and
+`driftMs` update as it goes — and from disk afterwards. The file is the
+source; the API is a reader.
+
+<Cards>
+	<Card title="Markers" href="/docs/markers">
+		Rheocles knows when; the client knows what.
+	</Card>
+	<Card title="Timecode and sync" href="/docs/timecode-and-sync" tone="olive">
+		The manifest across midnight, and why it is the authority there.
+	</Card>
+</Cards>

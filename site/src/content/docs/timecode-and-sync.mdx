@@ -1,0 +1,116 @@
+---
+title: Timecode and sync
+description: Every file carries its own time — a time-of-day timecode track in video, a Broadcast Wave time reference in audio — so an editor lines them up without the manifest, and the manifest agrees with the files.
+draft: true
+---
+import Callout from '../../components/Callout.astro';
+import Cards from '../../components/Cards.astro';
+import Card from '../../components/Card.astro';
+
+The cue starts every writer on the same tick, but that is not what makes the
+files sync. What makes them sync is that each one is stamped, from the host
+clock, with the time of day of its own first written frame. The files agree
+with each other because they agree with the clock.
+
+## What is in each file
+
+| file | carries | as |
+|---|---|---|
+| `.mov` (camera, display, window) | a `tmcd` timecode track | time-of-day at the first written frame, at the stream's frame rate |
+| `.wav` (microphone, system audio) | a `bext` chunk | `TimeReference`: samples since midnight, at 48 kHz |
+
+Both are stamped from the same host clock at the same moment for a stream
+that joins on the cue, and from that clock at the later moment for a stream
+that joins late. A stream that started at `14:06:17` carries `14:06:17:00` in
+its timecode track and `2 437 296 000` in its `TimeReference` (50 777 s
+× 48 000), and an editor reading either lands it in the same place.
+
+The manifest records the same instant as an absolute UTC `started`, and the
+`timecode` string as stamped, per stream. The manifest is never the only copy
+of the time; it is the copy that is easiest to read.
+
+## Why time-of-day
+
+Take-relative timecode — every file starting at `00:00:00:00` — would sync
+the cue's files and nothing else. Time-of-day is the production standard
+because:
+
+- **A late joiner needs no special case.** Its first frame is stamped when
+  it happened, and it lands where it happened.
+- **Everything from one day shares a timeline.** Take 3's B-camera sits
+  after take 2's without anyone doing arithmetic.
+- **Two machines line up.** Two NTP-synced capture boxes — the camera on one,
+  the prompter on the other — produce files that align to within the clocks'
+  agreement. That is the remote scenario, solved as a side effect of a
+  decision made for other reasons.
+
+## Syncing in an editor
+
+Select the take's files and sync by timecode. Every NLE has the option; the
+name varies.
+
+| editor | the option |
+|---|---|
+| DaVinci Resolve | Media pool → select → *Auto Sync Audio → Based on Timecode*; or *Create Multicam Clip → Sync by Timecode* |
+| Premiere Pro | select → *Synchronize… → Timecode*; or a Multi-Camera Source Sequence with Timecode |
+| Final Cut Pro | select → *Synchronize Clips* (timecode is used when present); or *New Multicam Clip → Use timecode* |
+
+No manifest, no slate, no waveform matching. The files carry their own
+time, so the editor does the placing.
+
+## Drift
+
+Drift is measured, not assumed. For each stream Rheocles compares frames
+written × frame duration against host elapsed and reports the difference in
+milliseconds — in status events while recording and in the manifest's
+`driftMs` afterwards, the way OBS reports timecode drift.
+
+A capture device's clock is not the host's clock, and a long take can drift
+by a frame or two. Whether a client does anything with the number is the
+client's business; it costs nothing to emit, and an editor that wants to
+conform a long file has the figure to do it with.
+
+<Callout kind="note" title="Absent, never zero">
+A stream whose drift has not been measured — one that has written no frames
+yet — reports `driftMs: null`. A `0` means measured and found to be zero. The
+two are not the same thing and the manifest does not pretend they are.
+</Callout>
+
+## Midnight
+
+Time-of-day wraps at midnight, and every camera and field recorder that uses
+it shares the consequence.
+
+A take that **starts before midnight and runs past it is fine.** Every file
+that started before midnight agrees with every other, and editors handle the
+wrap on the timeline.
+
+A stream that **joins after midnight into a take that started before** gets a
+time-of-day stamp near zero — `00:03:10:00` — and an editor syncing by
+timecode will place it twenty-four hours before the rest of the take rather
+than three minutes after. Broadcast Wave's `TimeReference` wraps the same
+way. There is no clean fix inside the files.
+
+<Callout kind="trap" title="Across midnight, the manifest is the authority">
+The manifest records absolute UTC `started` for every stream and is
+unaffected by the wrap. If a late joiner crossed midnight, place it from its
+`started` relative to the take's, not from its timecode. Or stop at 23:59 and
+start a new take, which is what most productions do.
+</Callout>
+
+## The 4 GB ceiling
+
+Broadcast Wave is WAV, and WAV stops at 4 GB. At 48 kHz, 24-bit, that is
+144 kB a second per channel: about 8.3 hours mono, about 4.1 hours stereo.
+What Rheocles does at the limit is the engine's to decide and this page will
+say when it is decided; until then, plan an all-day recording as more than
+one take.
+
+<Cards>
+	<Card title="Takes and the manifest" href="/docs/takes-and-the-manifest">
+		<code>started</code>, <code>timecode</code>, <code>driftMs</code>, per stream.
+	</Card>
+	<Card title="Streams and arming" href="/docs/streams-and-arming" tone="ochre">
+		Late join, and what it is for.
+	</Card>
+</Cards>
