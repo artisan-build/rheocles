@@ -67,6 +67,8 @@ enum StubDaemon {
                         "camera": "authorized", "microphone": "authorized", "screen": "authorized"}})
                 elif path == "/takes":
                     self.send_json(200, [])
+                elif path == "/preview/microphone:stub":
+                    self.send_json(200, {"levelDb": -12.5})
                 elif path == "/preview/camera:stub":
                     self.send_response(200)
                     self.send_header("Content-Type", "image/png")
@@ -82,9 +84,15 @@ enum StubDaemon {
                     self.wfile.write(b": connected\\n\\n")
                     self.wfile.flush()
                     try:
+                        n = 0
                         while True:
-                            time.sleep(0.5)
-                            self.wfile.write(b": ping\\n\\n")
+                            time.sleep(0.25)
+                            n += 1
+                            # A real event every quarter second, so a client
+                            # that never dispatches is caught.
+                            event = {"event": "levels", "take": "tk_stub", "streams": [
+                                {"id": "microphone:stub", "levelDb": -20.0, "framesWritten": n * 12000}]}
+                            self.wfile.write(b"data: " + json.dumps(event).encode() + b"\\n\\n")
                             self.wfile.flush()
                     except (BrokenPipeError, ConnectionResetError):
                         pass

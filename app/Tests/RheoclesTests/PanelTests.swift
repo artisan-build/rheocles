@@ -91,6 +91,13 @@ struct PanelTests {
         model.togglePreview("camera:none")
         #expect(model.previewing == nil)
         #expect(model.previewError == nil)
+
+        // Audio: a sampled level into the meter, gone when sampling stops.
+        model.togglePreview("microphone:stub")
+        #expect(await eventually { model.levels["microphone:stub"] == -12.5 })
+        #expect(model.previewFrame == nil)
+        model.stopPreview()
+        #expect(model.levels["microphone:stub"] == nil)
     }
 
     @Test("The codec is the daemon's setting: PATCH it and the next take is ProRes")

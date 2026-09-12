@@ -47,7 +47,7 @@ struct StreamList: View {
                 SectionHeading(kind.heading)
                 ForEach(members) { stream in
                     StreamRow(stream: stream, daemon: daemon)
-                    if daemon.previewing == stream.id {
+                    if daemon.previewing == stream.id, stream.capabilities.video != nil {
                         PreviewPane(daemon: daemon)
                     }
                 }
@@ -168,6 +168,9 @@ struct StreamRow: View {
                         .foregroundStyle(Brand.inkFaint)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        // Numbers are not for truncating; the name above
+                        // yields first.
+                        .fixedSize(horizontal: liveDetail != nil, vertical: false)
                     if stalled {
                         Text("STALLED")
                             .font(Type.kicker(8))
@@ -179,7 +182,9 @@ struct StreamRow: View {
                     }
                     // Levels flow only while armed; before the first
                     // reading the meter is empty and the number is absent.
-                    if stream.armed, stream.capabilities.audio != nil {
+                    if stream.capabilities.audio != nil,
+                        stream.armed || daemon.previewing == stream.id
+                    {
                         LevelMeter(db: daemon.levels[stream.id])
                     }
                 }
@@ -204,10 +209,11 @@ struct StreamRow: View {
                 }
             }
 
-            if stream.capabilities.video != nil {
-                PreviewButton(on: daemon.previewing == stream.id) {
-                    daemon.togglePreview(stream.id)
-                }
+            // The eye: a frame for video, a sampled level for audio.
+            PreviewButton(
+                on: daemon.previewing == stream.id, audio: stream.capabilities.video == nil
+            ) {
+                daemon.togglePreview(stream.id)
             }
 
             ArmSwitch(on: shownArmed, pending: isPending) {
@@ -298,11 +304,12 @@ struct PermissionNudge: View {
 /// The eye: preview this stream, one at a time.
 struct PreviewButton: View {
     let on: Bool
+    var audio = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: on ? "eye.fill" : "eye")
+            Image(systemName: audio ? (on ? "ear.fill" : "ear") : (on ? "eye.fill" : "eye"))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(on ? Brand.aegean : Brand.inkFaint)
                 .frame(width: 22, height: 17)

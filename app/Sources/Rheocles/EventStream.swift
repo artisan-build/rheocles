@@ -29,8 +29,22 @@ enum EventStream {
             throw URLError(.badServerResponse)
         }
 
+        // Split on newlines by hand. `bytes.lines` drops empty lines, and
+        // the empty line is the one that ends an SSE event — with it gone,
+        // every `data:` line joins one endless event that never dispatches.
+        // (That is how the first four tasks' "live" updates were all the
+        // three-second pulse, and nobody noticed.)
+        var buffer: [UInt8] = []
         var data = ""
-        for try await line in bytes.lines {
+        for try await byte in bytes {
+            if byte != UInt8(ascii: "\n") {
+                buffer.append(byte)
+                continue
+            }
+            var line = String(decoding: buffer, as: UTF8.self)
+            buffer.removeAll(keepingCapacity: true)
+            if line.hasSuffix("\r") { line.removeLast() }
+
             if line.isEmpty {
                 // End of one event.
                 if !data.isEmpty, let message = decode(data) {
