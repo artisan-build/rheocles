@@ -33,8 +33,10 @@ armed or any take exists.
 
 `id` is anything the client likes and is echoed back untouched; `method`,
 `path`, `query` and `body` are exactly the HTTP request's; `status` is the
-HTTP status the same command would have produced. Events arrive on the same
-socket as objects with an `event` key and no `id`.
+HTTP status the same command would have produced. A JSON body is inline in
+`body`; a binary one — a preview JPEG — comes as `base64` with its
+`contentType` instead. Events arrive on the same socket as objects with an
+`event` key and no `id`.
 
 ## Authentication
 
@@ -101,8 +103,30 @@ const es = new EventSource(`http://127.0.0.1:7447/events?access_token=${token}`)
 | `GET /settings` · `PATCH /settings` | `{ outputRoot, codec }`; the root cannot move while a take is active |
 | `POST /token/rotate` | a new token; the old one refused from the next request |
 | `GET /events` | SSE: `stream`, `take`, `levels`, `marker`, `stalled`, `settings` |
-| `GET /preview/{stream}` | low-rate preview frames; one at a time — *planned* |
+| `GET /preview/{stream}` | one frame on demand — a JPEG for video, `{ levelDb }` for audio; one at a time |
 | `WS /` | everything above, full duplex |
+
+## Preview
+
+`GET /preview/{stream}` answers **one frame, on demand**. Nothing is
+captured when nobody is looking: each request opens the device, grabs a
+single frame, and closes it — as a *polite second opener*, with no
+configuration lock and no format change, so previewing a camera or a screen
+that a take is recording never disturbs the take. One preview runs at a
+time.
+
+| stream | answers |
+|---|---|
+| display, window, camera | `image/jpeg`, longest side 640 |
+| microphone, system audio | `application/json` `{ "levelDb": <peak dBFS of a short sample> }` |
+
+`404` for an unknown stream; `503 no_frame` if the device delivered nothing
+— a camera with no signal. Over the WebSocket a JPEG cannot ride in a JSON
+frame, so it comes back as `base64` with its `contentType`:
+
+```json
+← { "id": 16, "status": 200, "contentType": "image/jpeg", "base64": "/9j/4AAQSk…" }
+```
 
 ## The events
 
@@ -146,8 +170,9 @@ WebSocket frame, is on the [API reference](/docs/api/reference).
 first-class artifact: CI runs the real daemon and validates its live responses
 against the file, so "current with the code" is enforced rather than hoped.
 The [reference page](/docs/api/reference) is built from that file at deploy
-time — not copied from it — so it cannot drift either. It is also what a
-Saloon SDK is generated from.
+time — every route, both transports (the WebSocket from its `x-websocket`
+block), every event — not copied from it, so it cannot drift either. It is
+also what a Saloon SDK is generated from.
 
 <Cards>
 	<Card title="API reference" href="/docs/api/reference">

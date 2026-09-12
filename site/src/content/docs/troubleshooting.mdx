@@ -66,6 +66,13 @@ a window that went off-screen, a device that stalled — and a take started
 now would record nothing from it. Disarm and arm again; if it stays at zero,
 the device is not delivering.
 
+## Preview answers `503 no_frame`
+
+The device delivered nothing to grab — a camera with no signal, a capture
+card with nothing plugged in. Preview opens the device, waits briefly for
+one frame, and closes it; with no frame there is nothing to send. The same
+device will `stall` if armed. Check the signal, not the request.
+
 ## The port is in use
 
 The daemon comes up on 7447 and 7448. If another daemon is already there —

@@ -16,6 +16,7 @@ const headings = [
 	{ depth: 2, slug: 'event-types', text: 'Event types' },
 ];
 const draft = api.source !== 'openapi';
+const badges = (api.planned ?? 0) > 0;
 ---
 
 <Docs
@@ -63,9 +64,19 @@ const draft = api.source !== 'openapi';
 			<tr><td><code>500</code></td><td><code>internal</code></td><td>a handler threw</td></tr>
 			<tr><td><code>501</code></td><td><code>unsupported</code></td><td>this kind cannot be captured yet</td></tr>
 			<tr><td><code>503</code></td><td><code>device_unavailable</code></td><td>the device is gone, busy, or refused the configuration</td></tr>
+			<tr><td><code>503</code></td><td><code>no_frame</code></td><td>preview: the device delivered no frame</td></tr>
 			<tr><td><code>507</code></td><td><code>insufficient_storage</code></td><td>the disk pre-flight refused the take</td></tr>
 		</tbody>
 	</table>
+	{
+		api.source === 'openapi' && (
+			<Callout kind="note" title="Where this comes from">
+				Every route and every event on this page is generated from <code>docs/openapi.yaml</code>
+				at build time, and CI validates the running daemon against that same file. Nothing here
+				is hand-copied; where the YAML changes, this page changes with the next deploy.
+			</Callout>
+		)
+	}
 	{
 		draft && (
 			<Callout kind="note" title="Where this comes from">
@@ -83,7 +94,7 @@ const draft = api.source !== 'openapi';
 				<h2 id={g.id}>{g.label}</h2>
 				{g.blurb && <p class="blurb">{g.blurb}</p>}
 				{g.endpoints.map((e) => (
-					<Endpoint endpoint={e} />
+					<Endpoint endpoint={e} badges={badges} />
 				))}
 			</>
 		))
@@ -94,13 +105,13 @@ const draft = api.source !== 'openapi';
 		Delivered on <code>GET /events</code> as <code>data:</code> lines, and on the WebSocket as
 		objects with an <code>event</code> key and no <code>id</code> — the same bytes on both.
 	</p>
-	<table>
+	<table class="events">
 		<thead><tr><th>event</th><th>when</th><th>data</th></tr></thead>
 		<tbody>
 			{
 				api.events.map((ev) => (
 					<tr>
-						<td><code>{ev.type}</code>{ev.pinned && <span class="badge badge--pinned">pinned</span>}{ev.planned && <span class="badge badge--planned">planned</span>}</td>
+						<td><code>{ev.type}</code>{badges && ev.pinned && <span class="badge badge--pinned">pinned</span>}{badges && ev.planned && <span class="badge badge--planned">planned</span>}</td>
 						<td>{ev.when}</td>
 						<td><code class="ex">{ev.example}</code></td>
 					</tr>
@@ -133,6 +144,9 @@ const draft = api.source !== 'openapi';
 	.badge--planned {
 		color: var(--script);
 		border: 1px solid var(--limestone-line);
+	}
+	.events td:nth-child(2) {
+		width: 30%;
 	}
 	code.ex {
 		font-size: 0.74em;

@@ -37,8 +37,10 @@ an arm toggle. Armed rows are ochre. Audio streams show a level meter while
 armed. Windows are listed only when *Show windows* is on in settings.
 
 **Preview, on demand.** One stream at a time, behind a button — not a wall of
-thumbnails. A preview is a low-rate `GET /preview/{stream}`; opening another
-closes the first.
+thumbnails. Each look is one `GET /preview/{stream}`: a single JPEG grabbed by
+a polite second opener that never disturbs an armed or recording take, or,
+for an audio stream, the peak level that drives the meter. Nothing is
+captured when nobody is looking, and one preview runs at a time.
 
 **Record / Stop.** One button. Record is `POST /record`: create and start
 together. The current take's name and elapsed time sit beside it.
@@ -61,6 +63,11 @@ if something does, it uses what is running. Two front ends on one machine —
 the menu bar app and the NativePHP app, or a future Pteroprompter — share one
 daemon. There is no LaunchAgent in the MVP: the daemon lives as long as
 something is talking to it.
+
+The daemon's output root and codec live in `settings.json` beside the
+token. Launching `rheocles-core --output-root <path>` overrides the
+persisted root for that run — the way to point a test at a scratch volume
+without touching your settings.
 
 ## Reviewing the UI without a screen
 

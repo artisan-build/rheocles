@@ -94,14 +94,22 @@ function fromOpenApi(doc: Any): Map<string, Endpoint> {
 				.filter(([code]) => !code.startsWith('2'))
 				.map(([code, r]) => ({ code, when: String(r?.description ?? '').trim() }));
 			const body = deref(o.requestBody)?.content?.['application/json']?.schema;
-			const okSchema = ok?.[1]?.content?.['application/json']?.schema;
+			const okContent = ok?.[1]?.content ?? {};
+			const okSchema = okContent['application/json']?.schema;
+			// Query parameters render in the request table, prefixed with ?.
+			const query: Field[] = ((o.parameters ?? []) as Any[])
+				.map((p) => deref(p) ?? p)
+				.filter((p) => p.in === 'query')
+				.map((p) => ({ name: `?${p.name}`, type: p.schema?.type ?? '', required: !!p.required, note: String(p.description ?? '') }));
+			const request = [...(body ? fields(body, deref) : []), ...query];
 			out.set(`${method} ${path}`, {
 				method,
 				path,
 				summary: o.summary ?? '',
 				description: o.description,
-				request: body ? fields(body, deref) : undefined,
-				response: example(ok?.[1]?.content, deref),
+				request: request.length ? request : undefined,
+				response: example(okContent, deref),
+				responseTypes: Object.keys(okContent).length ? Object.keys(okContent) : undefined,
 				responseFields: okSchema ? fields(okSchema, deref) : undefined,
 				responseNote: ok?.[1]?.description,
 				errors: errors.length ? errors : undefined,
@@ -124,6 +132,30 @@ export function loadApi(): ApiSpec {
 	if (!doc) return { ...specTable, source: 'spec', pinned: 0, planned: specTable.groups.flatMap((g) => g.endpoints).length };
 
 	const fromYaml = fromOpenApi(doc);
+	// The WebSocket transport is not a path; the YAML describes it in a
+	// top-level x-websocket block, rendered as the WS / entry.
+	const xws = doc['x-websocket'] as Any | undefined;
+	if (xws) {
+		const j = (v: unknown) => JSON.stringify(v);
+		const frames: string[] = [];
+		if (xws.auth?.request) frames.push(`→ ${j(xws.auth.request)}`);
+		if (xws.auth?.response) frames.push(`← ${j(xws.auth.response)}`);
+		if (xws.request?.example) frames.push(`→ ${j(xws.request.example)}`);
+		if (xws.response?.example) frames.push(`← ${j(xws.response.example)}`);
+		if (xws.response?.binaryExample) frames.push(`← ${j(xws.response.binaryExample)}`);
+		const description = [xws.auth?.description, xws.request?.description, xws.response?.description, xws.events?.description]
+			.filter(Boolean)
+			.map((t: string) => t.replace(/\s+/g, ' ').trim())
+			.join(' ');
+		fromYaml.set('WS /', {
+			method: 'WS',
+			path: xws.url ?? '/',
+			summary: 'One socket carries every command and every event.',
+			description,
+			response: frames.join('\n'),
+			pinned: true,
+		});
+	}
 	const seen = new Set<string>();
 	let pinned = 0;
 	let planned = 0;
