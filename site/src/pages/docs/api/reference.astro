@@ -1,0 +1,108 @@
+---
+// The API reference, generated. Source: docs/openapi.yaml when it has paths,
+// else the spec §11 table (src/lib/api-spec.ts). See src/lib/openapi.ts.
+import { getCollection } from 'astro:content';
+import { Code } from 'astro-expressive-code/components';
+import Docs from '../../../layouts/Docs.astro';
+import Endpoint from '../../../components/Endpoint.astro';
+import Callout from '../../../components/Callout.astro';
+import { loadApi } from '../../../lib/openapi';
+
+const api = loadApi();
+const existing = new Set((await getCollection('docs')).map((e) => e.id));
+const headings = [
+	{ depth: 2, slug: 'conventions', text: 'Conventions' },
+	...api.groups.map((g) => ({ depth: 2, slug: g.id, text: g.label })),
+	{ depth: 2, slug: 'event-types', text: 'Event types' },
+];
+const draft = api.source === 'spec';
+---
+
+<Docs
+	id="api/reference"
+	title="API reference"
+	description={
+		api.source === 'openapi'
+			? `Generated from docs/openapi.yaml, version ${api.version ?? ''}. CI validates the running daemon against the same file.`
+			: 'Every route, on both transports. Built from the spec’s endpoint table until docs/openapi.yaml lands; then generated from it.'
+	}
+	draft={draft}
+	existing={existing}
+	headings={headings}
+	wide
+>
+	<h2 id="conventions">Conventions</h2>
+	<table>
+		<tbody>
+			<tr><td>HTTP + SSE</td><td><code>http://127.0.0.1:7447</code></td></tr>
+			<tr><td>WebSocket</td><td><code>ws://127.0.0.1:7448</code></td></tr>
+			<tr><td>Auth</td><td><code>Authorization: Bearer &lt;token&gt;</code> on every request, every transport</td></tr>
+			<tr><td>Bodies</td><td>JSON in, JSON out; <code>Content-Type: application/json</code></td></tr>
+			<tr><td>Paths</td><td>every file path in every response is relative to <code>outputRoot</code> from <code>GET /</code></td></tr>
+			<tr><td>Times</td><td>host times are ISO 8601 UTC with milliseconds; <code>t</code> is seconds from the cue; <code>timecode</code> is <code>HH:MM:SS:FF</code></td></tr>
+			<tr><td>Absence</td><td>an unmeasured value is <code>null</code>, never <code>0</code></td></tr>
+		</tbody>
+	</table>
+	<Code
+		code={`{ "error": "conflict",
+  "message": "destination ep12 already exists",
+  "status": 409 }`}
+		lang="json"
+		title="the error shape"
+	/>
+	{
+		draft && (
+			<Callout kind="note" title="Where this comes from">
+				This page is rendered from a hand-typed copy of the spec's endpoint table. When
+				<code>docs/openapi.yaml</code> has paths, the same page is generated from it and this
+				banner goes away. Status codes marked "to be confirmed" and the WebSocket envelope are
+				the reference's to pin.
+			</Callout>
+		)
+	}
+
+	{
+		api.groups.map((g) => (
+			<>
+				<h2 id={g.id}>{g.label}</h2>
+				{g.blurb && <p class="blurb">{g.blurb}</p>}
+				{g.endpoints.map((e) => (
+					<Endpoint endpoint={e} />
+				))}
+			</>
+		))
+	}
+
+	<h2 id="event-types">Event types</h2>
+	<p class="blurb">
+		Delivered on <code>GET /events</code> as SSE, with the type as the event name, and on the
+		WebSocket as <code>{`{ "event", "data" }`}</code> frames.
+	</p>
+	<table>
+		<thead><tr><th>event</th><th>when</th><th>data</th></tr></thead>
+		<tbody>
+			{
+				api.events.map((ev) => (
+					<tr>
+						<td><code>{ev.type}</code></td>
+						<td>{ev.when}</td>
+						<td><code class="ex">{ev.example}</code></td>
+					</tr>
+				))
+			}
+		</tbody>
+	</table>
+</Docs>
+
+<style>
+	.blurb {
+		color: var(--ink-soft);
+		margin-bottom: 0.6rem;
+	}
+	code.ex {
+		font-size: 0.74em;
+		white-space: pre-wrap;
+		background: transparent;
+		padding: 0;
+	}
+</style>
