@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import ScreenCaptureKit
+import os
 
 /// Displays and windows, from `SCShareableContent`.
 ///
@@ -10,6 +11,8 @@ import ScreenCaptureKit
 /// setting (spec §5) — so it is filtered to on-screen, titled, normal-layer
 /// windows of real applications.
 public struct ScreenSource: StreamSource {
+    private static let asked = OSAllocatedUnfairLock(initialState: false)
+
     public init() {}
 
     public func streams() async -> [StreamInfo] {

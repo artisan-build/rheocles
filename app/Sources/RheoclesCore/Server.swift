@@ -16,6 +16,9 @@ public final class Server: Sendable {
         /// hand in a fake.
         public var catalog: any StreamSource = DeviceCatalog.standard
         public var permissions: @Sendable () -> Permissions = { DeviceCatalog.permissions() }
+        /// How arming opens a device. Tests hand in sessions that only
+        /// remember what they were told.
+        public var sessionFactory: any SessionFactory = DeviceSessionFactory()
 
         public init() {}
     }
@@ -26,17 +29,31 @@ public final class Server: Sendable {
     public let http: HTTPServer
     public let ws: WebSocketServer
 
+    public let registry: Registry
+
     public init(configuration: Configuration = Configuration()) throws {
         self.configuration = configuration
         token = try configuration.tokenStore.loadOrCreate()
         let auth = BearerAuth(token: token)
-        dispatcher = Dispatcher(Server.routes(configuration: configuration))
-        http = try HTTPServer(
-            host: configuration.host, port: configuration.httpPort, dispatcher: dispatcher,
-            auth: auth)
-        ws = try WebSocketServer(
-            host: configuration.host, port: configuration.wsPort, dispatcher: dispatcher, auth: auth
-        )
+        // The transports exist before the dispatcher so the registry can
+        // broadcast through them; the dispatcher only needs them by reference.
+        let router = Router()
+        let http = try HTTPServer(
+            host: configuration.host, port: configuration.httpPort, dispatcher: router, auth: auth)
+        let ws = try WebSocketServer(
+            host: configuration.host, port: configuration.wsPort, dispatcher: router, auth: auth)
+        let registry = Registry(
+            catalog: configuration.catalog, factory: configuration.sessionFactory
+        ) { stream in
+            let event = Event.stream(stream)
+            http.broadcast(event)
+            ws.broadcast(event)
+        }
+        self.http = http
+        self.ws = ws
+        self.registry = registry
+        dispatcher = Dispatcher(Server.routes(configuration: configuration, registry: registry))
+        router.dispatcher = dispatcher
     }
 
     /// `GET /streams`.
@@ -50,8 +67,17 @@ public final class Server: Sendable {
         }
     }
 
+    /// `POST /streams/{id}/arm`.
+    public struct ArmRequest: Codable, Sendable {
+        public var armed: Bool
+
+        public init(armed: Bool) {
+            self.armed = armed
+        }
+    }
+
     /// The command table. Order is the order `commands` lists them in.
-    static func routes(configuration: Configuration) -> [Command] {
+    static func routes(configuration: Configuration, registry: Registry) -> [Command] {
         [
             Command("GET", "/") { _ in
                 Response(
@@ -62,8 +88,14 @@ public final class Server: Sendable {
             Command("GET", "/streams") { _ in
                 Response(
                     json: StreamList(
-                        streams: await configuration.catalog.streams(),
+                        streams: await registry.streams(),
                         permissions: configuration.permissions()))
+            },
+            Command("POST", "/streams/{id}/arm") { request in
+                let body = try request.decode(ArmRequest.self)
+                let id = request.params["id"] ?? ""
+                let stream = body.armed ? try await registry.arm(id) : try await registry.disarm(id)
+                return Response(json: stream)
             },
         ]
     }
@@ -80,7 +112,15 @@ public final class Server: Sendable {
         }
     }
 
+    /// Release every device and drop every client.
     public func stop() {
+        let armed = self.registry
+        let done = DispatchSemaphore(value: 0)
+        Task {
+            await armed.disarmAll()
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 5)
         http.stop()
         ws.stop()
     }

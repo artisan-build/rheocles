@@ -153,12 +153,42 @@ public struct Command: Sendable {
     }
 }
 
+/// What a transport routes through. `Dispatcher` is the real one; `Router`
+/// is a late-bound handle so the transports can exist before the table does.
+public protocol Dispatching: Sendable {
+    var commands: [Route] { get }
+    func dispatch(_ request: Request) async -> Response
+}
+
+/// Forwards to a dispatcher set after construction. Before that, everything
+/// is "service not ready" rather than a crash.
+public final class Router: Dispatching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var target: Dispatcher?
+
+    public init() {}
+
+    public var dispatcher: Dispatcher? {
+        get { lock.withLock { target } }
+        set { lock.withLock { target = newValue } }
+    }
+
+    public var commands: [Route] { dispatcher?.commands ?? [] }
+
+    public func dispatch(_ request: Request) async -> Response {
+        guard let dispatcher else {
+            return APIError(status: 503, code: "not_ready", message: "service not ready").response
+        }
+        return await dispatcher.dispatch(request)
+    }
+}
+
 /// The one command table.
 ///
 /// Every command reachable over HTTP is reachable over WebSocket by
 /// construction: both transports hand their requests here, and a test asserts
 /// that the two transports advertise exactly this table.
-public final class Dispatcher: Sendable {
+public final class Dispatcher: Dispatching, Sendable {
     private let table: [Command]
 
     public init(_ table: [Command]) {

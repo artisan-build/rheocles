@@ -24,8 +24,15 @@ public struct StreamInfo: Codable, Sendable, Equatable, Identifiable {
     /// owning application for a window.
     public let model: String
     public let capabilities: Capabilities
-    /// Whether the capture session is live (spec §6). Never true until step 3.
+    /// Whether the capture session is live (spec §6).
     public var armed: Bool
+    /// What the device is actually delivering, present only while armed:
+    /// the format the session holds (S1: the lock is ours), which is what a
+    /// take will record.
+    public var active: Capabilities?
+    /// Frames the device has delivered since arming; present only while
+    /// armed. A live device counts up; a stuck one does not.
+    public var framesSeen: Int?
 
     public struct Capabilities: Codable, Sendable, Equatable {
         public var video: Video?

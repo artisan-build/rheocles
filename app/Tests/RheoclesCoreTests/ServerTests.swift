@@ -24,6 +24,7 @@ struct ServerTests {
     private func running() throws -> Server {
         var configuration = Server.Configuration()
         configuration.catalog = FakeCatalog()
+        configuration.sessionFactory = FakeFactory()
         configuration.permissions = {
             Permissions(camera: .authorized, microphone: .denied, screen: .notDetermined)
         }
@@ -91,6 +92,85 @@ struct ServerTests {
             list.permissions
                 == Permissions(camera: .authorized, microphone: .denied, screen: .notDetermined))
         #expect(try await get(server, "/streams", token: nil).0 == 401)
+    }
+
+    private func post(_ server: Server, _ path: String, _ json: String) async throws -> (Int, Data)
+    {
+        var request = URLRequest(
+            url: URL(string: "http://127.0.0.1:\(server.configuration.httpPort)\(path)")!)
+        request.httpMethod = "POST"
+        request.httpBody = Data(json.utf8)
+        request.setValue("Bearer \(server.token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return ((response as! HTTPURLResponse).statusCode, data)
+    }
+
+    @Test("POST /streams/{id}/arm arms and disarms, and GET /streams agrees")
+    func arm() async throws {
+        let server = try running()
+        defer { server.stop() }
+        let (status, data) = try await post(server, "/streams/camera:fake/arm", #"{"armed": true}"#)
+        #expect(status == 200)
+        let armed = try JSONDecoder().decode(StreamInfo.self, from: data)
+        #expect(armed.id == "camera:fake" && armed.armed && armed.active != nil)
+
+        let list = try JSONDecoder().decode(
+            Server.StreamList.self, from: try await get(server, "/streams", token: server.token).1)
+        #expect(list.streams.first { $0.id == "camera:fake" }?.armed == true)
+        #expect(list.streams.first { $0.id == "microphone:fake" }?.armed == false)
+
+        let (status2, data2) = try await post(
+            server, "/streams/camera:fake/arm", #"{"armed": false}"#)
+        #expect(status2 == 200)
+        #expect(try JSONDecoder().decode(StreamInfo.self, from: data2).armed == false)
+
+        #expect(try await post(server, "/streams/nope/arm", #"{"armed": true}"#).0 == 404)
+        #expect(try await post(server, "/streams/camera:fake/arm", "").0 == 400)
+        #expect(try await post(server, "/streams/camera:fake/arm", #"{"armed": "yes"}"#).0 == 400)
+    }
+
+    @Test("Arming is announced on SSE and on WebSocket")
+    func armEvents() async throws {
+        let server = try running()
+        defer { server.stop() }
+
+        // SSE, authenticated by query parameter as a browser would.
+        let url = URL(
+            string:
+                "http://127.0.0.1:\(server.configuration.httpPort)/events?access_token=\(server.token)"
+        )!
+        let (bytes, response) = try await URLSession.shared.bytes(from: url)
+        #expect((response as! HTTPURLResponse).statusCode == 200)
+        #expect(
+            (response as! HTTPURLResponse).value(forHTTPHeaderField: "Content-Type")
+                == "text/event-stream")
+
+        // WebSocket, authenticated by the auth frame.
+        let task = socket(server)
+        _ = try await roundTrip(task, #"{"auth": "\#(server.token)"}"#)
+
+        try await Task.sleep(for: .milliseconds(100))
+        _ = try await post(server, "/streams/microphone:fake/arm", #"{"armed": true}"#)
+
+        var sse: String?
+        for try await line in bytes.lines where line.hasPrefix("data: ") {
+            sse = String(line.dropFirst(6))
+            break
+        }
+        let event = try JSONDecoder().decode(
+            [String: JSONValue].self, from: Data((sse ?? "{}").utf8))
+        #expect(event["event"] == .string("stream"))
+        guard case .object(let stream)? = event["stream"] else {
+            Issue.record("no stream in event"); return
+        }
+        #expect(stream["id"] == .string("microphone:fake") && stream["armed"] == .bool(true))
+
+        guard case .string(let wsText) = try await task.receive() else {
+            Issue.record("no ws event"); return
+        }
+        #expect(wsText == sse, "both transports carry the same bytes")
+        task.cancel(with: .normalClosure, reason: nil)
     }
 
     @Test("No token, or the wrong token, is 401 with the error shape")

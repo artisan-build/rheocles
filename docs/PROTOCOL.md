@@ -4,8 +4,8 @@ Every command is reachable over both transports, and every event reaches
 both. One command table, two encoders: this document describes the table
 once and the two encodings once.
 
-**Status:** current with the code through task 4 step 2 (`GET /`, auth,
-framing, `GET /streams`). Sections marked *planned* describe what the next steps add and are
+**Status:** current with the code through task 4 step 3 (`GET /`, auth,
+framing, `GET /streams`, arm/disarm, the `stream` event). Sections marked *planned* describe what the next steps add and are
 what the front ends build against; they change here before they change in
 the code.
 
@@ -48,7 +48,7 @@ next request.
 |---|---|---|
 | `GET /` | discovery: name, version, hostname, machine id, output root, free bytes, auth mode, ports | step 1 |
 | `GET /streams` | every stream with armed state, plus what macOS lets this process see | step 2 |
-| `POST /streams/{id}/arm` | `{ "armed": true\|false }` — device live or not; never stamps, never writes | *planned*, step 3 |
+| `POST /streams/{id}/arm` | `{ "armed": true\|false }` — device live or not; never stamps, never writes | step 3 |
 | `POST /takes` | create: snapshot the armed set, reserve paths, write the manifest; nothing records | *planned*, step 4 |
 | `POST /takes/{id}/start` | the cue | *planned*, step 4 |
 | `POST /takes/{id}/stop` | finalize every writer and the manifest | *planned*, step 4 |
@@ -131,7 +131,11 @@ the list is stable between calls even as devices come and go.
 - **`capabilities.audio`** is the device's current sample rate and channel
   count. Recording is always 48 kHz 24-bit BWF regardless (spec §8).
 - **`armed`** is whether the capture session is live (spec §6). Read here,
-  changed by `POST /streams/{id}/arm` (*planned*, step 3).
+  changed by `POST /streams/{id}/arm`.
+- **`active`** and **`framesSeen`** are present only while armed: the
+  format the device is actually delivering (which is what a take records),
+  and how many frames or audio buffers it has delivered since arming. A live
+  device counts up; a stuck one does not.
 - **`permissions`** is what macOS has let this process do — `authorized`,
   `denied`, `restricted` or `notDetermined`. Screen Recording gates displays
   and windows both: with `screen` anything but `authorized` the list simply
@@ -142,6 +146,54 @@ the list is stable between calls even as devices come and go.
 Windows are filtered to on-screen, titled, normal-layer windows of real
 applications at least 64×64 points. The list is long and volatile by
 nature; the popover hides it behind a setting (spec §5).
+
+**Side effect:** the first `GET /streams` in a daemon process whose `screen`
+permission is `notDetermined` raises the system's Screen Recording prompt,
+once. Without the grant there are no displays to list, so there would be no
+id to arm and nothing would ever ask; this is how every screen recorder
+behaves on first launch. The grant takes effect on the daemon's next
+launch.
+
+### `POST /streams/{id}/arm`
+
+```json
+→ { "armed": true }
+← { "id": "camera:0x2300000fd9009c", "kind": "camera", "name": "Elgato 4K X", …,
+    "armed": true,
+    "active": { "video": { "width": 1280, "height": 720, "maxFrameRate": 120 } },
+    "framesSeen": 0 }
+```
+
+Armed means the device is live (spec §6): the capture session runs and
+frames flow and are discarded, so the cue starts a writer on frames that
+already exist. Arming never stamps and never writes. Both directions are
+idempotent and answer the stream as it now is. Disarming a joined stream
+implies leave (step 6).
+
+What arming holds, per kind:
+
+- **camera** — an `AVCaptureSession` with the device's *current* format,
+  and the configuration lock for the whole armed period (S1). Another app
+  can still open the camera; it gets our format and cannot change it. The
+  format at arm time is what is recorded, and `active` says what it is — a
+  camera another app left at 720p stays at 720p until that app or the user
+  changes it.
+- **microphone** — an `AVCaptureSession` delivering 48 kHz 24-bit LPCM.
+- **display / window** — an `SCStream` at the display's refresh rate,
+  complete frames only (S2). A window that closes ends its session; the
+  stream then reads as not armed.
+- **systemAudio** — a Core Audio process tap on every process, clocked by
+  the default output device. Needs the System Audio Recording grant, which
+  macOS asks for on the first arm.
+
+Errors: `404 not_found` for an unknown id, `403 permission_denied` when
+macOS has not granted the device class (for camera and microphone the
+prompt is raised first; `403` means it was refused), `503 device_unavailable`
+when the device is gone, busy or refused the configuration.
+
+Armed streams cost CPU and hold their devices. Five armed at once (a 4K
+display, a window, a camera, a microphone, system audio) idle at roughly a
+quarter of a core on an M1.
 
 ## Encodings
 
@@ -182,18 +234,29 @@ status in the status line, WebSocket in the frame's `status`.
 |---|---|---|
 | 400 | `bad_request` | malformed JSON, missing body, a frame without `method`/`path` |
 | 401 | `unauthorized` | no token, wrong token, WebSocket before the auth frame |
-| 404 | `not_found` | no such route; *planned*: no such stream or take |
+| 403 | `permission_denied` | macOS has not granted the device class this stream needs |
+| 404 | `not_found` | no such route or stream; *planned*: no such take |
 | 405 | `method_not_allowed` | the path exists, the method does not; the message names what would |
 | 409 | `conflict` | *planned*: destination already exists, a take already active |
 | 500 | `internal` | a handler threw something that is not an `APIError` |
+| 501 | `unsupported` | this kind cannot be captured yet |
+| 503 | `device_unavailable` | the device is gone, busy, or refused the configuration |
 | 507 | `insufficient_storage` | *planned*: disk pre-flight refused the take |
 
-## Events (*planned*, step 6)
+## Events
 
 `GET /events` is SSE: `data: <json>\n\n` per event, `: connected` on open.
-The same objects go to every authenticated WebSocket client. Kinds: `state`,
-`levels`, `drift`, `join`, `leave`, `marker`, `error`. Shapes land here
-before step 6 ships.
+The same objects, byte for byte, go to every authenticated WebSocket client.
+Every event has an `event` key naming its kind and no `id`.
+
+| event | since | carries |
+|---|---|---|
+| `stream` | step 3 | `stream`: the `StreamInfo` as it now is, on every change of armed state |
+| `state`, `levels`, `drift`, `join`, `leave`, `marker`, `error` | *planned*, step 6 | shapes land here before step 6 ships |
+
+```json
+{ "event": "stream", "stream": { "id": "microphone:…", "kind": "microphone", "armed": true, "active": { … }, "framesSeen": 0, … } }
+```
 
 ## Consuming it
 

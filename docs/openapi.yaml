@@ -15,6 +15,12 @@ servers:
   - url: http://127.0.0.1:7447
 security:
   - bearer: []
+# Events, as delivered on GET /events (SSE `data:` lines) and to every
+# authenticated WebSocket client — the same bytes on both.
+x-events:
+  - event: stream
+    description: A stream's armed state changed.
+    example: { event: stream, stream: { id: 'microphone:BuiltInMicrophoneDevice', kind: microphone, name: MacBook Pro Microphone, model: Digital Mic, capabilities: { audio: { sampleRate: 48000, channels: 1 } }, armed: true, active: { audio: { sampleRate: 48000, channels: 1 } }, framesSeen: 0 } }
 paths:
   /:
     get:
@@ -29,6 +35,9 @@ paths:
                 $ref: '#/components/schemas/Discovery'
         '401':
           $ref: '#/components/responses/Unauthorized'
+      x-ws:
+        request: { id: 1, method: GET, path: / }
+        response: { id: 1, status: 200, body: { name: Rheocles, version: 0.1.0, hostname: lens-macbook-pro.local, machineId: CD3B7EE5-5E6C-5155-854A-72E4728555F7, outputRoot: /Users/gopher/Movies/Rheocles, freeBytes: 44878079167, auth: bearer, ports: { http: 7447, ws: 7448 } } }
   /streams:
     get:
       operationId: listStreams
@@ -42,6 +51,58 @@ paths:
                 $ref: '#/components/schemas/StreamList'
         '401':
           $ref: '#/components/responses/Unauthorized'
+      x-ws:
+        request: { id: 2, method: GET, path: /streams }
+        response: { id: 2, status: 200, body: { streams: [], permissions: { camera: authorized, microphone: authorized, screen: authorized } } }
+  /streams/{id}/arm:
+    post:
+      operationId: armStream
+      summary: Make a device live (frames flow and are discarded) or release it. Never stamps, never writes.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [armed]
+              additionalProperties: false
+              properties:
+                armed:
+                  type: boolean
+      responses:
+        '200':
+          description: The stream as it now is. Idempotent in both directions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stream'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: macOS has not granted this process the device class.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: The device is gone, busy, or refused the configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 3, method: POST, path: '/streams/camera:0x2300000fd9009c/arm', body: { armed: true } }
+        response: { id: 3, status: 200, body: { id: 'camera:0x2300000fd9009c', kind: camera, name: Elgato 4K X, model: UVC Camera VendorID_4057 ProductID_156, capabilities: { video: { width: 3840, height: 2160, maxFrameRate: 30 } }, armed: true, active: { video: { width: 1280, height: 720, maxFrameRate: 120 } }, framesSeen: 0 } }
 components:
   securitySchemes:
     bearer:
@@ -51,6 +112,18 @@ components:
         The token in ~/Library/Application Support/Rheocles/token. Also accepted
         as ?access_token= on GET /events, for EventSource.
   responses:
+    BadRequest:
+      description: Malformed or missing JSON body.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such stream or take.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     Unauthorized:
       description: No token, or the wrong one.
       headers:
@@ -78,10 +151,13 @@ components:
           enum:
             - bad_request
             - unauthorized
+            - permission_denied
             - not_found
             - method_not_allowed
             - conflict
             - internal
+            - unsupported
+            - device_unavailable
             - insufficient_storage
     StreamList:
       type: object
@@ -141,6 +217,34 @@ components:
         armed:
           type: boolean
           description: Whether the capture session is live.
+        active:
+          type: object
+          description: What the device is actually delivering; present only while armed.
+          additionalProperties: false
+          properties:
+            video:
+              type: object
+              required: [width, height, maxFrameRate]
+              additionalProperties: false
+              properties:
+                width:
+                  type: integer
+                height:
+                  type: integer
+                maxFrameRate:
+                  type: number
+            audio:
+              type: object
+              required: [sampleRate, channels]
+              additionalProperties: false
+              properties:
+                sampleRate:
+                  type: number
+                channels:
+                  type: integer
+        framesSeen:
+          type: integer
+          description: Frames or audio buffers delivered since arming; present only while armed.
     Permissions:
       type: object
       description: >

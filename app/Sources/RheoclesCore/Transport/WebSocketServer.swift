@@ -23,7 +23,7 @@ public final class WebSocketServer: Transport, @unchecked Sendable {
 
     private let listener: NWListener
     private let queue = DispatchQueue(label: "rheocles.ws")
-    private let dispatcher: Dispatcher
+    private let dispatcher: any Dispatching
     private let auth: BearerAuth
     /// Connected clients and whether each has authenticated.
     private var clients: [ObjectIdentifier: (NWConnection, Bool)] = [:]
@@ -31,7 +31,7 @@ public final class WebSocketServer: Transport, @unchecked Sendable {
     private let ready = DispatchSemaphore(value: 0)
     private let startError = OSAllocatedUnfairLock<Error?>(initialState: nil)
 
-    public init(host: String, port: UInt16, dispatcher: Dispatcher, auth: BearerAuth) throws {
+    public init(host: String, port: UInt16, dispatcher: any Dispatching, auth: BearerAuth) throws {
         self.port = port
         self.dispatcher = dispatcher
         self.auth = auth
