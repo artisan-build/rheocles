@@ -1,3 +1,108 @@
 # Rheocles HTTP API — OpenAPI
-# Owned by Engine. Hand-authored; CI validates live responses against it.
+#
+# Hand-authored and first-class (spec §14): CI starts the real daemon and
+# validates live responses against this file, so "current with the code" is
+# enforced. The WebSocket transport carries the same operations with the same
+# bodies and statuses — see docs/PROTOCOL.md for the frame encoding.
 openapi: 3.1.0
+info:
+  title: Rheocles
+  version: 0.1.0
+  description: >
+    Records any number of input streams simultaneously, each to its own file,
+    on one cue. Loopback only; bearer token always.
+servers:
+  - url: http://127.0.0.1:7447
+security:
+  - bearer: []
+paths:
+  /:
+    get:
+      operationId: discovery
+      summary: Who this daemon is, where files go, how much room there is.
+      responses:
+        '200':
+          description: Discovery.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Discovery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: >
+        The token in ~/Library/Application Support/Rheocles/token. Also accepted
+        as ?access_token= on GET /events, for EventSource.
+  responses:
+    Unauthorized:
+      description: No token, or the wrong one.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            const: Bearer realm="Rheocles"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      description: One shape on every route and both transports.
+      required: [error, code]
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+          description: For humans.
+        code:
+          type: string
+          description: Stable, for programs.
+          enum:
+            - bad_request
+            - unauthorized
+            - not_found
+            - method_not_allowed
+            - conflict
+            - internal
+            - insufficient_storage
+    Discovery:
+      type: object
+      required: [name, version, hostname, machineId, outputRoot, auth, ports]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          const: Rheocles
+        version:
+          type: string
+        hostname:
+          type: string
+        machineId:
+          type: string
+          description: The kernel host UUID; stable across renames and reboots.
+        outputRoot:
+          type: string
+          description: The one absolute path in the API. Every other path is relative to it.
+        freeBytes:
+          type: integer
+          format: int64
+          description: >
+            Bytes available for important usage on the output root's volume.
+            Absent when unmeasurable — absent means unknown, never zero.
+        auth:
+          type: string
+          const: bearer
+        ports:
+          type: object
+          required: [http, ws]
+          additionalProperties: false
+          properties:
+            http:
+              type: integer
+            ws:
+              type: integer
