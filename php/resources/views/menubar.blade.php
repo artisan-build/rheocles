@@ -82,6 +82,7 @@
         <span class="text">Also save a single file</span>
         <span class="hint">combined.mov · no re-encode</span>
       </label>
+      <p class="settings-error combine-error" id="combine-error" hidden></p>
       {{-- The single file after stop, from manifest.combined: pending, complete with its own Open in Finder, or failed with the
            reason — or, on a finished take with none that qualifies, the offer to write one now (POST /takes/{id}/combine). --}}
       <div class="combined" id="combined" hidden>

@@ -45,6 +45,8 @@ let showRecent = false
 let recentDetail = {}
 /** A PATCH of settings.combine in flight: the box shows what was asked for. */
 let combinePending = null
+/** A PATCH of settings.combine the daemon refused, in its words — under the box, where it was asked. */
+let combineError = ''
 /** The folder glyph, once: the Swift app's FinderButton. */
 const FINDER = $('finished-finder').innerHTML
 
@@ -361,6 +363,8 @@ function renderTakeBar() {
   // while recording, when the take's own setting is already made.
   const combineShown = !recording && combineAvailable(state.streams)
   $('combine-row').hidden = !combineShown
+  $('combine-error').hidden = !combineShown || !combineError
+  $('combine-error').textContent = combineError
   if (combineShown) {
     const st = state.settings
     $('combine').checked = combinePending !== null ? combinePending : !!(st && st.combine)
@@ -730,15 +734,19 @@ async function revealRoot() {
   if (!r.ok) { settingsError = revealError('POST /reveal', r.status, r.body); render() }
 }
 
-/** The box is the daemon's settings.combine (feature brief §2): PATCH, and the answer is the truth. */
+/**
+ * The box is the daemon's settings.combine (feature brief §2): PATCH, and
+ * the answer is the truth — a refusal is shown under the box, in the
+ * daemon's words, and the box goes back to what the daemon last said.
+ */
 async function setCombine(on) {
   if (combinePending !== null) return
   combinePending = on
-  clickError = ''
+  combineError = ''
   render()
   const r = await php('PATCH', '/api/settings', { combine: on })
   if (r.ok) state = { ...state, settings: r.body }
-  else clickError = `PATCH /settings → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  else combineError = `PATCH /settings → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
   combinePending = null
   render()
 }

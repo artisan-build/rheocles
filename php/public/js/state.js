@@ -40,10 +40,15 @@ export function reduce(state, event) {
       // take's summary in the recent list moves with it, so the fold
       // agrees with the outcome line before the next GET /takes.
       if (!event.take || !event.take.state) return state
-      // Another take's mux finishing (Combine now on a recent take, from
-      // any client) must not displace the one that is recording.
-      if (isRecording(state) && state.take.id !== event.take.id) return { ...state, recent: withSummary(state.recent, event.take) }
-      return { ...state, take: event.take, recent: withSummary(state.recent, event.take) }
+      // Where a manifest that arrived goes (the Swift app's place()): the
+      // held take if it is the same one, or is recording, or nothing is
+      // held; otherwise only the recent list — another take's mux (Combine
+      // now on an old take, from any client, pending and then done) must
+      // not displace the outcome line, nor the take that is recording.
+      const recent = withSummary(state.recent, event.take)
+      const held = state.take
+      if (event.take.state === 'recording' || !held || held.id === event.take.id) return { ...state, take: event.take, recent }
+      return { ...state, recent }
     case 'levels': {
       // Per-stream peak dBFS ~4×/s while recording (audio only). Kept by
       // id; an unmeasured level is absent, never zero.

@@ -98,6 +98,33 @@ describe('recent takes', () => {
     expect(s.recent[1].combined.state).toBe('pending')
     expect(s.take.id).toBe('a')
   })
+  it('keeps a finished outcome line when another take is combined after the fact', () => {
+    // Stop A; Combine now on older B (from this page, the Swift app or
+    // ptero): the daemon emits B pending, then B complete. The outcome
+    // line stays A both times; B moves only in the recent list.
+    const a = { id: 'a', name: 'A', state: 'complete', streams: [], combined: { path: 'combined.mov', state: 'pending' } }
+    let s = setRecent(reduce(initial(), { event: 'take', take: a }), [
+      { id: 'a', name: 'A', state: 'complete', created: '2026-09-12T05:00:00.000Z', destination: 'takes/a', streams: 1 },
+      { id: 'b', name: 'B', state: 'incomplete', created: '2026-09-11T05:00:00.000Z', destination: 'takes/b', streams: 2 },
+    ])
+    s = reduce(s, { event: 'take', take: { id: 'b', state: 'incomplete', streams: [], combined: { path: 'combined.mov', state: 'pending' } } })
+    expect(s.take.id).toBe('a')
+    expect(s.recent[1].combined.state).toBe('pending')
+    s = reduce(s, { event: 'take', take: { id: 'b', state: 'incomplete', streams: [], combined: { path: 'combined.mov', state: 'complete' } } })
+    expect(s.take.id).toBe('a')
+    expect(s.take.combined.state).toBe('pending')   // A's own mux is still what it was
+    expect(s.recent[1].combined.state).toBe('complete')
+    // A's own completion still lands on the line.
+    s = reduce(s, { event: 'take', take: { ...a, combined: { path: 'combined.mov', state: 'complete' } } })
+    expect(s.take.combined.state).toBe('complete')
+    expect(s.recent[0].combined.state).toBe('complete')
+  })
+  it('fills an empty outcome line with whatever take arrives, and a recording take always takes it', () => {
+    let s = reduce(initial(), { event: 'take', take: { id: 'old', state: 'complete', streams: [] } })
+    expect(s.take.id).toBe('old')
+    s = reduce(s, { event: 'take', take: { id: 'live', state: 'recording', streams: [] } })
+    expect(s.take.id).toBe('live')
+  })
   it('does not let another take\'s mux displace the one recording', () => {
     let s = setStreams(setRecent(initial(), list), { streams: [armed(mic)], permissions: null })
     s = reduce(s, { event: 'take', take: { id: 'live', state: 'recording', streams: [{ id: mic.id, started: '2026-09-12T05:00:00.000Z' }] } })

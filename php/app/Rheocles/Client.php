@@ -230,8 +230,9 @@ final class Client
         $status = $response->status();
         if ($status >= 200 && $status < 300) {
             // `204` is an answer with nothing to say (reveal); every other
-            // success is JSON, and a body that is not is a broken daemon.
-            if ($status === 204 || trim($response->body()) === '') {
+            // success is JSON, and a body that is not — empty included — is
+            // a broken daemon, or a stranger on the port.
+            if ($status === 204) {
                 return [];
             }
             $json = $response->json();
