@@ -238,7 +238,7 @@ struct MenuBarView: View {
             }
 
             HStack(spacing: 8) {
-                Text("http :\(String(daemon.configuration.port)) · loopback · bearer")
+                Text("http :\(String(daemon.configuration.port)) · local · bearer")
                     .font(Type.mono(9))
                     .foregroundStyle(Brand.script)
 

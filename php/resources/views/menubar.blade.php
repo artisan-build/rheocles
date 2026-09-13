@@ -115,7 +115,7 @@
 <footer>
   <div class="error" id="error"></div>
   <div class="foot-row">
-    <span class="wire">http :{{ $port }} · loopback · bearer</span>
+    <span class="wire">http :{{ $port }} · local · bearer</span>
     <span class="spacer"></span>
     <button class="btn" id="quit">Quit</button>
   </div>
