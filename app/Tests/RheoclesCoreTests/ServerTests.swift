@@ -441,10 +441,17 @@ struct ServerTests {
         JSONValue]
     {
         try await task.send(.string(json))
-        guard case .string(let reply) = try await task.receive() else {
-            throw APIError.badRequest("not text")
+        // Command replies and broadcast events share the socket: arming, for
+        // one, pushes a `stream` event. A reply carries `status`; an event
+        // carries `event` and none. Skip events and return the command reply,
+        // so the reply is never mistaken for whichever frame arrived first.
+        while true {
+            guard case .string(let frame) = try await task.receive() else {
+                throw APIError.badRequest("not text")
+            }
+            let decoded = try JSONDecoder().decode([String: JSONValue].self, from: Data(frame.utf8))
+            if decoded["status"] != nil { return decoded }
         }
-        return try JSONDecoder().decode([String: JSONValue].self, from: Data(reply.utf8))
     }
 
     @Test("WebSocket: after the auth frame, GET / answers the same discovery as HTTP")

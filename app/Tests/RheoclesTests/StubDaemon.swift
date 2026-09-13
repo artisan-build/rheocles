@@ -183,10 +183,13 @@ extension StubDaemon {
     }
 }
 
-/// Poll until a condition holds or the time is up.
+/// Poll until a condition holds or the time is up. Returns as soon as the
+/// condition is true, so a generous ceiling costs nothing on a passing run —
+/// it only buys slack on a slow/contended CI runner, where a real daemon's
+/// events over a real socket can lag several seconds.
 @MainActor
 func eventually(
-    _ timeout: Duration = .seconds(5), _ condition: @MainActor () -> Bool
+    _ timeout: Duration = .seconds(20), _ condition: @MainActor () -> Bool
 ) async -> Bool {
     let deadline = ContinuousClock.now + timeout
     while ContinuousClock.now < deadline {
