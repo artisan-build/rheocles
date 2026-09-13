@@ -158,16 +158,14 @@ and two windows listed but not, the take bar idle with "Also save a single
 file" unticked — so "you choose" is visible rather than stated.
 
 ```sh
-cd app
-./Scripts/generate-version.sh 0.1.1      # the current tag, so the status line is true
-swift build -c release --product Rheocles
+cd app && swift build -c release --product Rheocles
 .build/release/Rheocles --render-preview /tmp/rheocles-previews
-./Scripts/generate-version.sh            # back to the committed dev fallback
 cp /tmp/rheocles-previews/chosen.png ../site/src/assets/popover.png
 ```
 
-The fixture reads `Rheocles.version`, so the daemon line in the popover says
-whatever the build was stamped with — stamp it first or it reads 0.0.0-dev.
+The `chosen` fixture sends no version, so its status line reads
+`rheocles-core · ours · 44.9 GB free` and the shot does not go stale with
+every tag; the real app always shows the daemon's version there.
 
 The PNG is the popover alone, 688×1332 (344×666 at 1×), no window chrome;
 `index.astro` gives it the shadow.

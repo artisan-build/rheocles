@@ -98,12 +98,14 @@ enum Preview {
             (
                 // rheocles.com's hero screenshot (site/ART.md § Screenshots):
                 // two streams chosen, a display and a window listed and left
-                // alone, nothing recording. "You choose" shown, not said.
+                // alone, nothing recording. "You choose" shown, not said. No
+                // version on the status line, so the shot does not go stale
+                // with every tag.
                 "chosen",
                 AnyView(
                     MenuBarView(
                         daemon: .staged(
-                            .running, discovery: discovery(),
+                            .running, discovery: discovery(version: ""),
                             streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
                             permissions: granted, showWindows: true)))
             ),
@@ -501,12 +503,14 @@ enum Preview {
 
     /// A `GET /` answer, decoded from the protocol's own example so the
     /// preview shows exactly the shape a real daemon sends.
-    private static func discovery(freeBytes: Int64? = 44_878_079_167) -> Discovery {
+    private static func discovery(
+        freeBytes: Int64? = 44_878_079_167, version: String = Rheocles.version
+    ) -> Discovery {
         let free = freeBytes.map { "\"freeBytes\": \($0)," } ?? ""
         let json = """
             {
               "name": "Rheocles",
-              "version": "\(Rheocles.version)",
+              "version": "\(version)",
               "hostname": "lens-macbook-pro.local",
               "machineId": "CD3B7EE5-5E6C-5155-854A-72E4728555F7",
               "outputRoot": "\(FileManager.default.homeDirectoryForCurrentUser.path)/Movies/Rheocles",
