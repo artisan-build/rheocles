@@ -1,63 +1,75 @@
 <!doctype html>
 <!--
   Source for public/og/index.png — the landing page's social card, composed
-  rather than cropped, in the same shape as sonocles.com's: brand row, the
-  tagline, two lines that say what it is, the hero plate on the right. Not
-  part of the Astro build; render it when the card changes:
+  rather than cropped. Not part of the Astro build; render it when the card
+  changes:
 
       cd site && node art/og.mjs og.html public/og/index.png
 
-  (site/ART.md § Screenshots.) The generated cards for every other page come
-  from src/pages/og/[...slug].ts, which skips `index` for this reason.
+  (site/ART.md § The social cards.) The generated cards for every other page
+  come from src/pages/og/[...slug].ts, which skips `index` for this reason.
 
-  The plate is 1502×954 with its cream lifted off (a sticker, art/sticker.py),
-  so it sits straight on the card's limestone with no seam to hide. It is a
-  wide plate, so it sits lower-right and the text column is narrower than
-  Sonocles' (--col): the two never share horizontal space, and the plate's
-  leftmost drawn pixel — Kronos's doorway, not the box edge — is what has to
-  clear the text. Verified by looking at the render, not by trusting this.
+  The composition, as Len settled it (13 Sep 2026, variant "A6"): the head
+  band across the top, brand row, the three-line tagline, three lines of
+  copy, the muted platform line, the pill bottom-left; the real popover
+  (src/assets/popover.png, from --render-preview) tall on the right, behind
+  the hero sticker, bleeding off the bottom with every switch whole; the
+  sticker at 850px with the doorway's lintel just under the first headline
+  line and its pillar 14px off "file,". The bench top stays inside the card
+  so the cradles read as on a table; the legs and the sixth cradle run off.
 
-  Nothing is set below 21px: a card is read at about 500px wide in a chat
-  timeline, where 21px renders around 9px.
+  The sticker carries a halo of the ground (the drop-shadow filter) so the
+  popover's list does not read through the gaps between the figures. Nothing
+  is set below 18px: a card is read at about 500px wide in a chat timeline.
 -->
 <html lang="en"><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --limestone:#faf2e4; --ink:#2a211a; --ink-soft:#4e4034; --ink-faint:#6b5c4c; --script:#7a6a59;
-    --aegean:#2e5c86;
-    --col:540px;
+    --limestone:#faf2e4; --limestone-deep:#efe5d2; --ink:#2a211a; --ink-soft:#4e4034; --ink-faint:#6b5c4c; --script:#7a6a59;
+    --aegean:#2e5c86; --aegean-soft:#5f8fb8;
   }
   * { box-sizing:border-box; margin:0; }
   body { width:1200px; height:630px; background:var(--limestone); overflow:hidden;
     font-family:'Instrument Sans',system-ui,sans-serif; position:relative; }
-  /* The Aegean leading bar the generated cards carry. */
-  .bar { position:absolute; top:0; bottom:0; left:0; width:18px; background:var(--aegean); z-index:3; }
-  .pad { padding:52px 58px 50px 76px; height:100%; display:flex; flex-direction:column; justify-content:space-between; position:relative; z-index:2; }
+  /* The head band every page wears: the key on limestone-deep over the Aegean floor. */
+  .head { position:absolute; top:0; left:0; right:0; height:34px; background:var(--limestone-deep);
+    border-bottom:4px solid var(--aegean); z-index:4; }
+  .head::before { content:''; position:absolute; inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='12' viewBox='0 0 16 12'%3E%3Cpath d='M0 10.25 H13 V1.75 H4 V7 H9 V4.5' fill='none' stroke='%235f8fb8' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-repeat:repeat-x; background-size:26.667px 20px; background-position:0 5px; opacity:.45; }
+  .pad { padding:66px 58px 44px 58px; height:100%; display:flex; flex-direction:column; position:relative; z-index:3; pointer-events:none; }
   .brand { display:flex; align-items:center; gap:12px; }
   .brand svg { color:var(--aegean); }
   .brand .name { font-family:'Fraunces',serif; font-weight:700; font-size:30px; color:var(--ink);
     font-variation-settings:'SOFT' 30,'WONK' 1; letter-spacing:-.01em; }
   .brand .say { font-family:'IBM Plex Mono',monospace; font-size:15px; color:var(--ink-faint); }
-  .pill { margin-left:auto; display:inline-flex; align-items:center; line-height:1; background:var(--aegean); color:var(--limestone);
-    font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:500; letter-spacing:.12em; text-transform:uppercase;
-    padding:9px 16px 8px 18px; border-radius:999px; }
-  /* Three authored lines, as on the page: the tagline breaks where it means
-     to, and the third line is the one in Aegean. */
-  h1 { font-family:'Fraunces',serif; font-weight:700; font-size:54px; line-height:1.06;
-    color:var(--ink); letter-spacing:-.015em; font-variation-settings:'SOFT' 30,'WONK' 1; margin-top:6px; white-space:nowrap; }
+  h1 { font-family:'Fraunces',serif; font-weight:700; font-size:58px; line-height:1.06; margin-top:44px;
+    color:var(--ink); letter-spacing:-.015em; font-variation-settings:'SOFT' 30,'WONK' 1; white-space:nowrap; }
   h1 em { font-style:normal; color:var(--aegean); }
-  .foot { max-width:var(--col); }
+  .foot { max-width:540px; margin-top:30px; }
   .cat { font-size:26px; font-weight:600; color:var(--ink); letter-spacing:-.012em; line-height:1.2; }
   .meta { color:var(--ink-soft); font-size:21px; margin-top:8px; }
-  /* The whole sticker inside the card — nothing cropped, the bench end and
-     the legs included — with 24px to the right and bottom edges plus the
-     sticker's own margin. 560 wide on a 1502×954 sticker is 356 tall, so
-     the doorway's top starts below the tagline's first line. */
-  .art { position:absolute; right:24px; bottom:24px; width:560px; z-index:1; display:block; }
+  .meta + .meta { margin-top:3px; }
+  /* Muted, a step smaller, and with clear air above it — about twice the
+     gap between the copy and the timecode line. Written to outrank
+     `.meta + .meta`, which is what swallowed the margin before. */
+  .foot .meta.platform { font-size:18px; color:var(--ink); opacity:.6; margin-top:20px; }
+  .pill { align-self:flex-start; margin-top:28px; display:inline-flex; align-items:center; line-height:1; background:var(--aegean); color:var(--limestone);
+    font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:500; letter-spacing:.12em; text-transform:uppercase;
+    padding:9px 16px 8px 18px; border-radius:999px; }
+  /* The popover, larger and higher, bleeding off the right and the bottom;
+     the switches stay on the card. */
+  .popover { position:absolute; left:700px; top:94px; width:350px; z-index:1; display:block; border-radius:12px;
+    box-shadow:0 2px 4px rgba(42,33,26,.14), 0 18px 48px -12px rgba(42,33,26,.35); }
+  /* The sticker in front, over the popover's lower-left, with a halo of the
+     ground so the popover's text does not read through the gaps. */
+  .art { position:absolute; left:390px; top:196px; width:850px; z-index:2; display:block;
+    filter:drop-shadow(0 0 10px #faf2e4) drop-shadow(0 0 16px #faf2e4) drop-shadow(0 0 22px #faf2e4); }
 </style></head>
 <body>
-  <div class="bar"></div>
+  <div class="head"></div>
+  <img class="popover" src="src/assets/popover.png" alt="">
   <img class="art" src="src/assets/plates/hero.png" alt="">
   <div class="pad">
     <div class="brand">
@@ -67,12 +79,13 @@
       </svg>
       <span class="name">Rheocles</span>
       <span class="say">REE-oh-kleez</span>
-      <span class="pill">Free · Open source</span>
     </div>
     <h1>Every available stream,<br>in its own file,<br><em>on one cue.</em></h1>
     <div class="foot">
-      <p class="cat">Every camera, mic, display and window you choose — each in its own file.</p>
-      <p class="meta">Time-of-day timecode in every one. macOS 15+.</p>
+      <p class="cat">Every camera, mic, display<br>and window you choose —<br>each in its own file.</p>
+      <p class="meta">Time-of-day timecode in every one.</p>
+      <p class="meta platform">Built for Mac · macOS 15 or later</p>
     </div>
+    <span class="pill">Free · Open source · MIT</span>
   </div>
 </body></html>
