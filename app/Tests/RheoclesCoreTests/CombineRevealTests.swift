@@ -174,6 +174,8 @@ struct CombineTests {
         // with two videos it is dropped and the take records without combining.
         let created = try await w.engine.create(.init(name: "defaulted"))
         #expect(created.take.combined == nil)
+        // The client is told why it got no combined file.
+        #expect(created.warnings.contains { $0.contains("combine is on by default") })
         // An explicit combine:true with two videos still fails. (A distinct
         // name so it does not collide with the first take's destination.)
         do {
@@ -233,8 +235,10 @@ struct CombineTests {
         #expect(
             FileManager.default.fileExists(
                 atPath: folder.appendingPathComponent("combined.mov").path))
-        // The manifest on disk reflects the completion, not just the event.
-        let onDisk = try await w.engine.manifest(id)
+        // The manifest *on disk* reflects the completion — decode the file, not
+        // the engine's in-memory `recent`.
+        let onDisk = try Manifest.decode(
+            Data(contentsOf: folder.appendingPathComponent("manifest.json")))
         #expect(onDisk.combined?.state == .complete)
     }
 
@@ -256,6 +260,46 @@ struct CombineTests {
         #expect(recovered.combined?.state == .failed)
         #expect(recovered.combined?.reason == "daemon died")
         #expect(!FileManager.default.fileExists(atPath: partial.path))
+    }
+
+    @Test("A persisted pending with no in-flight task behind it re-runs, not idempotent (S5)")
+    func stalePendingReRuns() async throws {
+        let w = try world(catalog: TwoStreams())
+        try await w.registry.arm("camera:fake")
+        // A normal take (no combine): stop leaves `combined` nil, no auto-mux.
+        let created = try await w.engine.create(.init())
+        let id = created.take.id
+        _ = try await w.engine.start(id)
+        let stopped = try await w.engine.stop(id)
+        let folder = w.root.appendingPathComponent(stopped.destination)
+        let videoPath = try #require(stopped.streams.first { TakeEngine.isVideo($0.kind) }?.path)
+        try SyntheticMedia.writeVideo(
+            to: folder.appendingPathComponent(videoPath), seconds: 1.0, fps: 30)
+        // Plant a stale `pending` on disk — a combine a run left behind that the
+        // launch sweep never saw (late-mounted/switched root).
+        let manifestURL = folder.appendingPathComponent("manifest.json")
+        var planted = try Manifest.decode(Data(contentsOf: manifestURL))
+        planted.combined = Manifest.Combined(path: "combined.mov", state: .pending)
+        try planted.write(to: manifestURL)
+
+        // A fresh engine on the same root has no `recent` and no task, so it
+        // reads the pending from disk. Because the guard keys on the in-flight
+        // task, not the persisted state, it re-runs rather than hanging.
+        let events2 = Events()
+        let engine2 = TakeEngine(
+            registry: w.registry, outputRoot: { w.root }, writerFactory: FakeWriterFactory(),
+            machine: .init(hostname: "test.local", machineId: "TEST"),
+            freeBytes: { _ in 1 << 40 }
+        ) { events2.record($0) }
+        let result = try await engine2.combine(id)
+        #expect(result.combined?.state == .pending)
+        var states: [Manifest.Combined.State] = []
+        for _ in 0..<100 {
+            states = events2.combinedStates(for: id)
+            if states.contains(.complete) { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(states.contains(.complete))
     }
 
     // MARK: The real thing — a passthrough mux of real media

@@ -170,42 +170,50 @@ public actor TakeEngine {
     /// `recording` on disk. Idempotent.
     public func shutdown() async {
         stopStatusTicker()
-        // Let any in-flight combine finish (or fail) so we never leave a
-        // `pending` manifest beside a half-written file. Snapshot first — each
-        // task clears its own entry as it lands. Server.stop bounds the wait.
+        // Finalise the live take *first*: SIGTERM must always close its writers
+        // and write `daemon stopped` within the budget, so a long in-flight
+        // combine of an earlier take cannot delay finalising the one still
+        // recording.
+        if var current = live {
+            switch current.manifest.state {
+            case .recording:
+                let end = Self.now()
+                for index in current.manifest.streams.indices {
+                    guard let writer = current.writers[current.manifest.streams[index].id] else {
+                        continue
+                    }
+                    if let session = await registry.session(
+                        for: current.manifest.streams[index].id)
+                    {
+                        session.sink = nil
+                    }
+                    finalize(
+                        &current.manifest.streams[index], writer: writer, at: end,
+                        cueOffset: current.manifest.offset(of: end) ?? 0)
+                    _ = await writer.finish()
+                }
+                current.writers.removeAll()
+                current.manifest.stopped = end
+                current.manifest.state = .incomplete
+                current.manifest.reason = "daemon stopped"
+            case .created:
+                current.manifest.state = .incomplete
+                current.manifest.reason = "daemon stopped before start"
+            default:
+                break
+            }
+            Self.writeManifest(current.manifest, folder: current.folder)
+            try? FileManager.default.removeItem(
+                at: current.folder.appendingPathComponent(Self.reserveName))
+            onChange(current.manifest)
+            live = nil
+        }
+        // Then let any in-flight combine finish (it only needs the process
+        // alive) so we do not leave a `pending` beside a half-written file.
+        // Snapshot first — each task clears its own entry as it lands; a
+        // SIGKILL past Server.stop's budget is caught by recovery on launch.
         for task in Array(combineTasks.values) { await task.value }
         combineTasks.removeAll()
-        guard var current = live else { return }
-        switch current.manifest.state {
-        case .recording:
-            let end = Self.now()
-            for index in current.manifest.streams.indices {
-                guard let writer = current.writers[current.manifest.streams[index].id] else {
-                    continue
-                }
-                if let session = await registry.session(for: current.manifest.streams[index].id) {
-                    session.sink = nil
-                }
-                finalize(
-                    &current.manifest.streams[index], writer: writer, at: end,
-                    cueOffset: current.manifest.offset(of: end) ?? 0)
-                _ = await writer.finish()
-            }
-            current.writers.removeAll()
-            current.manifest.stopped = end
-            current.manifest.state = .incomplete
-            current.manifest.reason = "daemon stopped"
-        case .created:
-            current.manifest.state = .incomplete
-            current.manifest.reason = "daemon stopped before start"
-        default:
-            break
-        }
-        Self.writeManifest(current.manifest, folder: current.folder)
-        try? FileManager.default.removeItem(
-            at: current.folder.appendingPathComponent(Self.reserveName))
-        onChange(current.manifest)
-        live = nil
     }
 
     /// On launch, any manifest left `recording` or `created` is from a daemon
@@ -287,6 +295,10 @@ public actor TakeEngine {
                 var superseded = current.manifest
                 superseded.state = .incomplete
                 superseded.reason = "superseded before start"
+                // It never recorded, so its `combined: pending` would never
+                // complete: drop it rather than leave a listing showing a
+                // combine that no task will ever finish.
+                superseded.combined = nil
                 Self.writeManifest(superseded, folder: current.folder)
                 onChange(superseded)
                 live = nil
@@ -320,24 +332,26 @@ public actor TakeEngine {
         // The client can pick a codec per take; otherwise the daemon's
         // default (settings.codec) applies — not a hardcoded HEVC.
         let codec = request.codec ?? defaultCodec()
+        var warnings: [String] = []
         var combine = request.combine ?? defaultCombine()
         // Passthrough mux allows at most one video stream (spec §2). An
         // explicit `combine: true` with more is an error; but when combine was
         // only the *default* (settings.combine) and the request never asked
-        // for it, drop it silently rather than refuse a plain record — the
-        // front end hides the checkbox in that state, so it never sent one.
+        // for it, drop it (with a warning) rather than refuse a plain record —
+        // the front end hides the checkbox in that state, so it never sent one.
         if combine, armed.filter({ Self.isVideo($0.kind) }).count > 1 {
+            let videos = armed.filter { Self.isVideo($0.kind) }.count
             if request.combine == true {
                 throw APIError(
                     status: 400, code: "combine_requires_single_video",
-                    message:
-                        "combine allows at most one video stream; \(armed.filter { Self.isVideo($0.kind) }.count) are armed"
-                )
+                    message: "combine allows at most one video stream; \(videos) are armed")
             }
             combine = false
+            warnings.append(
+                "combine is on by default but \(videos) video streams are armed; recording without a combined file"
+            )
         }
         let expected = request.expectedDuration ?? Self.defaultExpectedDuration
-        var warnings: [String] = []
 
         // Disk pre-flight (spec §7): refuse if short, warn if tight.
         let estimate = armed.reduce(Int64(0)) {
@@ -637,10 +651,13 @@ public actor TakeEngine {
             throw APIError.conflict("take \(id) is still recording")
         }
         var manifest = try await self.manifest(id)
-        // Idempotent: a mux already in flight (a post-stop combine, or an
-        // earlier call) just returns the pending manifest, so two clients (or
-        // a double click) never race two exports to the same file.
-        if manifest.combined?.state == .pending { return manifest }
+        // Idempotent while a mux is actually running *in this process*: two
+        // clients (or a double click) never race two exports to the same file.
+        // A persisted `pending` with no task behind it is stale — a combine the
+        // launch-time recovery sweep never saw (an external root that mounted
+        // late, a root switched in via PATCH) — so we fall through and re-run
+        // rather than answer a pending that will never complete.
+        if combineTasks[id] != nil { return manifest }
         if manifest.streams.filter({ Self.isVideo($0.kind) }).count > 1 {
             throw APIError(
                 status: 400, code: "combine_requires_single_video",

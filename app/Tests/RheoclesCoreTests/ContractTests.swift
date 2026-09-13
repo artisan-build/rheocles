@@ -265,6 +265,17 @@ struct ContractTests {
             _ = try await request(server, "POST", "/takes/\(stillActive.id)/stop")
         }
 
+        // A combine take (camera:fake is a single video) so a manifest carrying
+        // a live `combined` block is validated against the schema — GET /takes/{id}
+        // answers it with `combined.state: pending`.
+        let combineCreated = try Manifest.decoder.decode(
+            TakeEngine.Created.self,
+            from: try await request(
+                server, "POST", "/takes", body: #"{"name": "combine", "combine": true}"#
+            ).2)
+        #expect(combineCreated.take.combined?.state == .pending)
+        try await validate("GET", "/takes/\(combineCreated.take.id)", "/takes/{id}")
+
         try await validate("GET", "/settings", "/settings")
         try await validate(
             "PATCH", "/settings", "/settings", body: #"{"codec": "prores", "combine": true}"#)
