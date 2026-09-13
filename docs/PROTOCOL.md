@@ -175,6 +175,16 @@ id to arm and nothing would ever ask; this is how every screen recorder
 behaves on first launch. The grant takes effect on the daemon's next
 launch.
 
+**Dev launch caveat.** Run the daemon binary **bare from a shell** (not inside
+the `.app`) and `GET /streams` lists windows, cameras and microphones but **no
+displays** — and preview or arm of a screen source fails. A bare binary has no
+AppKit run loop servicing the window-server connection that display enumeration
+and `SCStream` capture need; `SCShareableContent`'s window list still comes
+back, which is why windows appear but displays do not. The bundled app runs
+that run loop, so a normally-launched daemon is unaffected. If a dev daemon
+lists no displays, this is why — not a permission problem (`permissions.screen`
+still reads `authorized`).
+
 ### `POST /streams/{id}/arm`
 
 ```json
