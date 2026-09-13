@@ -37,8 +37,9 @@
 	--sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
 	--mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-	/* measure */
-	--page: 752px;
-	--page-wide: 1120px;
-	--gutter: 24px;
+	/* measure — Sonocles' numbers, so the two sites' columns start at the
+	   same x and the brand rows line up */
+	--page: 920px;
+	--page-wide: 1200px;
+	--gutter: 4vw;
 }
