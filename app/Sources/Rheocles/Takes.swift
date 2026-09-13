@@ -61,6 +61,30 @@ extension Manifest.Combined {
 }
 
 extension Manifest {
+    /// Ordering for manifests of one take arriving out of order: the state
+    /// first, then within a state whatever has accumulated — streams,
+    /// events, markers, a combined result.
+    func isAtLeastAsFarAlong(as other: Manifest) -> Bool {
+        func rank(_ state: State) -> Int {
+            switch state {
+            case .created: 0
+            case .recording: 1
+            case .complete, .incomplete: 2
+            }
+        }
+        if rank(state) != rank(other.state) { return rank(state) > rank(other.state) }
+        let mine = streams.count + streams.reduce(0) { $0 + $1.events.count } + markers.count
+        let theirs =
+            other.streams.count + other.streams.reduce(0) { $0 + $1.events.count }
+            + other.markers.count
+        if mine != theirs { return mine > theirs }
+        if (combined == nil) != (other.combined == nil) { return combined != nil }
+        if let a = combined, let b = other.combined, a.isPending != b.isPending {
+            return !a.isPending
+        }
+        return true
+    }
+
     /// "Combine now" qualifies a finished take with no combined file and at
     /// most one video stream (feature brief, addendum).
     var canCombine: Bool {
@@ -88,10 +112,26 @@ extension DaemonModel {
 
     /// Where a manifest that arrived goes: the current take if it is the
     /// same one or is recording; otherwise it is a recent take's detail.
+    ///
+    /// Never backwards. Events and answers travel on different connections,
+    /// so the `created` event from a Record can land after the Record
+    /// answer that already said `recording`, and a `recording` event from
+    /// before a join after the join's answer. A manifest for the take we
+    /// hold is applied only if it is at least as far along — by state, and
+    /// within a state by what it has accumulated — which is what made
+    /// "Join adds a cold stream's file mid-take" fail one CI run in ten.
     func place(_ manifest: Manifest) {
-        if manifest.isRecording || take?.id == manifest.id || take == nil {
+        if let current = take, current.id == manifest.id {
+            if manifest.isAtLeastAsFarAlong(as: current) {
+                take = manifest
+                tick(recording: manifest.isRecording)
+            }
+        } else if manifest.isRecording || take == nil {
             take = manifest
             tick(recording: manifest.isRecording)
+        }
+        if let known = recentDetail[manifest.id], !manifest.isAtLeastAsFarAlong(as: known) {
+            return
         }
         recentDetail[manifest.id] = manifest
     }
@@ -148,11 +188,12 @@ extension DaemonModel {
                     "/takes/\(take.id)/join", StreamBody(stream: id), as: Manifest.self,
                     decoder: Manifest.wireDecoder)
                 Log.info("joined \(id) to \(take.id)")
+                takeBusy = false
                 await refreshStreams()
             } catch {
                 takeError = "POST /takes/\(take.id)/join → \(error)"
+                takeBusy = false
             }
-            takeBusy = false
         }
     }
 
@@ -214,12 +255,18 @@ extension DaemonModel {
                 for warning in created.warnings { Log.info("take warning: \(warning)") }
                 take = created.take
                 tick(recording: created.take.isRecording)
+                // The take action is done the moment the daemon has answered;
+                // the follow-up reads are not part of it. Holding takeBusy
+                // through them made the next click — Stop, Join, Mark — a
+                // silent no-op for as long as they took, which is the race
+                // CI caught in "Join adds a cold stream's file mid-take".
+                takeBusy = false
                 await refreshStreams()
             } catch {
                 takeError = "POST /record → \(error)"
                 Log.info("record failed: \(error)")
+                takeBusy = false
             }
-            takeBusy = false
         }
     }
 
@@ -233,13 +280,14 @@ extension DaemonModel {
                 take = try absorbTake(try await api.postData("/takes/\(id)/stop", EmptyBody()))
                 tick(recording: false)
                 Log.info("stopped take \(id)")
+                takeBusy = false
                 await refreshStreams()
                 await refreshRecent()
             } catch {
                 takeError = "POST /takes/\(id)/stop → \(error)"
                 Log.info("stop failed: \(error)")
+                takeBusy = false
             }
-            takeBusy = false
         }
     }
 

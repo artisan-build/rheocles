@@ -256,3 +256,52 @@ struct CombineNowTests {
         #expect(model.take?.id == "tk_live")
     }
 }
+
+/// Manifests of one take arrive on two connections and can cross.
+@Suite("Out-of-order manifests")
+@MainActor
+struct OrderingTests {
+    private func manifest(state: String, streams: Int, events: Int = 1, markers: Int = 0) throws
+        -> Manifest
+    {
+        let s = (0..<streams).map { i in
+            let ev = (0..<events).map { _ in #"{ "t": 0, "type": "join" }"# }.joined(separator: ",")
+            return
+                #"{ "id": "s\#(i)", "kind": "camera", "name": "c", "model": "m", "path": "c\#(i).mov", "codec": "hevc", "format": {}, "started": "2026-09-11T14:02:17.004Z", "framesWritten": 0, "events": [\#(ev)] }"#
+        }
+        let m = (0..<markers).map { #"{ "t": \#($0), "label": "m" }"# }
+        let json = """
+            { "id": "tk", "state": "\(state)", "created": "2026-09-11T14:02:09.412Z",
+              "started": "2026-09-11T14:02:17.004Z",
+              "outputRoot": "/tmp", "destination": "takes/x", "version": "0.1.0",
+              "machine": { "hostname": "h", "machineId": "m" },
+              "streams": [\(s.joined(separator: ","))], "markers": [\(m.joined(separator: ","))],
+              "settings": { "codec": "hevc" } }
+            """
+        return try Manifest.wireDecoder.decode(Manifest.self, from: Data(json.utf8))
+    }
+
+    @Test("A stale `created` event after the Record answer does not undo `recording`")
+    func createdAfterRecording() throws {
+        let model = DaemonModel.staged(.running)
+        model.place(try manifest(state: "recording", streams: 1))
+        model.place(try manifest(state: "created", streams: 1, events: 0))
+        #expect(model.take?.isRecording == true)
+    }
+
+    @Test("A `recording` event from before a join does not undo the join's answer")
+    func recordingBeforeJoin() throws {
+        let model = DaemonModel.staged(.running)
+        model.place(try manifest(state: "recording", streams: 2))
+        model.place(try manifest(state: "recording", streams: 1))
+        #expect(model.take?.streams.count == 2)
+        // But a later one with more — a marker — is taken.
+        model.place(try manifest(state: "recording", streams: 2, markers: 1))
+        #expect(model.take?.markers.count == 1)
+        // And stopping always wins.
+        model.place(try manifest(state: "complete", streams: 2))
+        #expect(model.take?.isOver == true)
+        model.place(try manifest(state: "recording", streams: 2, markers: 3))
+        #expect(model.take?.isOver == true)
+    }
+}
