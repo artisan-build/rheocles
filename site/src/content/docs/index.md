@@ -1,6 +1,6 @@
 ---
 title: Overview
-description: Rheocles records every camera, microphone, display and window on your Mac at once, each to its own file, on one cue.
+description: Rheocles records the cameras, microphones, displays and windows you choose, all at once — each in its own file, on one cue. Local only (for now).
 ---
 
 Rheocles is a macOS menu bar app and a small HTTP API. You arm the streams you

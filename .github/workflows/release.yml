@@ -67,6 +67,9 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
+      # To dispatch deploy-site.yml at the end, so the site's version line
+      # follows the tag.
+      actions: write
     steps:
       # Full history, not the default depth-1. bundle.sh derives
       # CFBundleVersion from `git rev-list --count HEAD`, and on a shallow
@@ -255,6 +258,7 @@ jobs:
             dist/checksums.txt
 
       - name: Release
+        id: release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -330,3 +334,20 @@ jobs:
               commit -m "chore(rheocles): $VER" -m "Bumped by the rheocles release pipeline."
           AUTH="$(printf 'x-access-token:%s' "$TAP_TOKEN" | base64 | tr -d '\n')"
           git -c http.extraheader="AUTHORIZATION: basic $AUTH" push origin HEAD
+
+      # rheocles.com reads the latest release at build time and only rebuilds
+      # when deploy-site.yml runs, so without this a new tag would leave the
+      # site advertising the previous version. Tags only — a dry run from
+      # main must not deploy anything. GITHUB_TOKEN may start a
+      # workflow_dispatch run; it is push events it cannot trigger.
+      #
+      # Gated on the release itself, not on the job so far: once the release
+      # exists, releases/latest already serves the new version, and a failed
+      # cask push (a rotated tap token, say) must not leave the site saying
+      # the old one — a re-run cannot help, since `gh release create` refuses
+      # a tag that already has a release.
+      - name: Rebuild the site
+        if: always() && startsWith(github.ref, 'refs/tags/') && steps.release.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-site.yml --ref main

@@ -9,7 +9,7 @@ pattern, with Rheocles' subjects.
     python3 art/make.py --only hero --force      # redo one, deliberately
 
 Every call costs money, so nothing regenerates unless asked: a plate that
-already exists in site/src/assets/plates is skipped unless --force, and the
+already exists in site/art/originals is skipped unless --force, and the
 outputs are committed, not scratch. Len approves every run by name and count
 before it happens; the prompts here are the ones written down in site/ART.md,
 and ART.md is the copy people read — keep the two in step.
@@ -36,9 +36,11 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# Under src/assets rather than public/ so Astro's <Image> serves sized,
-# optimised variants instead of a 3 MB PNG at every width.
-OUT = ROOT / "site" / "src" / "assets" / "plates"
+# The originals land here; site/art/sticker.py cuts them to stickers (the
+# cream lifted off, the drawing sat straight on the page) and writes those
+# to site/src/assets/plates, where Astro's <Image> serves sized variants.
+# Run sticker.py after every generation.
+OUT = ROOT / "site" / "art" / "originals"
 
 # The shared grammar. Every prompt inherits it so the set reads as one hand.
 STYLE = """
@@ -57,9 +59,10 @@ muted brick red used sparingly, soft olive green, and a dark warm charcoal for
 outlines. Nothing else. Blue is the dominant colour.
 
 Set on a plain flat pale limestone-cream background with generous empty space
-around the subject. No vase, no pottery, no plaster cracks, no museum lighting,
-no plinth, no frame, no photographic background. Pure flat graphic
-illustration, as though screen printed.
+around the subject. Everything fully inside the frame, nothing touching the
+edges. No vase, no pottery, no plaster cracks, no museum lighting, no plinth,
+no frame, no photographic background. Pure flat graphic illustration, as
+though screen printed.
 
 Absolutely no lettering, no text, no Greek characters, no numerals, no
 watermarks anywhere. All figures fully clothed in simple draped tunics or
@@ -80,9 +83,9 @@ PLATES = {
         palm out, index finger up, in the exact gesture of someone about to count
         in a band. Every baby is looking at her hand.
 
-        At the far left edge, half through a doorway, a large scowling bearded
-        figure in an ochre robe — Kronos — looks put out, arms folded. Nobody is
-        paying him any attention.
+        At the left, standing whole in a doorway that sits well inside the
+        frame, a large scowling bearded figure in an ochre robe — Kronos — looks
+        put out, arms folded. Nobody is paying him any attention.
 
         The joke is that each child has its own cradle and they are all about to
         start on the same word.

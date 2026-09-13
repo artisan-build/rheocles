@@ -1,5 +1,6 @@
 ---
 import Meander from './Meander.astro';
+import { version, releaseUrl } from '../lib/version';
 const path = Astro.url.pathname;
 const inDocs = path === '/docs' || path.startsWith('/docs/');
 ---
@@ -8,8 +9,8 @@ const inDocs = path === '/docs' || path.startsWith('/docs/');
 	<div class:list={['wrap', { 'wrap--wide': inDocs }]}>
 		<Meander />
 		<p class="footer__line">
-			<strong>Rheocles</strong> — every stream, its own file, on one cue. Apple Silicon, macOS
-			15 or later.
+			<strong>Rheocles</strong>{version && <> <a class="footer__version" href={releaseUrl}>{version}</a></>} —
+			every stream, in its own file, on one cue. Apple Silicon, macOS 15 or later.
 		</p>
 		<p class="footer__line">
 			Free and open source under the MIT licence.{' '}
@@ -44,5 +45,13 @@ const inDocs = path === '/docs' || path.startsWith('/docs/');
 		font-family: var(--display);
 		font-variation-settings: 'SOFT' 30, 'WONK' 1;
 		font-weight: 700;
+	}
+	/* The version is a fact, not a badge: mono, the line's own colour, a
+	   link to that tag's release page. */
+	.footer__version {
+		font-family: var(--mono);
+		font-size: 0.85em;
+		color: inherit;
+		text-decoration-color: color-mix(in oklab, var(--ink-soft) 40%, transparent);
 	}
 </style>

@@ -111,15 +111,23 @@ td {
 	overflow-x: auto;
 }
 
+/* The eyebrow pill, the same one as sonocles.com's: an inline-flex box with
+   its line-height collapsed, so the capitals sit centred in the pill instead
+   of riding high on the page's 1.55 line box. */
 .pill {
-	display: inline-block;
+	display: inline-flex;
+	align-items: center;
+	line-height: 1;
 	font-family: var(--mono);
 	font-size: 0.68rem;
+	font-weight: 500;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
 	color: var(--limestone);
 	background: var(--aegean);
-	padding: 0.42em 0.9em;
+	/* A hair more above than below: the mono capitals sit high in their em
+	   box, and the trailing letter-spacing after the last glyph is trimmed. */
+	padding: 0.68em 0.98em 0.52em 1.1em;
 	border-radius: 999px;
 }
 

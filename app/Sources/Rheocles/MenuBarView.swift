@@ -143,7 +143,9 @@ struct MenuBarView: View {
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Circle().fill(Brand.Block.aegean).frame(width: 5, height: 5)
-                Text("rheocles-core \(d?.version ?? "··")")
+                // A real daemon always sends its version; the site's
+                // screenshot fixture sends none, so the shot does not date.
+                Text(d.map { $0.version.isEmpty ? "rheocles-core" : "rheocles-core \($0.version)" } ?? "rheocles-core ··")
                     .foregroundStyle(Brand.Block.bone)
                 Text("·")
                 Text(daemon.startedByUs ? "ours" : "shared")

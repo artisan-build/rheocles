@@ -9,8 +9,8 @@ info:
   title: Rheocles
   version: 0.1.0
   description: >
-    Records any number of input streams simultaneously, each to its own file,
-    on one cue. Loopback only; bearer token always.
+    Records any number of input streams simultaneously, each in its own file,
+    on one cue. Local only (for now); bearer token always.
 servers:
   - url: http://127.0.0.1:7447
 security:

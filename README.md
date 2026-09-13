@@ -1,7 +1,7 @@
 # Rheocles
 
 A macOS menu bar app that records **any number of input streams
-simultaneously, each to its own file, on one cue** — cameras, microphones,
+simultaneously, each in its own file, on one cue** — cameras, microphones,
 system audio, every display (including screen-like devices such as the Elgato
 prompter), and individual windows. Arm what you want, hit record or have the
 API do it, and every armed stream lands as its own file, stamped with

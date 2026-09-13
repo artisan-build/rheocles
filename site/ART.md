@@ -8,9 +8,43 @@ image renders as a flat placeholder in its proportions
 (`src/components/Plate.astro`).
 
 **Generated 11 Sep 2026, one run, gpt-image-2 at `high`:** hero, stone, rig →
-`src/assets/plates/`. One first-pass note: the rig plate has a planter pot at
+`art/originals/`. One first-pass note: the rig plate has a planter pot at
 the right edge, which the "no vases" rule did not anticipate. It reads as a
 plant, not a Sonocles pot; left as is.
+
+**One regeneration approved by Len, 13 Sep 2026, not yet run:** hero, 1 image.
+Kronos and the doorway are clipped by the left edge of the frame, which no
+post-processing can fix. The style block now says "everything fully inside
+the frame, nothing touching the edges", every future prompt carries that
+line, and the hero subject now asks for Kronos standing whole in a doorway
+well inside the frame. Until the rerun the hero plate ships on its cream
+rectangle (`boxed` in `index.astro`) rather than as a half-sticker:
+
+```sh
+python3 art/make.py --only hero --force --env <the .env with OPENAI_API_KEY>
+python3 site/art/sticker.py hero        # after removing "hero" from SKIP
+```
+
+## The sticker cut
+
+A generated plate arrives on its own flat cream, never quite the site's
+`--limestone`, so on the page it reads as a yellow rectangle. `art/sticker.py`
+lifts the drawing off it — flood-fills the cream to transparency from the four
+edges, softens the one-pixel edge, trims to the drawing plus a constant
+margin — and writes `src/assets/plates/*.png` with alpha, so the drawing sits
+straight on the page. The originals stay in `art/originals/` and are the
+source; the script is idempotent from them.
+
+```sh
+# Pillow, numpy, scipy — a throwaway venv, not the site's package.json
+python3 art/sticker.py            # every plate
+python3 art/sticker.py rig stone  # just those
+```
+
+Check each result at 1× against the page: no cream halo, no holes where the
+fill leaked through a thin outline into a pale interior (tighten
+`TOLERANCES[name]` in the script if it does). A plate whose drawing touches
+the frame goes in `SKIP` and ships boxed until it is regenerated.
 
 The register is Sonocles' `STYLE_FLAT` with the source shifted from Attic vase
 painting to Minoan fresco — see `docs/BRAND.md` § The plates. The style block
@@ -39,9 +73,10 @@ muted brick red used sparingly, soft olive green, and a dark warm charcoal for
 outlines. Nothing else. Blue is the dominant colour.
 
 Set on a plain flat pale limestone-cream background with generous empty space
-around the subject. No vase, no pottery, no plaster cracks, no museum lighting,
-no plinth, no frame, no photographic background. Pure flat graphic
-illustration, as though screen printed.
+around the subject. Everything fully inside the frame, nothing touching the
+edges. No vase, no pottery, no plaster cracks, no museum lighting, no plinth,
+no frame, no photographic background. Pure flat graphic illustration, as
+though screen printed.
 
 Absolutely no lettering, no text, no Greek characters, no numerals, no
 watermarks anywhere. All figures fully clothed in simple draped tunics or
@@ -61,9 +96,9 @@ crown of leaves, one asleep, one waving. Rhea has one hand raised, palm out,
 index finger up, in the exact gesture of someone about to count in a band.
 Every baby is looking at her hand.
 
-At the far left edge, half through a doorway, a large scowling bearded figure
-in an ochre robe — Kronos — looks put out, arms folded. Nobody is paying him
-any attention.
+At the left, standing whole in a doorway that sits well inside the frame, a
+large scowling bearded figure in an ochre robe — Kronos — looks put out, arms
+folded. Nobody is paying him any attention.
 
 The joke is that each child has its own cradle and they are all about to start
 on the same word.
@@ -111,3 +146,26 @@ Everyone is relaxed. Nothing about this is unusual to anyone in the picture.
 - **the two boxes** · 1536×1024 · docs, Timecode and sync — two identical
   benches in two rooms, one clock on the wall between them, the cradles in
   both rooms started on the same tick.
+
+# Screenshots
+
+The hero's popover (`src/assets/popover.png`) is not a plate and not a desktop
+capture: the app renders it from a frozen model with fake devices, at 2×, so
+it can be regenerated after any UI change without a display, a daemon or a
+camera. The state is `chosen` in `app/Sources/Rheocles/Preview.swift` — the
+Elgato 4K X camera and the Scarlett 2i2 microphone armed, the BenQ display
+and two windows listed but not, the take bar idle with "Also save a single
+file" unticked — so "you choose" is visible rather than stated.
+
+```sh
+cd app && swift build -c release --product Rheocles
+.build/release/Rheocles --render-preview /tmp/rheocles-previews
+cp /tmp/rheocles-previews/chosen.png ../site/src/assets/popover.png
+```
+
+The `chosen` fixture sends no version, so its status line reads
+`rheocles-core · ours · 44.9 GB free` and the shot does not go stale with
+every tag; the real app always shows the daemon's version there.
+
+The PNG is the popover alone, 688×1332 (344×666 at 1×), no window chrome;
+`index.astro` gives it the shadow.

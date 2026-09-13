@@ -205,7 +205,7 @@ approves each run before anything is generated.
 
 ### One-liner
 
-> Every stream, its own file, on one cue.
+> Every stream, in its own file, on one cue.
 
 ### Standfirst
 

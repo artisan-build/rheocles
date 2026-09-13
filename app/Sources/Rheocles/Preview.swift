@@ -96,6 +96,20 @@ enum Preview {
                             permissions: granted, showWindows: true)))
             ),
             (
+                // rheocles.com's hero screenshot (site/ART.md § Screenshots):
+                // two streams chosen, a display and a window listed and left
+                // alone, nothing recording. "You choose" shown, not said. No
+                // version on the status line, so the shot does not go stale
+                // with every tag.
+                "chosen",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(version: ""),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, showWindows: true)))
+            ),
+            (
                 "permissions",
                 AnyView(
                     MenuBarView(
@@ -386,7 +400,7 @@ enum Preview {
               "started": "\(iso.format(cue))"\(stopped),
               "outputRoot": "\(FileManager.default.homeDirectoryForCurrentUser.path)/Movies/Rheocles",
               "destination": "takes/2026-09-11/140217-ep12",
-              "version": "0.1.0",
+              "version": "\(Rheocles.version)",
               "machine": { "hostname": "lens-macbook-pro.local", "machineId": "CD3B7EE5" },
               "streams": [\(streams.joined(separator: ","))],
               "markers": [\((0..<markers).map { "{ \"t\": \(38.7 + Double($0) * 90), \"label\": \"marker \($0 + 1)\" }" }.joined(separator: ","))],
@@ -489,12 +503,14 @@ enum Preview {
 
     /// A `GET /` answer, decoded from the protocol's own example so the
     /// preview shows exactly the shape a real daemon sends.
-    private static func discovery(freeBytes: Int64? = 44_878_079_167) -> Discovery {
+    private static func discovery(
+        freeBytes: Int64? = 44_878_079_167, version: String = Rheocles.version
+    ) -> Discovery {
         let free = freeBytes.map { "\"freeBytes\": \($0)," } ?? ""
         let json = """
             {
               "name": "Rheocles",
-              "version": "0.1.0",
+              "version": "\(version)",
               "hostname": "lens-macbook-pro.local",
               "machineId": "CD3B7EE5-5E6C-5155-854A-72E4728555F7",
               "outputRoot": "\(FileManager.default.homeDirectoryForCurrentUser.path)/Movies/Rheocles",

@@ -36,7 +36,11 @@ jobs:
       run:
         working-directory: site
     steps:
+      # With tags, so src/lib/version.ts can fall back to `git describe`
+      # when the releases API is unreachable.
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
         with:

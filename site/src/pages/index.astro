@@ -6,9 +6,13 @@ import Base from '../layouts/Base.astro';
 import Section from '../components/Section.astro';
 import Plate from '../components/Plate.astro';
 import CueDiagram from '../components/CueDiagram.astro';
+import { Image } from 'astro:assets';
+import { version, releaseUrl } from '../lib/version';
 import heroPlate from '../assets/plates/hero.png';
 import stonePlate from '../assets/plates/stone.png';
 import rigPlate from '../assets/plates/rig.png';
+// The real popover, rendered by the app itself — site/ART.md § Screenshots.
+import popover from '../assets/popover.png';
 
 const manifest = `{
   "id": "20260911T210217-fd9q", "name": "Episode 12", "state": "recording",
@@ -46,36 +50,50 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 ---
 
 <Base
-	title="Rheocles — every stream, its own file, on one cue"
-	description="Rheocles records every camera, microphone, display and window on your Mac at once — each to its own file, started on one cue and stamped with time-of-day timecode. Free, open source, MIT."
+	title="Rheocles — every stream, in its own file, on one cue"
+	description="Rheocles records the cameras, microphones, displays and windows you choose, all at once — each in its own file, started on one cue and stamped with time-of-day timecode. Free, open source, MIT."
 >
+	{/* Copy left, the popover right; on a phone the popover drops in after
+	    the first paragraph so something visual is above the fold there too.
+	    Every child is a sibling for that reason — the order is CSS. */}
 	<section class="hero wrap">
 		<p class="pill">Free · Open source · MIT</p>
 		<h1 class="hero__title">
-			Every stream, its own file,<br />
+			Every stream, in its own file,<br />
 			<span class="hero__accent">on one cue.</span>
 		</h1>
-		<p class="hero__stand">
-			Rheocles records every camera, microphone, display and window on your Mac at once — each to
-			its own file, started on one cue and stamped with <strong>time-of-day timecode</strong>, so
-			an editor syncs them in one click.
+		<p class="hero__stand hero__stand--first">
+			Rheocles records the cameras, microphones, displays and windows <strong>you choose</strong>,
+			all at once — each in its own file, started on one cue and stamped
+			with <strong>time-of-day timecode</strong>, so they line up in your editor in one click.
 		</p>
+		<Image
+			class="hero__popover"
+			src={popover}
+			width={344}
+			densities={[1, 2]}
+			format="png"
+			loading="eager"
+			alt="The Rheocles menu bar popover. Displays, windows, cameras and microphones are listed with a switch each; the Elgato 4K X camera and the Scarlett 2i2 microphone are armed, the BenQ display and two windows are listed but not. The take bar is idle: a Record button, a take name field, and an unticked Also save a single file."
+		/>
 		<p class="hero__stand">
-			<strong>No compositor.</strong> The layout is a decision for the edit, not for the moment the
-			light goes red. Arm what you might want, cue once, cut later.
+			<strong>Separate files for your edit, or one file to send straight away — you choose per
+			take.</strong> Arm what you might want, cue once, cut later.
 		</p>
 		<p class="hero__note">
-			Loopback only. An HTTP and WebSocket API, one bearer token, zero clicks to pair.
+			Local only (for now). An HTTP and WebSocket API, one bearer token, zero clicks to pair.
 		</p>
 		<div class="hero__actions">
 			<a class="button button--primary" href="https://github.com/artisan-build/rheocles/releases/latest/download/Rheocles.dmg">Download for Mac</a>
 			<a class="button" href="/docs">Read the docs</a>
 			<a class="button" href="https://github.com/artisan-build/rheocles">Source on GitHub</a>
-			<span class="hero__platform">Apple Silicon · macOS 15 or later</span>
+			<span class="hero__platform">
+				{version && <><a href={releaseUrl}>v{version}</a> · </>}Apple Silicon · macOS 15 or later
+			</span>
 		</div>
 		<p class="hero__brew">
 			<span>or</span>
-			<code>brew install --cask artisan-build/tap/rheocles</code>
+			<code><span>brew install --cask</span> <span>artisan-build/tap/rheocles</span></code>
 		</p>
 	</section>
 
@@ -83,6 +101,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		<Plate
 			name="Rhea and the cradles"
 			src={heroPlate}
+			boxed
 			loading="eager"
 			alt="Rhea, in a blue flounced dress, stands behind a bench of six cradles with one finger raised to count in; six infants watch her hand. Kronos sulks in a doorway at the left."
 			caption="<strong>The whole product, basically.</strong> Six children, six cradles, one hand raised. Nobody gets swallowed."
@@ -100,7 +119,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 			It is the wrong shape for a take you are going to cut. <a href="https://pteroprompter.com"
 				>Pteroprompter</a
 			> wanted the camera, the prompter screen, the microphone and the system audio as four files, started
-			together, with no compositor in the way — so the edit could decide what goes where, and a scene
+			together, with no compositor in the way — so your edit could decide what goes where, and a scene
 			change on the day would not be a decision baked into the footage.
 		</p>
 		<p>
@@ -119,7 +138,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 				</thead>
 				<tbody>
 					<tr><td>Gives you</td><td>one file</td><td>one file per stream</td></tr>
-					<tr><td>The layout is decided</td><td>before you record</td><td>in the edit</td></tr>
+					<tr><td>The layout is decided</td><td>before you record</td><td>in your edit</td></tr>
 					<tr><td>Files sync</td><td>by eye</td><td>by timecode</td></tr>
 					<tr><td>A crash leaves</td><td>a corrupt file</td><td>playable files and a truthful manifest</td></tr>
 				</tbody>
@@ -173,7 +192,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 				<p>
 					Late joining is for saving CPU on a heavy stream you already know will not need edit
 					flexibility. It is not a way to script a take. Arm everything you might want, record,
-					and cut in the edit; a script that toggles windows in and out of a take mid-read has
+					and cut in your edit; a script that toggles windows in and out of a take mid-read has
 					misunderstood the tool.
 				</p>
 			</div>
@@ -232,7 +251,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		<p class="aside">
 			A bearer token, always, on every transport. It is provisioned to a file — mode 0600 — so any app
 			running as you is paired with zero clicks; anything that cannot read the file gets it as a
-			pairing code in the popover. Loopback only in the MVP: the threat is a web page in your
+			pairing code in the popover. Local only (for now): the threat is a web page in your
 			browser talking to <code>localhost:7447</code>, and a token is the defence.
 		</p>
 	</Section>
@@ -285,12 +304,12 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 
 <style>
 	.hero {
-		padding-block: 4.5rem 1rem;
+		padding-block: 1.25rem 1rem;
 		max-width: var(--page);
 	}
 	.hero__title {
 		font-size: clamp(2.5rem, 7vw, 4.6rem);
-		margin: 1.4rem 0 1.6rem;
+		margin: 0.9rem 0 1.1rem;
 	}
 	.hero__accent {
 		color: var(--aegean);
@@ -303,6 +322,90 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 	.hero__stand strong {
 		font-weight: 600;
 	}
+	/* A grid or flex item, so it must not stretch to the column. */
+	.hero .pill {
+		justify-self: start;
+		align-self: flex-start;
+		margin: 0;
+	}
+	/* Not a Plate: no caption, no box. A window floating over the page, so a
+	   shadow and the popover's own corners are all it gets. */
+	.hero__popover {
+		display: block;
+		width: 100%;
+		max-width: 344px;
+		height: auto;
+		border-radius: 12px;
+		box-shadow:
+			0 1px 2px rgba(42, 33, 26, 0.12),
+			0 12px 32px -8px rgba(42, 33, 26, 0.28);
+	}
+
+	/* Wide: a 55/45 split, copy in the first column, the popover in the
+	   second spanning every row. The last row takes any height the popover
+	   has over the copy, so the copy never spreads to match it. */
+	@media (min-width: 761px) {
+		.hero {
+			display: grid;
+			grid-template-columns: minmax(0, 11fr) minmax(0, 9fr);
+			grid-template-rows: repeat(6, auto) 1fr;
+			column-gap: 2.5rem;
+			align-items: start;
+		}
+		.hero > * {
+			grid-column: 1;
+		}
+		.hero__title {
+			font-size: clamp(2.4rem, 4.2vw, 3rem);
+		}
+		/* Outranks the `.hero > *` column rule above. */
+		.hero > .hero__popover {
+			grid-column: 2;
+			grid-row: 1 / span 7;
+			justify-self: end;
+			margin-top: 0.4rem;
+		}
+	}
+
+	/* Wider still: the hero keeps the header's left edge and runs 220px past
+	   its right, so the popover sits at its native width and the three
+	   buttons fit on one row beside it. `left` is a visual shift only — the
+	   box stays centred in flow — and the breakpoint is where the shifted
+	   box still clears the viewport's edge by the gutter (24px at 1240). */
+	@media (min-width: 1240px) {
+		.hero {
+			width: min(100% - 2 * var(--gutter), calc(var(--page) + 220px));
+			max-width: none;
+			position: relative;
+			left: 110px;
+			grid-template-columns: minmax(0, 1fr) 344px;
+			column-gap: 3rem;
+		}
+		.hero__title {
+			font-size: 3.2rem;
+		}
+	}
+
+	/* Narrow: one column, and the popover moves up under the first paragraph
+	   — pill, title, the what, the picture, then the rest. */
+	@media (max-width: 760px) {
+		.hero {
+			display: flex;
+			flex-direction: column;
+		}
+		.hero > * {
+			order: 2;
+		}
+		.hero > .pill,
+		.hero > .hero__title,
+		.hero > .hero__stand--first {
+			order: 1;
+		}
+		.hero > .hero__popover {
+			order: 1;
+			margin: 0.6rem auto 1.6rem;
+		}
+	}
 	.hero__note {
 		font-size: 0.95rem;
 		color: var(--ink-faint);
@@ -312,12 +415,17 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.75rem;
-		margin-top: 1.8rem;
+		margin-top: 1.4rem;
 	}
 	.hero__platform {
 		font-size: 0.8rem;
 		color: var(--ink-faint);
 		margin-left: 0.4rem;
+	}
+	.hero__platform a {
+		color: inherit;
+		font-family: var(--mono);
+		text-decoration-color: color-mix(in oklab, var(--ink-faint) 40%, transparent);
 	}
 	.hero__brew {
 		display: flex;
@@ -337,6 +445,12 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		border-radius: 7px;
 		background: var(--limestone-deep);
 		color: var(--ink);
+	}
+	/* In the split the chip can be narrower than the command; the only place
+	   it may break is the space between the two halves, never at the hyphen
+	   in artisan-build. */
+	.hero__brew code span {
+		white-space: nowrap;
 	}
 
 	.aside {
