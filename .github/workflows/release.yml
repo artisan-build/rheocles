@@ -258,6 +258,7 @@ jobs:
             dist/checksums.txt
 
       - name: Release
+        id: release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -339,8 +340,14 @@ jobs:
       # site advertising the previous version. Tags only — a dry run from
       # main must not deploy anything. GITHUB_TOKEN may start a
       # workflow_dispatch run; it is push events it cannot trigger.
+      #
+      # Gated on the release itself, not on the job so far: once the release
+      # exists, releases/latest already serves the new version, and a failed
+      # cask push (a rotated tap token, say) must not leave the site saying
+      # the old one — a re-run cannot help, since `gh release create` refuses
+      # a tag that already has a release.
       - name: Rebuild the site
-        if: startsWith(github.ref, 'refs/tags/')
+        if: always() && startsWith(github.ref, 'refs/tags/') && steps.release.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run deploy-site.yml --ref main
