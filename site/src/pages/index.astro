@@ -6,6 +6,7 @@ import Base from '../layouts/Base.astro';
 import Section from '../components/Section.astro';
 import Plate from '../components/Plate.astro';
 import CueDiagram from '../components/CueDiagram.astro';
+import BrewChip from '../components/BrewChip.astro';
 import { Image } from 'astro:assets';
 import { version, releaseUrl } from '../lib/version';
 import heroPlate from '../assets/plates/hero.png';
@@ -98,7 +99,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		</div>
 		<p class="hero__brew">
 			<span>or</span>
-			<code><span>brew install --cask</span> <span>artisan-build/tap/rheocles</span></code>
+			<BrewChip cmd="brew install --cask artisan-build/tap/rheocles" />
 		</p>
 	</section>
 
@@ -454,21 +455,8 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		font-size: 0.85rem;
 		color: var(--ink-faint);
 	}
-	.hero__brew span {
+	.hero__brew > span {
 		color: var(--ink-faint);
-	}
-	.hero__brew code {
-		font-size: 0.8rem;
-		padding: 0.45em 0.8em;
-		border-radius: 7px;
-		background: var(--limestone-deep);
-		color: var(--ink);
-	}
-	/* In the split the chip can be narrower than the command; the only place
-	   it may break is the space between the two halves, never at the hyphen
-	   in artisan-build. */
-	.hero__brew code span {
-		white-space: nowrap;
 	}
 
 	.aside {
