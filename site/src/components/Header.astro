@@ -1,15 +1,22 @@
 ---
 // The sibling header: mark · wordmark · pronunciation in mono · Docs · GitHub.
-// Identical on the landing page and every docs page.
+// Identical on the landing page and every docs page. The measures are
+// sonocles.com's, read off the live header in px (13 Sep 2026): 30px mark,
+// 23px wordmark, 12.5px pronunciation, 14px/500 links 22px apart, 26px above
+// the row and nothing below it, everything centred on one line. The type and
+// the colours stay ours.
 import Mark from './Mark.astro';
-const path = Astro.url.pathname;
+// With build.format 'file' the docs index builds as /docs.html, and that is
+// the pathname this sees; without the trim it was the one docs page that
+// counted as not-docs.
+const path = Astro.url.pathname.replace(/\.html$/, '');
 const inDocs = path === '/docs' || path.startsWith('/docs/');
 ---
 
 <header class="header">
 	<div class:list={['wrap', 'header__row', { 'wrap--wide': inDocs }]}>
 		<a href="/" class="brand" aria-label="Rheocles home">
-			<Mark class="brand__mark" size={26} />
+			<Mark class="brand__mark" size={30} color="var(--aegean)" />
 			<span class="brand__name">Rheocles</span>
 			<span class="brand__say">REE-oh-kleez</span>
 		</a>
@@ -25,49 +32,50 @@ const inDocs = path === '/docs' || path.startsWith('/docs/');
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 1rem;
-		/* A little more above than below, so the brand sits off the head band
-		   the way sonocles.com's does off its colonnade. */
-		padding-block: 1.6rem 1.1rem;
+		gap: 12px;
+		padding-block: 26px 0;
 	}
 	.brand {
 		display: inline-flex;
-		align-items: baseline;
-		gap: 0.55rem;
+		align-items: center;
+		gap: 12px;
 		color: var(--ink);
 		text-decoration: none;
 		min-width: 0;
 	}
-	.brand__mark {
-		color: var(--aegean);
-		align-self: center;
+	/* The mark is Mark.astro's <svg>, outside this component's scope; its
+	   colour is passed in above. */
+	.brand :global(.brand__mark) {
 		flex: none;
 	}
 	.brand__name {
 		font-family: var(--display);
 		font-variation-settings: 'SOFT' 30, 'WONK' 1;
 		font-weight: 700;
-		font-size: 1.35rem;
+		font-size: 23px;
 		letter-spacing: -0.01em;
 	}
 	.brand__say {
 		font-family: var(--mono);
-		font-size: 0.72rem;
+		font-size: 12.5px;
 		color: var(--ink-faint);
 	}
 	.nav {
 		display: flex;
-		gap: 1.4rem;
-		font-size: 0.9rem;
+		gap: 22px;
+		font-size: 14px;
 		font-weight: 500;
 	}
+	/* The links carry a 2px floor, clear until hovered or current — the
+	   treatment sonocles.com's header links have, in the Aegean. */
 	.nav a {
 		color: var(--aegean);
 		text-decoration: none;
+		border-bottom: 2px solid transparent;
 	}
+	.nav a:hover,
 	.nav a[aria-current='page'] {
-		text-decoration: underline;
-		text-underline-offset: 0.3em;
+		border-bottom-color: var(--aegean);
 	}
 	@media (max-width: 480px) {
 		.brand__say {
