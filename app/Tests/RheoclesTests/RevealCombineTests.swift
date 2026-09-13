@@ -285,8 +285,35 @@ struct OrderingTests {
     func createdAfterRecording() throws {
         let model = DaemonModel.staged(.running)
         model.place(try manifest(state: "recording", streams: 1))
-        model.place(try manifest(state: "created", streams: 1, events: 0))
+        // Same stream and event counts, so only the state rank can reject it.
+        model.place(try manifest(state: "created", streams: 1, events: 1))
         #expect(model.take?.isRecording == true)
+    }
+
+    @Test("A re-combine is progress: failed → pending and complete → pending are applied")
+    func combineRetry() throws {
+        func finished(combined: String) throws -> Manifest {
+            try Manifest.wireDecoder.decode(
+                Manifest.self,
+                from: Data(
+                    """
+                    { "id": "tk", "state": "complete", "created": "2026-09-11T14:02:09.412Z",
+                      "outputRoot": "/tmp", "destination": "takes/x", "version": "0.1.0",
+                      "machine": { "hostname": "h", "machineId": "m" }, "streams": [], "markers": [],
+                      "settings": { "codec": "hevc" }, "combined": \(combined) }
+                    """.utf8))
+        }
+        let model = DaemonModel.staged(.running)
+        model.place(
+            try finished(
+                combined: #"{ "path": "combined.mov", "state": "failed", "reason": "mux died" }"#))
+        model.place(try finished(combined: #"{ "path": "combined.mov", "state": "pending" }"#))
+        #expect(model.take?.combined?.isPending == true)
+        #expect(model.recentDetail["tk"]?.combined?.isPending == true)
+        model.place(try finished(combined: #"{ "path": "combined.mov", "state": "complete" }"#))
+        #expect(model.take?.combined?.isComplete == true)
+        model.place(try finished(combined: #"{ "path": "combined.mov", "state": "pending" }"#))
+        #expect(model.take?.combined?.isPending == true)
     }
 
     @Test("A `recording` event from before a join does not undo the join's answer")

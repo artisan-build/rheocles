@@ -78,10 +78,10 @@ extension Manifest {
             other.streams.count + other.streams.reduce(0) { $0 + $1.events.count }
             + other.markers.count
         if mine != theirs { return mine > theirs }
+        // A combined result appearing is progress. Any change in one that is
+        // there is progress too: failed → pending and complete → pending
+        // are a retry, which the daemon allows on any finished take.
         if (combined == nil) != (other.combined == nil) { return combined != nil }
-        if let a = combined, let b = other.combined, a.isPending != b.isPending {
-            return !a.isPending
-        }
         return true
     }
 
@@ -184,9 +184,10 @@ extension DaemonModel {
         takeError = nil
         Task {
             do {
-                self.take = try await api.post(
-                    "/takes/\(take.id)/join", StreamBody(stream: id), as: Manifest.self,
-                    decoder: Manifest.wireDecoder)
+                place(
+                    try await api.post(
+                        "/takes/\(take.id)/join", StreamBody(stream: id), as: Manifest.self,
+                        decoder: Manifest.wireDecoder))
                 Log.info("joined \(id) to \(take.id)")
                 takeBusy = false
                 await refreshStreams()
@@ -204,9 +205,10 @@ extension DaemonModel {
         takeError = nil
         Task {
             do {
-                self.take = try await api.post(
-                    "/takes/\(take.id)/leave", StreamBody(stream: id), as: Manifest.self,
-                    decoder: Manifest.wireDecoder)
+                place(
+                    try await api.post(
+                        "/takes/\(take.id)/leave", StreamBody(stream: id), as: Manifest.self,
+                        decoder: Manifest.wireDecoder))
                 Log.info("\(id) left \(take.id)")
             } catch {
                 takeError = "POST /takes/\(take.id)/leave → \(error)"
@@ -229,9 +231,10 @@ extension DaemonModel {
         markerError = nil
         Task {
             do {
-                self.take = try await api.post(
-                    "/takes/\(take.id)/markers", MarkerBody(label: sent), as: Manifest.self,
-                    decoder: Manifest.wireDecoder)
+                place(
+                    try await api.post(
+                        "/takes/\(take.id)/markers", MarkerBody(label: sent), as: Manifest.self,
+                        decoder: Manifest.wireDecoder))
                 Log.info("marker \"\(sent)\" on \(take.id)")
                 markerLabel = ""
             } catch {
@@ -253,8 +256,7 @@ extension DaemonModel {
                 let created = try Manifest.wireDecoder.decode(TakeEngine.Created.self, from: data)
                 Log.info("recording take \(created.take.id)")
                 for warning in created.warnings { Log.info("take warning: \(warning)") }
-                take = created.take
-                tick(recording: created.take.isRecording)
+                place(created.take)
                 // The take action is done the moment the daemon has answered;
                 // the follow-up reads are not part of it. Holding takeBusy
                 // through them made the next click — Stop, Join, Mark — a
@@ -277,8 +279,7 @@ extension DaemonModel {
         takeError = nil
         Task {
             do {
-                take = try absorbTake(try await api.postData("/takes/\(id)/stop", EmptyBody()))
-                tick(recording: false)
+                place(try absorbTake(try await api.postData("/takes/\(id)/stop", EmptyBody())))
                 Log.info("stopped take \(id)")
                 takeBusy = false
                 await refreshStreams()
@@ -296,8 +297,7 @@ extension DaemonModel {
     /// Re-read one take's manifest.
     func refreshTake(id: String) async {
         do {
-            take = try absorbTake(try await api.bytes("/takes/\(id)").0)
-            tick(recording: take?.isRecording == true)
+            place(try absorbTake(try await api.bytes("/takes/\(id)").0))
             await refreshStreams()
         } catch {
             takeError = "GET /takes/\(id) → \(error)"

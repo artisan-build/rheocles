@@ -492,13 +492,19 @@ final class DaemonModel {
                 }
             }
         case "marker":
-            // { take, marker: { t, label } }: append to the take we hold.
+            // { take, marker: { t, label } }. The daemon sends the whole
+            // manifest on the `take` event just before this, and the mark()
+            // answer carries it too, so the marker is usually already held;
+            // append only when it is not, or the count runs one ahead and a
+            // truthful manifest then reads as "behind" to place().
             if let id = message.json["take"] as? String, take?.id == id,
                 let payload = message.json["marker"],
                 let data = try? JSONSerialization.data(withJSONObject: payload),
                 let marker = try? JSONDecoder().decode(Manifest.Marker.self, from: data)
             {
-                take?.markers.append(marker)
+                if take?.markers.contains(marker) == false {
+                    take?.markers.append(marker)
+                }
             } else {
                 Task { await discoverActiveTake() }
             }
