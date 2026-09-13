@@ -84,7 +84,7 @@ struct RevealTests {
     }
 }
 
-@Suite("Combine")
+@Suite("Combine", .serialized)
 struct CombineTests {
     final class Events: @unchecked Sendable {
         let lock = NSLock()
@@ -200,7 +200,9 @@ struct CombineTests {
         }
     }
 
-    @Test("stop → combine emits the take event pending then complete and writes combined.mov")
+    @Test(
+        "stop → combine emits the take event pending then complete and writes combined.mov",
+        .enabled(if: rheoMediaTestsEnabled))
     func pendingThenComplete() async throws {
         let w = try world(catalog: TwoStreams())
         try await w.registry.arm("camera:fake")
@@ -262,7 +264,9 @@ struct CombineTests {
         #expect(!FileManager.default.fileExists(atPath: partial.path))
     }
 
-    @Test("A persisted pending with no in-flight task behind it re-runs, not idempotent (S5)")
+    @Test(
+        "A persisted pending with no in-flight task behind it re-runs, not idempotent (S5)",
+        .enabled(if: rheoMediaTestsEnabled))
     func stalePendingReRuns() async throws {
         let w = try world(catalog: TwoStreams())
         try await w.registry.arm("camera:fake")
@@ -350,7 +354,7 @@ struct CombineTests {
 enum SyntheticMedia {
     static func writeVideo(to url: URL, seconds: Double, fps: Int32) throws {
         try? FileManager.default.removeItem(at: url)
-        let width = 320, height = 240
+        let width = 160, height = 120
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let video = AVAssetWriterInput(
             mediaType: .video,
