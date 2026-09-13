@@ -5,8 +5,9 @@
  * for clicks.
  */
 import {
-  decodeEvent, reduce, initial, setStreams, headline, sections, detail, writingIds, bytes, abbreviate,
+  decodeEvent, reduce, initial, setStreams, setRecent, headline, sections, detail, writingIds, bytes, abbreviate,
   isRecording, isOver, elapsed, clock, lateJoined, finishedLine, meterCells, maskToken,
+  combineAvailable, combinedLine, canCombineNow, revealError, recentRow,
 } from './state.js'
 
 const R = window.RHEO
@@ -39,6 +40,15 @@ let tokenShown = false
 let rotateArmed = false
 let rotateTimer = null
 let settingsError = ''
+/** The recent fold, open or shut; manifests read for its rows, by id, so "Combine now" can tell who qualifies. */
+let showRecent = false
+let recentDetail = {}
+/** A PATCH of settings.combine in flight: the box shows what was asked for. */
+let combinePending = null
+/** A PATCH of settings.combine the daemon refused, in its words — under the box, where it was asked. */
+let combineError = ''
+/** The folder glyph, once: the Swift app's FinderButton. */
+const FINDER = $('finished-finder').innerHTML
 
 const PULSE = 3000
 
@@ -258,9 +268,10 @@ function renderSettings() {
   const change = el('button', 'btn', 'Change…')
   change.disabled = !st
   change.addEventListener('click', chooseRoot)
-  const reveal = el('button', 'btn', 'Reveal')
+  // Open in Finder is the daemon's (feature brief §1): POST /reveal with
+  // an empty path is the output root itself.
+  const reveal = finderButton(() => revealRoot())
   reveal.disabled = !st
-  reveal.addEventListener('click', () => php('POST', '/api/settings/reveal'))
   rootRow.append(change, reveal)
   root.append(rootRow, note('Where new takes land. Cannot move while a take is active.'))
   box.append(root, rule())
@@ -341,8 +352,45 @@ function renderTakeBar() {
   $('takebar-note').hidden = recording || armed > 0
   $('take-name').hidden = recording || armed === 0 || isOver(take)
   $('live').hidden = !recording
-  $('finished').hidden = recording || !isOver(take)
+  const over = !recording && isOver(take)
+  $('finished').hidden = !over
+  $('finished-spacer').hidden = !over
+  $('finished-finder').hidden = !over
   $('markers').hidden = !recording
+
+  // "Also save a single file" (feature brief §2): shown only while at most
+  // one video stream is armed — hidden, not disabled, otherwise — and not
+  // while recording, when the take's own setting is already made.
+  const combineShown = !recording && combineAvailable(state.streams)
+  $('combine-row').hidden = !combineShown
+  $('combine-error').hidden = !combineShown || !combineError
+  $('combine-error').textContent = combineError
+  if (combineShown) {
+    const st = state.settings
+    $('combine').checked = combinePending !== null ? combinePending : !!(st && st.combine)
+    $('combine').disabled = !st || combinePending !== null
+  }
+
+  // The single file after stop, from manifest.combined — or, on a finished
+  // take with none that qualifies, the offer to write one now (feature
+  // brief addendum). Nothing when the take has none and cannot: the box
+  // was off and two videos were in it, or the daemon predates all this.
+  const single = over ? combinedLine(take.combined) : null
+  const offer = over && !single && canCombineNow(take)
+  $('combined').hidden = !(single || offer)
+  if (single || offer) {
+    $('combined').dataset.tone = single ? single.tone : 'none'
+    $('combined-pulse').hidden = !(single && single.tone === 'pending')
+    $('combined-dot').hidden = !!(single && single.tone === 'pending')
+    $('combined-text').textContent = single ? single.text : 'Single file ·'
+    $('combined-note').textContent = single ? (single.note || '') : 'not written'
+    $('combined-note').title = single && single.note ? single.note : ''
+    $('combined-finder').hidden = !(single && single.revealable)
+    $('combine-now').hidden = !offer
+    $('combine-now').disabled = takeBusy
+  }
+
+  renderRecent(recording)
 
   if (recording) {
     $('live-name').textContent = take.name || '··'
@@ -381,6 +429,74 @@ function tick(recording) {
     clearInterval(ticker)
     ticker = null
   }
+}
+
+/**
+ * Recent takes, newest first, folded under the bar (GET /takes, up to
+ * five shown). Each has the daemon's Open in Finder; a finished one with
+ * no single file yet and at most one video gets Combine now — which needs
+ * the manifest, read once per row while the fold is open.
+ */
+function renderRecent(recording) {
+  const box = $('recent')
+  const list = state.recent || []
+  box.hidden = recording || list.length === 0
+  if (box.hidden) return
+  $('recent-toggle').setAttribute('aria-expanded', String(showRecent))
+  $('recent-count').textContent = String(list.length)
+  const rows = $('recent-rows')
+  rows.hidden = !showRecent
+  if (!showRecent) return
+  rows.replaceChildren()
+  for (const summary of list.slice(0, 5)) {
+    // The manifest, when read, knows more than the summary did — a
+    // Combine now that has since finished, say.
+    const manifest = recentDetail[summary.id]
+    const r = recentRow(manifest && manifest.combined ? { ...summary, combined: manifest.combined } : summary)
+    const row = el('div', 'recent-row')
+    row.dataset.tone = r.tone
+    row.append(el('i', 'dot'), el('span', 'name', r.name), el('span', 'when', r.when))
+    if (r.combined) {
+      const single = el('span', 'single', r.combined.tone === 'pending' ? 'single file · writing…' : r.combined.tone === 'complete' ? 'single file' : 'single file · failed')
+      single.dataset.tone = r.combined.tone
+      single.title = r.combined.note || r.combined.text
+      row.append(single)
+    }
+    row.append(el('span', 'spacer'))
+    if (!r.combined && isOver(summary)) {
+      if (!manifest) readRecentDetail(summary.id)
+      else if (canCombineNow(manifest)) {
+        const now = el('button', 'btn small', 'Combine now')
+        now.disabled = takeBusy
+        now.addEventListener('click', () => combineNow(summary.id))
+        row.append(now)
+      }
+    }
+    row.append(finderButton(() => revealTake(summary.id)))
+    rows.append(row)
+  }
+}
+
+/** One manifest for a recent row, once; a re-render follows. */
+async function readRecentDetail(id) {
+  if (id in recentDetail) return
+  recentDetail[id] = null
+  try {
+    const r = await core(`/takes/${encodeURIComponent(id)}`)
+    if (r.ok) { recentDetail[id] = await r.json(); render() }
+  } catch {
+    // Best effort; the row keeps its folder button.
+  }
+}
+
+/** Open in Finder: a folder, Aegean — the Swift app's FinderButton. */
+function finderButton(onClick) {
+  const b = el('button', 'finder')
+  b.setAttribute('aria-label', 'Open in Finder')
+  b.title = 'Open in Finder'
+  b.innerHTML = FINDER
+  b.addEventListener('click', onClick)
+  return b
 }
 
 /** GET / under the streams: the daemon is answering, its version, whose it is, how much room there is. */
@@ -478,9 +594,15 @@ async function discoverTake() {
     }
     const r = await core('/takes')
     if (!r.ok) return
-    const active = (await r.json()).find(t => t.state === 'recording')
+    const list = await r.json()
+    state = setRecent(state, list)
+    const active = list.find(t => t.state === 'recording')
     if (active && (!state.take || state.take.id !== active.id)) {
       const m = await core(`/takes/${active.id}`)
+      if (m.ok) state = { ...state, take: await m.json() }
+    } else if (state.take && isOver(state.take) && state.take.combined && state.take.combined.state === 'pending') {
+      // The mux finishing arrives on the `take` event; this is the fallback.
+      const m = await core(`/takes/${encodeURIComponent(state.take.id)}`)
       if (m.ok) state = { ...state, take: await m.json() }
     }
   } catch {
@@ -502,6 +624,8 @@ function listen() {
     const next = reduce(state, event)
     if (next === state) return
     state = next
+    // A manifest read for a recent row moves with its take.
+    if (event.event === 'take' && event.take.id in recentDetail) recentDetail[event.take.id] = event.take
     if (event.event === 'levels') { updateMeters(); return }
     render()
   }
@@ -514,6 +638,7 @@ function listen() {
 function unlisten() {
   if (source) { source.close(); source = null }
   state = initial()
+  recentDetail = {}
 }
 
 // MARK: - clicks
@@ -583,6 +708,67 @@ async function mark() {
   })
   if (r.ok) { state = { ...state, take: r.body }; $('marker-label').value = '' }
   else clickError = `POST /takes/${id}/markers → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  takeBusy = false
+  render()
+}
+
+// MARK: - Open in Finder, and the single file
+
+/**
+ * Open in Finder is the daemon's (feature brief §1): POST /takes/{id}/reveal
+ * with an empty body for the take's folder, `{ path }` for a file in it;
+ * POST /reveal `{ path: "" }` for the output root. Never the shell from
+ * here: a browser front end cannot open the Finder, and two front ends
+ * should not do it twice. A daemon too old to have the route says
+ * "no such route" — an update, not a missing file.
+ */
+async function revealTake(id, path) {
+  clickError = ''
+  const r = await php('POST', `/api/takes/${encodeURIComponent(id)}/reveal`, path === undefined ? undefined : { path })
+  if (!r.ok) { clickError = revealError(`POST /takes/${id}/reveal`, r.status, r.body); render() }
+}
+
+async function revealRoot() {
+  settingsError = ''
+  const r = await php('POST', '/api/reveal', { path: '' })
+  if (!r.ok) { settingsError = revealError('POST /reveal', r.status, r.body); render() }
+}
+
+/**
+ * The box is the daemon's settings.combine (feature brief §2): PATCH, and
+ * the answer is the truth — a refusal is shown under the box, in the
+ * daemon's words, and the box goes back to what the daemon last said.
+ */
+async function setCombine(on) {
+  if (combinePending !== null) return
+  combinePending = on
+  combineError = ''
+  render()
+  const r = await php('PATCH', '/api/settings', { combine: on })
+  if (r.ok) state = { ...state, settings: r.body }
+  else combineError = `PATCH /settings → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  combinePending = null
+  render()
+}
+
+/**
+ * Combine now (feature brief addendum): POST /takes/{id}/combine on a
+ * finished take. The manifest comes back with `combined` pending; the
+ * `take` event brings completion, exactly as after stop.
+ */
+async function combineNow(id) {
+  if (takeBusy) return
+  takeBusy = true
+  clickError = ''
+  render()
+  const r = await php('POST', `/api/takes/${encodeURIComponent(id)}/combine`)
+  if (r.ok) {
+    if (state.take && state.take.id === id) state = { ...state, take: r.body }
+    recentDetail[id] = r.body
+    state = setRecent(state, state.recent.map(t => (t.id === id ? { ...t, combined: r.body.combined } : t)))
+  } else {
+    clickError = `POST /takes/${id}/combine → ${r.status} ${r.body.code || ''}: ${r.body.error || ''}`
+  }
   takeBusy = false
   render()
 }
@@ -710,6 +896,14 @@ async function setPreference(values) {
 $('record').addEventListener('click', record)
 $('stop').addEventListener('click', stop)
 $('mark-button').addEventListener('click', mark)
+$('combine').addEventListener('change', () => setCombine($('combine').checked))
+$('combine-now').addEventListener('click', () => { if (state.take) combineNow(state.take.id) })
+$('finished-finder').addEventListener('click', () => { if (state.take) revealTake(state.take.id) })
+$('combined-finder').addEventListener('click', () => {
+  const single = state.take && combinedLine(state.take.combined)
+  if (single && single.revealable) revealTake(state.take.id, single.path)
+})
+$('recent-toggle').addEventListener('click', () => { showRecent = !showRecent; render() })
 $('take-name').addEventListener('keydown', e => { if (e.key === 'Enter' && !$('record').disabled) record() })
 $('marker-label').addEventListener('keydown', e => { if (e.key === 'Enter') mark() })
 $('quit').addEventListener('click', () => php('POST', '/quit'))

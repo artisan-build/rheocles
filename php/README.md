@@ -90,7 +90,9 @@ npx vitest run           # the popover's state module
 
 The lifecycle and every popover route run against a stub core
 (`tests/stubs/core.php` on PHP's built-in server: streams, arming, takes,
-markers, settings, token rotation, preview); the client and the SSE reader
+markers, settings, token rotation, preview, reveal, combine — `STUB_COMBINE`
+picks what the mux comes back as, `complete`, `failed` or `pending`, and
+`Server::requests()` says exactly what went on the wire); the client and the SSE reader
 run against the real `rheocles-core` binary on spare ports with their own
 token file, settings file and output root — a real take with the manifest
 on disk, settings, rotation, preview. Both need nothing running beforehand
@@ -153,5 +155,10 @@ Rules that travel with it: PHP is never between the daemon and the DOM
 (the page holds `GET /events`; PHP handles clicks); the daemon is found
 before it is launched and only ours is ever stopped; two front ends share
 one core; the token is read from the daemon's file, again on every 401;
-the icon speaks for the daemon. The palette and type are `docs/BRAND.md`'s
+the icon speaks for the daemon; **the daemon opens the Finder** —
+`POST /takes/{id}/reveal` and `POST /reveal`, never the shell from PHP or
+Electron, so a browser front end gets the same button (a daemon too old
+for the route answers `no such route`, which the page reads as "update
+Rheocles", not as a missing file); the single file is the daemon's
+`settings.combine` and `manifest.combined`, the page only shows them. The palette and type are `docs/BRAND.md`'s
 — ptero's own chrome wraps the popover, it does not restyle it.

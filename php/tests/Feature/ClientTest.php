@@ -157,9 +157,10 @@ it('arms the built-in microphone, records a take, and leaves a manifest and a fi
 
 it('reads and changes the daemon settings', function () {
     $before = $this->client->settings();
-    expect($before)->toBe(['codec' => 'hevc', 'outputRoot' => $this->dir.'/out']);
+    expect($before)->toBe(['codec' => 'hevc', 'combine' => false, 'outputRoot' => $this->dir.'/out']);
 
     expect($this->client->updateSettings(['codec' => 'prores'])['codec'])->toBe('prores');
+    expect($this->client->updateSettings(['combine' => true])['combine'])->toBeTrue();
     $root = $this->dir.'/elsewhere';
     expect($this->client->updateSettings(['outputRoot' => $root])['outputRoot'])->toBe($root)
         ->and($this->client->discovery()['outputRoot'])->toBe($root);  // GET / reports the same root

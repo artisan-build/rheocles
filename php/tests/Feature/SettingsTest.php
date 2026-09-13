@@ -2,7 +2,6 @@
 
 use Native\Desktop\Facades\Clipboard;
 use Native\Desktop\Facades\Settings;
-use Native\Desktop\Facades\Shell;
 use Tests\Support\Server;
 
 /*
@@ -26,7 +25,7 @@ afterEach(function () {
 });
 
 it('reads and changes the daemon settings, and passes a refusal through', function () {
-    $this->getJson('/api/settings')->assertOk()->assertExactJson(['outputRoot' => '/tmp/rheocles-stub', 'codec' => 'hevc']);
+    $this->getJson('/api/settings')->assertOk()->assertExactJson(['outputRoot' => '/tmp/rheocles-stub', 'codec' => 'hevc', 'combine' => false]);
 
     $this->patchJson('/api/settings', ['codec' => 'prores', 'other' => 'ignored'])
         ->assertOk()->assertJson(['codec' => 'prores', 'outputRoot' => '/tmp/rheocles-stub']);
@@ -45,11 +44,6 @@ it('records without a codec, so the daemon default applies', function () {
     $this->patchJson('/api/settings', ['codec' => 'prores'])->assertOk();
     $this->postJson('/api/streams/microphone:stub/arm', ['armed' => true])->assertOk();
     $this->postJson('/api/record', ['name' => 'x'])->assertStatus(201)->assertJsonPath('take.settings.codec', 'prores');
-});
-
-it('reveals the output root through the shell', function () {
-    Shell::shouldReceive('showInFolder')->once()->with('/tmp/rheocles-stub');
-    $this->postJson('/api/settings/reveal')->assertOk()->assertJson(['revealed' => '/tmp/rheocles-stub']);
 });
 
 it('copies the token to the native clipboard', function () {

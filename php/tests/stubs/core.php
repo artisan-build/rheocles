@@ -7,6 +7,14 @@
  */
 header('Connection: close');
 header('Access-Control-Allow-Origin: *');
+// A browser's preflight, so the popover page itself can be pointed at the
+// stub (the daemon answers the same way; PROTOCOL § Consuming it).
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    header('Access-Control-Allow-Methods: GET, POST, PATCH, OPTIONS');
+    header('Access-Control-Allow-Headers: Authorization, Content-Type');
+    http_response_code(204);
+    exit;
+}
 $stateFile = getenv('STUB_STATE') ?: sys_get_temp_dir().'/rheo-stub-state.json';
 $armed = is_file($stateFile) ? (json_decode((string) file_get_contents($stateFile), true) ?: []) : [];
 $expected = $armed['__token'] ?? (getenv('STUB_TOKEN') ?: 'stub-token');
@@ -20,6 +28,18 @@ if ($given !== "Bearer $expected") {
     echo json_encode(['error' => 'missing or invalid bearer token', 'code' => 'unauthorized']);
     exit;
 }
+
+/*
+ * Every authenticated request, with its body verbatim, kept in the state
+ * file: a test that cares what was sent (reveal's `{}` versus `{ path }`)
+ * reads it back through Tests\Support\Server::requests().
+ */
+$rawBody = (string) file_get_contents('php://input');
+$armed['__requests'][] = ['method' => $_SERVER['REQUEST_METHOD'], 'path' => $path, 'body' => $rawBody];
+file_put_contents($stateFile, json_encode($armed));
+$save = function () use (&$armed, $stateFile) {
+    file_put_contents($stateFile, json_encode($armed));
+};
 
 header('Content-Type: application/json');
 if ($path === '/') {
@@ -44,6 +64,8 @@ $streams = [
         'capabilities' => ['video' => ['width' => 1280, 'height' => 720, 'maxFrameRate' => 30]]],
     ['id' => 'microphone:stub', 'kind' => 'microphone', 'name' => 'Stub Mic', 'model' => 'Stub:1:1',
         'capabilities' => ['audio' => ['sampleRate' => 48000, 'channels' => 2]]],
+    ['id' => 'window:stub', 'kind' => 'window', 'name' => 'Stub Window', 'model' => 'com.stub.App',
+        'capabilities' => ['video' => ['width' => 1200, 'height' => 900, 'maxFrameRate' => 60]]],
 ];
 $withState = function (array $s) use (&$armed) {
     $s['armed'] = (bool) ($armed[$s['id']] ?? false);
@@ -82,7 +104,7 @@ if (preg_match('~^/streams/([^/]+)/arm$~', $path, $m) && $_SERVER['REQUEST_METHO
         exit;
     }
     $armed[$id] = $body['armed'];
-    file_put_contents($stateFile, json_encode($armed));
+    $save();
     echo json_encode($withState($found[0]));
     exit;
 }
@@ -93,10 +115,10 @@ if (preg_match('~^/streams/([^/]+)/arm$~', $path, $m) && $_SERVER['REQUEST_METHO
  * the icon; the real thing is exercised against the binary in ClientTest.
  */
 $take = $armed['__take'] ?? null;
-$settings = $armed['__settings'] ?? ['outputRoot' => '/tmp/rheocles-stub', 'codec' => 'hevc'];
-$saveTake = function (?array $t) use (&$armed, $stateFile) {
+$settings = $armed['__settings'] ?? ['outputRoot' => '/tmp/rheocles-stub', 'codec' => 'hevc', 'combine' => false];
+$saveTake = function (?array $t) use (&$armed, $save) {
     $armed['__take'] = $t;
-    file_put_contents($stateFile, json_encode($armed));
+    $save();
 };
 $manifest = fn (array $t) => $t;
 if ($path === '/record' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -110,6 +132,15 @@ if ($path === '/record' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($set === []) {
         http_response_code(400);
         echo json_encode(['error' => 'no streams are armed', 'code' => 'bad_request']);
+        exit;
+    }
+    // Combine (PROTOCOL § Combine): the body's say, else the settings'
+    // default; at most one video stream, or the daemon's 400.
+    $combine = array_key_exists('combine', $body) ? (bool) $body['combine'] : (bool) ($settings['combine'] ?? false);
+    $videos = count(array_filter($set, fn ($s) => isset($s['capabilities']['video'])));
+    if ($combine && $videos > 1) {
+        http_response_code(400);
+        echo json_encode(['error' => "a combine take may hold at most one video stream ($videos armed)", 'code' => 'combine_requires_single_video']);
         exit;
     }
     $now = gmdate('Y-m-d\TH:i:s').'.000Z';
@@ -128,6 +159,9 @@ if ($path === '/record' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     ];
     if (isset($body['name'])) {
         $take['name'] = $body['name'];
+    }
+    if ($combine) {
+        $take['combined'] = ['path' => 'combined.mov', 'state' => 'pending'];
     }
     $saveTake($take);
     http_response_code(201);
@@ -162,9 +196,109 @@ if (preg_match('~^/takes/([^/]+)/(stop|markers)$~', $path, $m) && $_SERVER['REQU
             $s['events'][] = ['t' => 2, 'type' => 'leave'];
         }
         unset($s);
+        // The mux after stop, in the state STUB_COMBINE names: `complete`
+        // (default), `failed` with the daemon's reason, or `pending` — the
+        // daemon still writing, as the real one is when stop answers.
+        if (isset($take['combined'])) {
+            $take['combined'] = match (getenv('STUB_COMBINE') ?: 'complete') {
+                'failed' => ['path' => 'combined.mov', 'state' => 'failed', 'reason' => 'export failed: the video track could not be read'],
+                'pending' => ['path' => 'combined.mov', 'state' => 'pending'],
+                default => ['path' => 'combined.mov', 'state' => 'complete'],
+            };
+        }
     }
     $saveTake($take);
     echo json_encode($take);
+    exit;
+}
+/*
+ * Reveal (PROTOCOL § Reveal in the Finder): 204 and nothing else when the
+ * take, or the file within it, or the path under the root, exists; 404 in
+ * the daemon's words otherwise. The stub opens nothing, of course; the
+ * request log says what it was asked.
+ */
+$revealable = function (?string $path, array $known): bool {
+    $trimmed = trim((string) $path);
+    if (str_starts_with($trimmed, '/') || in_array('..', explode('/', $trimmed), true)) {
+        return false;
+    }
+    $cleaned = trim($trimmed, '/');
+
+    return $cleaned === '' || in_array($cleaned, $known, true);
+};
+if (preg_match('~^/takes/([^/]+)/reveal$~', $path, $m) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $body = json_decode($rawBody, true) ?? [];
+    if (! $take || $take['id'] !== rawurldecode($m[1])) {
+        http_response_code(404);
+        echo json_encode(['error' => 'no such take: '.rawurldecode($m[1]), 'code' => 'not_found']);
+        exit;
+    }
+    $files = array_map(fn ($s) => $s['path'], $take['streams']);
+    if (($take['combined']['state'] ?? null) === 'complete') {
+        $files[] = $take['combined']['path'];
+    }
+    if (! $revealable($body['path'] ?? null, $files)) {
+        http_response_code(404);
+        echo json_encode(['error' => "no such path in take {$take['id']}", 'code' => 'not_found']);
+        exit;
+    }
+    http_response_code(204);
+    header_remove('Content-Type');
+    exit;
+}
+if ($path === '/reveal' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $body = json_decode($rawBody, true) ?? [];
+    $known = $take ? [$take['destination'], dirname($take['destination'])] : [];
+    if (! $revealable($body['path'] ?? null, $known)) {
+        http_response_code(404);
+        echo json_encode(['error' => 'no such path under the output root', 'code' => 'not_found']);
+        exit;
+    }
+    http_response_code(204);
+    header_remove('Content-Type');
+    exit;
+}
+/*
+ * Combine after the fact (PROTOCOL § Combine): a finished take with at
+ * most one video and no mux running goes `pending`, and — the stub's mux
+ * being instant — reads as STUB_COMBINE says on the next GET, exactly as
+ * the daemon's does once its `take` event has fired. Idempotent while pending.
+ */
+if (preg_match('~^/takes/([^/]+)/combine$~', $path, $m) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (! $take || $take['id'] !== rawurldecode($m[1])) {
+        http_response_code(404);
+        echo json_encode(['error' => 'no such take: '.rawurldecode($m[1]), 'code' => 'not_found']);
+        exit;
+    }
+    if ($take['state'] === 'recording' || $take['state'] === 'created') {
+        http_response_code(409);
+        echo json_encode(['error' => 'the take is recording; stop it first', 'code' => 'conflict']);
+        exit;
+    }
+    if (($take['combined']['state'] ?? null) === 'pending') {
+        echo json_encode($take);
+        exit;
+    }
+    $videos = count(array_filter($take['streams'], fn ($s) => isset($s['format']['video'])));
+    if ($videos > 1) {
+        http_response_code(400);
+        echo json_encode(['error' => "a combine take may hold at most one video stream ($videos in the take)", 'code' => 'combine_requires_single_video']);
+        exit;
+    }
+    if ($take['streams'] === []) {
+        http_response_code(400);
+        echo json_encode(['error' => 'the take has no files on disk', 'code' => 'nothing_to_combine']);
+        exit;
+    }
+    $answer = $take;
+    $answer['combined'] = ['path' => 'combined.mov', 'state' => 'pending'];
+    $take['combined'] = match (getenv('STUB_COMBINE') ?: 'complete') {
+        'failed' => ['path' => 'combined.mov', 'state' => 'failed', 'reason' => 'export failed: the video track could not be read'],
+        'pending' => ['path' => 'combined.mov', 'state' => 'pending'],
+        default => ['path' => 'combined.mov', 'state' => 'complete'],
+    };
+    $saveTake($take);
+    echo json_encode($answer);
     exit;
 }
 if (preg_match('~^/takes/([^/]+)$~', $path, $m)) {
@@ -205,8 +339,16 @@ if ($path === '/settings') {
             }
             $settings['codec'] = $body['codec'];
         }
+        if (array_key_exists('combine', $body)) {
+            if (! is_bool($body['combine'])) {
+                http_response_code(400);
+                echo json_encode(['error' => 'combine must be true or false', 'code' => 'bad_request']);
+                exit;
+            }
+            $settings['combine'] = $body['combine'];
+        }
         $armed['__settings'] = $settings;
-        file_put_contents($stateFile, json_encode($armed));
+        $save();
     }
     echo json_encode($settings);
     exit;
@@ -214,7 +356,7 @@ if ($path === '/settings') {
 if ($path === '/token/rotate' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $new = bin2hex(random_bytes(32));
     $armed['__token'] = $new;
-    file_put_contents($stateFile, json_encode($armed));
+    $save();
     if ($f = getenv('STUB_TOKEN_FILE')) {
         file_put_contents($f, $new."\n");
     }
@@ -244,8 +386,13 @@ if (preg_match('~^/preview/([^/]+)$~', $path, $m)) {
     exit;
 }
 if ($path === '/takes') {
-    echo json_encode($take ? [['id' => $take['id'], 'name' => $take['name'] ?? null, 'state' => $take['state'],
-        'created' => $take['created'], 'destination' => $take['destination'], 'streams' => count($take['streams'])]] : []);
+    // Newest first; a take with a combined file carries its block in the
+    // summary too (PROTOCOL § Read), so a list needs no per-row fetch.
+    $summary = fn (array $t) => array_filter([
+        'id' => $t['id'], 'name' => $t['name'] ?? null, 'state' => $t['state'], 'created' => $t['created'],
+        'destination' => $t['destination'], 'streams' => count($t['streams']), 'combined' => $t['combined'] ?? null,
+    ], fn ($v) => $v !== null);
+    echo json_encode($take ? [$summary($take)] : []);
     exit;
 }
 http_response_code(404);

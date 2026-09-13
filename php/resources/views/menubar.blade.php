@@ -66,12 +66,42 @@
           <span class="writing" id="live-writing">0 writing</span>
         </span>
         <span class="finished" id="finished" hidden><i class="dot"></i><span id="finished-text"></span></span>
+        {{-- Beside the outcome: Open in Finder, the daemon's (POST /takes/{id}/reveal, the folder). --}}
+        <span class="spacer" id="finished-spacer" hidden></span>
+        <button class="finder" id="finished-finder" aria-label="Open in Finder" title="Open in Finder" hidden>@include('finder')</button>
       </div>
       <div class="take-markers" id="markers" hidden>
         <input class="field" id="marker-label" type="text" placeholder="marker label" autocomplete="off" spellcheck="false">
         <button class="btn" id="mark-button"><svg viewBox="0 0 24 24" fill="currentColor" width="8" height="8" aria-hidden="true"><path d="M4 2v20h2v-8h13l-3-5 3-5H6V2z"/></svg>Mark</button>
         <span class="spacer"></span>
         <span class="count" id="marker-count">no markers</span>
+      </div>
+      {{-- "Also save a single file": the daemon's settings.combine, shown only while at most one video stream is armed (feature brief §2). --}}
+      <label class="check combine" id="combine-row" hidden>
+        <input type="checkbox" id="combine"><span class="box"></span>
+        <span class="text">Also save a single file</span>
+        <span class="hint">combined.mov · no re-encode</span>
+      </label>
+      <p class="settings-error combine-error" id="combine-error" hidden></p>
+      {{-- The single file after stop, from manifest.combined: pending, complete with its own Open in Finder, or failed with the
+           reason — or, on a finished take with none that qualifies, the offer to write one now (POST /takes/{id}/combine). --}}
+      <div class="combined" id="combined" hidden>
+        <span class="pulse small" id="combined-pulse" hidden><i></i><i></i><i></i></span>
+        <i class="dot" id="combined-dot"></i>
+        <span class="text" id="combined-text"></span>
+        <span class="note" id="combined-note"></span>
+        <span class="spacer"></span>
+        <button class="btn small" id="combine-now" hidden>Combine now</button>
+        <button class="finder" id="combined-finder" aria-label="Open in Finder" title="Open in Finder" hidden>@include('finder')</button>
+      </div>
+      {{-- Recent takes, newest first, folded under the bar; each with the daemon's Open in Finder. --}}
+      <div class="recent" id="recent" hidden>
+        <button class="fold" id="recent-toggle" aria-expanded="false">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          <span class="kicker">Recent takes</span>
+          <span class="count" id="recent-count"></span>
+        </button>
+        <div class="recent-rows" id="recent-rows" hidden></div>
       </div>
     </div>
     <div class="strip">
