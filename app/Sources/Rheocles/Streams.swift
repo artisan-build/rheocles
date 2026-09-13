@@ -38,12 +38,19 @@ extension DaemonModel {
     /// Re-read the list. Called from the pulse; a failure here is not a
     /// daemon failure — `GET /` just succeeded — so it is shown, not acted on.
     func refreshStreams() async {
+        streamsRequest &+= 1
+        let sequence = streamsRequest
         do {
             let list: Server.StreamList = try await api.get("/streams")
+            // Only the newest read may land. The pulse and an arm's own
+            // re-read overlap, and the older answer — issued before the arm
+            // — would put the switch back until the next pulse.
+            guard sequence == streamsRequest else { return }
             streams = list.streams
             permissions = list.permissions
             streamsError = nil
         } catch {
+            guard sequence == streamsRequest else { return }
             streamsError = "\(error)"
         }
     }

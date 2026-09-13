@@ -42,6 +42,9 @@ final class DaemonModel {
     /// `GET /streams`, verbatim. See Streams.swift.
     var streams: [StreamInfo] = []
     var permissions: Permissions?
+    /// Sequence of `GET /streams` reads; an answer older than the newest
+    /// request is dropped. See `refreshStreams`.
+    var streamsRequest = 0
     var streamsError: String?
     var pending: Pending?
     var armError: String?
