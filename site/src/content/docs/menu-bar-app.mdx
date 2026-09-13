@@ -42,12 +42,69 @@ for an audio stream, the peak level that drives the meter. Nothing is
 captured when nobody is looking, and one preview runs at a time.
 
 **Record / Stop.** One button. Record is `POST /record`: create and start
-together. The current take's name and elapsed time sit beside it.
+together. The current take's name and elapsed time sit beside it, and under
+it, when the armed set allows one, the [*Also save a single
+file*](#also-save-a-single-file) checkbox.
+
+**After stop.** The outcome line — `complete` or `incomplete` with its
+reason — with an [Open in Finder](#open-in-finder) button for that take's
+folder; a *Single file · combined.mov* line when the take asked for one;
+and the recent takes, folded, each with its own Open in Finder.
 
 **Settings.** Output root and codec (HEVC or ProRes 422, one global setting)
 — `PATCH /settings`, and the root will not move while a take is active;
 *Show windows*; and the bearer token, shown as a pairing code with a rotate
-button that is `POST /token/rotate`.
+button that is `POST /token/rotate`. The output root has an Open in Finder
+button too.
+
+## Open in Finder
+
+A folder glyph, in Aegean, wherever a destination is shown:
+
+| beside | reveals | the call |
+|---|---|---|
+| the outcome line after `complete` or `incomplete` | that take's folder | `POST /takes/{id}/reveal {}` |
+| each recent take | that take's folder | `POST /takes/{id}/reveal {}` |
+| the *Single file · combined.mov* line, once `complete` | the file, selected in its folder | `POST /takes/{id}/reveal { "path": "combined.mov" }` |
+| the output root, in settings | the root | `POST /reveal {}` |
+
+The app never opens the Finder itself. Every button is a call to the
+daemon, which does the revealing on its own Mac — the same call
+Pteroprompter makes from a browser page, which cannot open the Finder at
+all, and the same one the NativePHP app makes. One implementation, on the
+one process that has the files. The button does nothing visible when the
+take folder is gone, because the daemon answers `404` and there is nothing
+to show; and it does nothing at all against a daemon older than this
+feature, which answers `404 not_found` for the route — see
+[Troubleshooting](/docs/troubleshooting#open-in-finder-does-nothing).
+
+## Also save a single file
+
+A checkbox in the take bar, beside Record, labelled *Also save a single
+file* with `combined.mov · no re-encode` after it. It is the daemon's
+`settings.combine`: ticking it is `PATCH /settings { "combine": true }`, so
+it is remembered across launches and shared with every other front end on
+the same daemon, and every take from then on is created with the daemon's
+default until you untick it.
+
+**It is shown only while at most one video stream is armed.** Arm a second
+display or camera and the checkbox goes — hidden, not greyed — because a
+passthrough mux has no single file to make from two pictures. Disarm one
+and it comes back, still ticked if it was. The setting is not changed by
+hiding it; a take recorded while it is hidden is created without a
+combined file and the daemon says so in `warnings`.
+
+After stop, the take bar shows *Single file · combined.mov* with a pulse
+while the daemon is writing it (`combined.state` is `pending`), a green
+dot and an Open in Finder button when it is `complete`, or the reason in
+oxide when it `failed`. A finished take that has no combined file and at
+most one video stream — one recorded with the box unticked, or one whose
+combine failed — shows a *Combine now* button instead, which is
+`POST /takes/{id}/combine`. The take's own outcome line does not change on
+a failed combine; the per-stream files are the take. What the file is and
+is not — one video track, every audio stream as its own track, no
+re-encode, no mixdown — is on [Recording a
+take](/docs/recording-a-take#one-file-when-there-is-one-camera).
 
 <Callout kind="note" title="It asks when it needs to">
 The first time you arm a kind of stream, macOS prompts for that permission.
@@ -63,8 +120,8 @@ the menu bar app and the NativePHP app, or a future Pteroprompter — share one
 daemon. There is no LaunchAgent in the MVP: the daemon lives as long as
 something is talking to it.
 
-The daemon's output root and codec live in `settings.json` beside the
-token. Launching `rheocles-core --output-root <path>` overrides the
+The daemon's output root, codec and combine default live in `settings.json`
+beside the token. Launching `rheocles-core --output-root <path>` overrides the
 persisted root for that run, and `--settings-file <path>` points it at a
 different settings file altogether — the way to point a test at a scratch
 volume without touching your settings.

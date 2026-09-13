@@ -29,7 +29,7 @@ const inline = (t: string) =>
 	</h3>
 	<div class="ep__grid">
 		<div class="ep__prose">
-			<p class="ep__summary">{e.summary}</p>
+			<p class="ep__summary" set:html={inline(e.summary)} />
 			{e.description && <p class="ep__desc" set:html={inline(e.description)} />}
 			{
 				e.request && (
@@ -59,7 +59,8 @@ const inline = (t: string) =>
 		</div>
 		<div class="ep__code">
 			{e.response && <Code code={e.response} lang={responseLang} title={e.method === 'WS' ? 'frames' : 'response'} />}
-			{e.responseNote && <p class="ep__note">{e.responseNote}</p>}
+			{!e.response && !e.responseTypes && e.status && <Code code={`${e.status} — no body`} lang="txt" title="response" />}
+			{e.responseNote && <p class="ep__note" set:html={inline(e.responseNote)} />}
 			{
 				e.responseTypes && e.responseTypes.length > 1 && (
 					<p class="ep__note">

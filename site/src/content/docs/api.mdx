@@ -98,9 +98,12 @@ const es = new EventSource(`http://127.0.0.1:7447/events?access_token=${token}`)
 | `POST /takes/{id}/leave` | `{ stream }` — finalises that file, stays armed |
 | `POST /takes/{id}/markers` | `{ label }` |
 | `GET /takes/{id}` | the manifest, live while recording |
-| `GET /takes` | recent takes, newest first |
+| `GET /takes` | recent takes, newest first, each with its `combined` block when it has one |
+| `POST /takes/{id}/combine` | passthrough-mux a finished take into `combined.mov` after the fact; answers `combined.state: "pending"`, completion on the `take` event |
+| `POST /takes/{id}/reveal` | `{ path? }` — reveal the take folder, or a file in it, in the Finder; `204` |
+| `POST /reveal` | `{ path? }` — reveal any path under the output root in the Finder; `204` |
 | `POST /record` | create and start, the one-click form |
-| `GET /settings` · `PATCH /settings` | `{ outputRoot, codec }`; the root cannot move while a take is active |
+| `GET /settings` · `PATCH /settings` | `{ outputRoot, codec, combine }`; the root cannot move while a take is active |
 | `POST /token/rotate` | a new token; the old one refused from the next request |
 | `GET /events` | SSE: `stream`, `take`, `levels`, `marker`, `stalled`, `settings` |
 | `GET /preview/{stream}` | one frame on demand — a JPEG for video, `{ levelDb }` for audio; one at a time |
@@ -128,16 +131,52 @@ frame, so it comes back as `base64` with its `contentType`:
 ← { "id": 16, "status": 200, "contentType": "image/jpeg", "base64": "/9j/4AAQSk…" }
 ```
 
+## Reveal in the Finder
+
+```json title="four calls, no body back"
+POST /takes/{id}/reveal { "path": "combined.mov" }   → 204
+POST /takes/{id}/reveal {}                            → 204   the take folder
+POST /reveal { "path": "takes/2026-09-11" }           → 204
+POST /reveal {}                                        → 204   the output root
+```
+
+Both open a Finder window on the daemon's Mac with the target selected.
+`POST /takes/{id}/reveal` reveals the take's folder; `path`, when given,
+is one of the take's files, relative to the folder, and selects it.
+`POST /reveal` reveals any path under the output root, relative to it —
+the settings panel's button sends an empty `path` and gets the root. A
+`path` must stay within its base (an absolute path, or one that climbs out
+with `..`, is refused) and must exist: an unknown take or a `path` that
+names nothing is `404`. Success is `204` and no body, on both transports.
+
+Why this is a daemon call and not something each app does locally: a
+browser page cannot open the Finder, and Pteroprompter is a browser page;
+and two front ends on one daemon should not implement the same thing
+twice. The menu bar app and the NativePHP app both call these routes
+and never touch `NSWorkspace` themselves.
+
+## Combine
+
+`POST /takes/{id}/combine` runs the single-file mux after the fact — on a
+take that is `complete` or `incomplete`, not the live one, with at most
+one video stream and at least one file on disk. It answers the manifest
+with `combined.state: "pending"` at once; the `take` event carries
+`complete` or `failed` when the export finishes. A second call while one
+is pending returns the pending manifest and starts nothing. `409` while
+the take is recording. What the file is, and the `combine` option on
+create that writes one without asking, is on [Recording a
+take](/docs/recording-a-take#one-file-when-there-is-one-camera).
+
 ## The events
 
 | event | when | carries |
 |---|---|---|
 | `stream` | a stream's armed state changes | the stream as it now is |
-| `take` | a take changes state | the manifest — with its join, leave and marker history |
+| `take` | a take changes state, or its `combined` mux finishes | the manifest — with its join, leave and marker history, and the `combined` block when it has one |
 | `levels` | ~4×/s while recording | `take` and `streams: [{ id, levelDb?, framesWritten, drift? }]`; `levelDb` is peak dBFS since the last event, audio only |
 | `marker` | a marker lands | `take` and the `{ t, label }` |
 | `stalled` | an armed or recording stream stops delivering | the stream as it now is |
-| `settings` | `PATCH /settings` | the new `{ outputRoot, codec }` |
+| `settings` | `PATCH /settings` | the new `{ outputRoot, codec, combine }` |
 
 The same objects, byte for byte, on SSE and on every authenticated
 WebSocket. Each has an `event` key and no `id`.
@@ -163,6 +202,17 @@ WebSocket frame, is on the [API reference](/docs/api/reference).
   lock, not the origin.
 - **Same destination twice is a `409 conflict`.** Rheocles never silently
   suffixes. A take already recording is a `409 take_active`.
+- **Combine has two codes of its own**, both `400`:
+  `combine_requires_single_video` when `combine: true` is asked for with
+  two or more video streams armed (or `POST /takes/{id}/combine` finds two
+  in the take), and `nothing_to_combine` when the take has no files on
+  disk. Both are in the [error table](/docs/api/reference#conventions).
+- **A default that cannot apply is dropped, with a warning.** When
+  `settings.combine` is on, the request did not say `combine`, and two or
+  more video streams are armed, create does not refuse: the take is made
+  without a combined file and `warnings` carries *combine is on by default
+  but 2 video streams are armed; recording without a combined file*. An
+  explicit `combine: true` in the same state is the `400`.
 
 ## The reference is generated
 
