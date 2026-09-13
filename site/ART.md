@@ -169,8 +169,11 @@ The PNG is the popover alone, 688×1332 (344×666 at 1×), no window chrome;
 
 ## The social cards
 
-The landing page's card is composed, not cropped — `og.html` in Sonocles'
-shape with the hero sticker on the right — and rendered to
+The landing page's card is composed, not cropped — `og.html`: the head
+band, brand row, tagline and copy on the left, the real popover
+(`src/assets/popover.png`) tall on the right behind the hero sticker, the
+pill bottom-left; the composition Len settled on 13 Sep 2026 after six
+rounds, the numbers in the file's comment — rendered to
 `public/og/index.png`; every other page's card is generated at build by
 `src/pages/og/[...slug].ts` with the family strip (`og-strip.html` → the
 logo slot) and the pill (`og-pill.html` → a transparent background layer).
@@ -185,5 +188,7 @@ node art/og.mjs og-strip.html src/assets/og-strip.png --size 320x44 --transparen
 node art/og.mjs og-pill.html src/assets/og-pill.png --transparent
 ```
 
-Re-render `index.png` whenever the hero plate or the tagline changes; the
-strip and pill only when the mark, wordmark or pill do.
+Re-render `index.png` whenever the hero plate, the popover screenshot or
+the tagline changes; the strip and pill only when the mark, wordmark or
+pill do. sonocles.com's card is the sibling composition in its own palette
+(`sonocles/site/og.html`).
