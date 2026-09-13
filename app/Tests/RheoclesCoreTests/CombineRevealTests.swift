@@ -64,6 +64,24 @@ struct RevealTests {
         #expect(Reveal.resolve("takes/2026-09-11", under: dir) == sub)
         #expect(Reveal.resolve("takes/nope", under: dir) == nil)
     }
+
+    @Test("A symlink under the base that points outside it is refused (physical containment)")
+    func symlinkEscape() throws {
+        let dir = try tempDir()
+        let fm = FileManager.default
+        // A symlink to /etc: /etc/hosts exists, so only physical containment
+        // (not existence) can reject `escape/hosts`.
+        try fm.createSymbolicLink(
+            at: dir.appendingPathComponent("escape"),
+            withDestinationURL: URL(fileURLWithPath: "/etc"))
+        #expect(Reveal.resolve("escape/hosts", under: dir) == nil)
+        // A symlink that stays inside the base still resolves.
+        let inside = dir.appendingPathComponent("real.txt")
+        try Data("x".utf8).write(to: inside)
+        try fm.createSymbolicLink(
+            at: dir.appendingPathComponent("innerlink"), withDestinationURL: inside)
+        #expect(Reveal.resolve("innerlink", under: dir) != nil)
+    }
 }
 
 @Suite("Combine")
@@ -84,7 +102,7 @@ struct CombineTests {
         let events: Events
     }
 
-    private func world(catalog: any StreamSource) throws -> World {
+    private func world(catalog: any StreamSource, defaultCombine: Bool = false) throws -> World {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("rheo-combine-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -93,6 +111,7 @@ struct CombineTests {
         let engine = TakeEngine(
             registry: registry, outputRoot: { root }, writerFactory: FakeWriterFactory(),
             machine: .init(hostname: "test.local", machineId: "TEST"),
+            defaultCombine: { defaultCombine },
             freeBytes: { _ in 1 << 40 }
         ) { events.record($0) }
         return World(root: root, registry: registry, engine: engine, events: events)
@@ -144,6 +163,99 @@ struct CombineTests {
         } catch let error as APIError {
             #expect(error.status == 400 && error.code == "nothing_to_combine")
         }
+    }
+
+    @Test("A defaulted combine with two videos is dropped, not refused; explicit still 400s")
+    func defaultedCombineDropped() async throws {
+        let w = try world(catalog: TwoVideos(), defaultCombine: true)
+        try await w.registry.arm("display:a")
+        try await w.registry.arm("display:b")
+        // No `combine` in the body: the default (settings.combine) applies, but
+        // with two videos it is dropped and the take records without combining.
+        let created = try await w.engine.create(.init(name: "defaulted"))
+        #expect(created.take.combined == nil)
+        // An explicit combine:true with two videos still fails. (A distinct
+        // name so it does not collide with the first take's destination.)
+        do {
+            _ = try await w.engine.create(.init(name: "explicit", combine: true))
+            Issue.record("expected explicit combine to be refused")
+        } catch let error as APIError {
+            #expect(error.status == 400 && error.code == "combine_requires_single_video")
+        }
+    }
+
+    @Test("Joining a second video into a live combine take is refused")
+    func joinSecondVideoRefused() async throws {
+        let w = try world(catalog: TwoVideos())
+        try await w.registry.arm("display:a")
+        let created = try await w.engine.create(.init(combine: true))  // one video
+        _ = try await w.engine.start(created.take.id)
+        do {
+            _ = try await w.engine.join(created.take.id, stream: "display:b")
+            Issue.record("expected the second video join to be refused")
+        } catch let error as APIError {
+            #expect(error.status == 400 && error.code == "combine_requires_single_video")
+        }
+    }
+
+    @Test("stop → combine emits the take event pending then complete and writes combined.mov")
+    func pendingThenComplete() async throws {
+        let w = try world(catalog: TwoStreams())
+        try await w.registry.arm("camera:fake")
+        try await w.registry.arm("microphone:fake")
+        let created = try await w.engine.create(.init())
+        let id = created.take.id
+        _ = try await w.engine.start(id)
+        let stopped = try await w.engine.stop(id)
+
+        // Plant real media where the take's files would be (FakeWriter writes
+        // nothing), then combine after the fact.
+        let folder = w.root.appendingPathComponent(stopped.destination)
+        let videoPath = try #require(stopped.streams.first { TakeEngine.isVideo($0.kind) }?.path)
+        let audioPath = try #require(stopped.streams.first { !TakeEngine.isVideo($0.kind) }?.path)
+        try SyntheticMedia.writeVideo(
+            to: folder.appendingPathComponent(videoPath), seconds: 1.0, fps: 30)
+        try SyntheticMedia.writeWav(
+            to: folder.appendingPathComponent(audioPath), seconds: 1.0, sampleRate: 48000)
+
+        let pending = try await w.engine.combine(id)
+        #expect(pending.combined?.state == .pending)
+
+        // The mux runs in a detached task; wait for the completion event.
+        var states: [Manifest.Combined.State] = []
+        for _ in 0..<100 {
+            states = w.events.combinedStates(for: id)
+            if states.contains(.complete) { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(states.contains(.pending))
+        #expect(states.contains(.complete))
+        #expect(
+            FileManager.default.fileExists(
+                atPath: folder.appendingPathComponent("combined.mov").path))
+        // The manifest on disk reflects the completion, not just the event.
+        let onDisk = try await w.engine.manifest(id)
+        #expect(onDisk.combined?.state == .complete)
+    }
+
+    @Test("On launch, a leftover pending combine is failed and its partial file removed")
+    func recoveryFailsPending() async throws {
+        let w = try world(catalog: TwoStreams())
+        try await w.registry.arm("camera:fake")
+        // A combine take writes `combined: pending` to disk at create.
+        let created = try await w.engine.create(.init(combine: true))
+        let folder = w.root.appendingPathComponent(created.take.destination)
+        let partial = folder.appendingPathComponent("combined.mov")
+        try Data("truncated".utf8).write(to: partial)  // a half-written mux
+
+        // Recover as a fresh daemon would on launch.
+        TakeEngine.recoverStaleManifests(in: w.root)
+
+        let recovered = try Manifest.decode(
+            Data(contentsOf: folder.appendingPathComponent("manifest.json")))
+        #expect(recovered.combined?.state == .failed)
+        #expect(recovered.combined?.reason == "daemon died")
+        #expect(!FileManager.default.fileExists(atPath: partial.path))
     }
 
     // MARK: The real thing — a passthrough mux of real media

@@ -531,14 +531,17 @@ paths:
     post:
       operationId: combineTake
       summary: >
-        Passthrough-mux a complete take into `combined.mov` after the fact — the
-        one video (if any) plus every audio stream as its own track. Runs
-        synchronously and returns the updated manifest.
+        Passthrough-mux a take into `combined.mov` after the fact — the one
+        video (if any) plus every audio stream as its own track. Starts the
+        mux and returns immediately with `combined.state` `pending`;
+        completion (`complete`, or `failed` with a reason) arrives as a `take`
+        event. Allowed on `complete` and `incomplete` takes; a second call
+        while one is pending is idempotent and returns the pending manifest.
       parameters:
         - $ref: '#/components/parameters/takeId'
       responses:
         '200':
-          description: The manifest with `combined` set (`state` `complete`, or `failed` with a reason).
+          description: The manifest with `combined.state` `pending`; watch for the `take` event to see `complete`/`failed`.
           content:
             application/json:
               schema:
@@ -563,7 +566,7 @@ paths:
                 $ref: '#/components/schemas/Error'
       x-ws:
         request: { id: 17, method: POST, path: /takes/20260912T040433-fd9q/combine }
-        response: { id: 17, status: 200, body: { id: 20260912T040433-fd9q, combined: { path: combined.mov, state: complete } } }
+        response: { id: 17, status: 200, body: { id: 20260912T040433-fd9q, combined: { path: combined.mov, state: pending } } }
   /token/rotate:
     post:
       operationId: rotateToken
@@ -891,6 +894,27 @@ components:
           type: string
         streams:
           type: integer
+        combined:
+          $ref: '#/components/schemas/Combined'
+    Combined:
+      type: object
+      description: >
+        The passthrough-muxed `combined.mov`, present only when the take was
+        created with `combine` (or one was run after the fact). `state`
+        advances from `pending` to `complete` or `failed`; completion arrives
+        as a `take` event. A failed combine never marks the take incomplete.
+      required: [path, state]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Combined file, relative to the take folder.
+        state:
+          type: string
+          enum: [pending, complete, failed]
+        reason:
+          type: string
+          description: Present only when `failed`.
     TakeState:
       type: string
       enum: [created, recording, complete, incomplete]
@@ -962,24 +986,7 @@ components:
             expectedDuration:
               type: number
         combined:
-          type: object
-          description: >
-            Present only when the take was created with `combine`. The
-            passthrough-muxed `combined.mov`; `state` advances from `pending`
-            to `complete` or `failed` after the take stops. A failed combine
-            never marks the take itself incomplete.
-          required: [path, state]
-          additionalProperties: false
-          properties:
-            path:
-              type: string
-              description: Combined file, relative to the take folder.
-            state:
-              type: string
-              enum: [pending, complete, failed]
-            reason:
-              type: string
-              description: Present only when `failed`.
+          $ref: '#/components/schemas/Combined'
     ManifestStream:
       type: object
       required: [id, kind, name, model, path, codec, format, framesWritten, events]

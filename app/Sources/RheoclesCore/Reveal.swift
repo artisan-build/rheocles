@@ -23,8 +23,11 @@ public enum Reveal {
         }
         let cleaned = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let url = cleaned.isEmpty ? base : base.appendingPathComponent(cleaned)
-        let basePath = base.standardizedFileURL.path
-        let target = url.standardizedFileURL.path
+        // Physical containment: resolve symlinks on both sides so a symlink
+        // planted under the root that points outside it (e.g. `link -> /etc`)
+        // cannot be used to reveal a path outside the root.
+        let basePath = base.resolvingSymlinksInPath().standardizedFileURL.path
+        let target = url.resolvingSymlinksInPath().standardizedFileURL.path
         guard target == basePath || target.hasPrefix(basePath + "/") else { return nil }
         guard FileManager.default.fileExists(atPath: target) else { return nil }
         return url

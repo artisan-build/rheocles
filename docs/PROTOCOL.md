@@ -64,7 +64,7 @@ next request.
 | `POST /takes/{id}/markers` | `{ "label": "…" }` → the manifest with the marker appended | step 6 |
 | `GET /settings` | the daemon's output root, default codec and default combine | step 6 |
 | `PATCH /settings` | `{ "outputRoot"?, "codec"?, "combine"? }` — change any | step 6 |
-| `POST /takes/{id}/combine` | passthrough-mux a complete take into `combined.mov` after the fact → the manifest | reveal+combine |
+| `POST /takes/{id}/combine` | passthrough-mux a `complete`/`incomplete` take into `combined.mov` → the manifest (`combined` pending; completion on the `take` event) | reveal+combine |
 | `POST /takes/{id}/reveal` | `{ "path"? }` — reveal the take folder (or a file in it) in the Finder; `204` | reveal+combine |
 | `POST /reveal` | `{ "path"? }` — reveal any path under the output root in the Finder; `204` | reveal+combine |
 | `POST /token/rotate` | `{}` → `{ "token" }` — new token, old one dead after the response | step 6 |
@@ -315,10 +315,17 @@ mux finishes after stop it flips to `complete` (or `failed` with a `reason`)
 and a `take` event fires. A **failed combine never marks the take itself
 incomplete** — the per-stream files are the take; the combined file is a
 convenience. `POST /takes/{id}/combine` runs the same mux **after the fact** on
-any complete take that qualifies, answering the updated manifest; it is
-`409` while the take is recording, `400 combine_requires_single_video` for
-more than one video, and `400 nothing_to_combine` if the take has no files on
-disk.
+any take that is not the live take and qualifies — **`complete` or
+`incomplete`** (a take that lost a stream is still worth a single file of
+what it kept). It answers immediately with `combined.state: "pending"` and
+fires the `take` event on completion, exactly like the post-stop path; a
+second call while one is already pending is **idempotent** and returns the
+pending manifest rather than racing a second mux. It is `409` while the take
+is recording, `400 combine_requires_single_video` for more than one video,
+and `400 nothing_to_combine` if the take has no files on disk. Joining a
+second video into a live combine take is refused the same way. A combine left
+`pending` by a daemon that died mid-mux is rewritten `failed` (`daemon died`)
+on the next launch and its half-written file removed.
 
 **Daemon lifecycle.** On **SIGINT/SIGTERM** the daemon finalizes an active
 take — every writer closes and the manifest is written `incomplete` with
@@ -333,11 +340,14 @@ already shows it `incomplete`.
 **Read** — `GET /takes/{id}` answers the manifest at any time: live while
 recording, from disk afterwards. `GET /takes` lists recent takes newest
 first (the active one, then this process's finished ones, then whatever
-the output root holds, up to 50):
+the output root holds, up to 50). A take that has a combined file carries its
+`combined` block in the summary too, so a list can show the single-file line
+without a per-row fetch:
 
 ```json
 [ { "id": "20260912T040433-fd9q", "name": "Episode 12", "state": "complete",
-    "created": "2026-09-12T04:04:33.235Z", "destination": "takes/2026-09-11/210433-episode-12", "streams": 5 } ]
+    "created": "2026-09-12T04:04:33.235Z", "destination": "takes/2026-09-11/210433-episode-12", "streams": 5,
+    "combined": { "path": "combined.mov", "state": "complete" } } ]
 ```
 
 ### Join, leave, markers (spec §6, §10)
