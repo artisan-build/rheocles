@@ -12,6 +12,7 @@ import os
 /// windows of real applications.
 public struct ScreenSource: StreamSource {
     private static let asked = OSAllocatedUnfairLock(initialState: false)
+    private static let log = Logger(subsystem: "build.artisan.rheocles", category: "ScreenSource")
 
     public init() {}
 
@@ -22,10 +23,21 @@ public struct ScreenSource: StreamSource {
         // The window-server connection is established once at daemon startup
         // (rheocles-core's main); no per-call AppKit hop is needed.
 
-        guard
-            let content = try? await SCShareableContent.excludingDesktopWindows(
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(
                 false, onScreenWindowsOnly: true)
-        else { return [] }
+        } catch {
+            // Without Screen Recording this throws, and the screen source then
+            // lists nothing (Permissions.screen explains that to a client). It
+            // can also throw if the window-server connection drops or the
+            // authorization lapses. Log the reason so a daemon that has gone
+            // empty says why, instead of silently returning nothing.
+            Self.log.error(
+                "SCShareableContent query failed; no displays or windows listed: \(error, privacy: .public)"
+            )
+            return []
+        }
 
         // NSScreen is main-thread only; read what we need in one hop.
         let screens = await MainActor.run { Self.screenInfo() }
