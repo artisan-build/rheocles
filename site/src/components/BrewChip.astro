@@ -26,7 +26,7 @@ const tail = cmd.slice(split + 1);
 		</svg>
 		Copied
 	</span>
-	<span class="brew-chip__hint" aria-hidden="true">Select to copy</span>
+	<span class="brew-chip__fail" aria-hidden="true">Select to copy</span>
 	<svg class="brew-chip__copy" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 		<rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5" />
 		<path d="M10.5 5.5V3.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2" />
@@ -76,12 +76,18 @@ const tail = cmd.slice(split + 1);
 					if (live) live.textContent = '';
 				}, 1400);
 			} else {
+				// Select to copy shows in the command's place, then the command
+				// comes back already selected: Cmd-C is the rest of the job.
 				chip.dataset.state = 'failed';
+				if (live) live.textContent = 'Copy failed — select to copy';
 				const range = document.createRange();
 				range.selectNodeContents(code);
 				const selection = window.getSelection();
 				selection?.removeAllRanges();
 				selection?.addRange(range);
+				timer = window.setTimeout(() => {
+					chip.dataset.state = '';
+				}, 1400);
 			}
 		});
 	}
@@ -113,7 +119,7 @@ const tail = cmd.slice(split + 1);
 	/* The chip is the box; the code inside sheds the inline-code styling. */
 	.brew-chip__cmd,
 	.brew-chip__done,
-	.brew-chip__hint {
+	.brew-chip__fail {
 		grid-area: 1 / 1;
 		padding: 0;
 		border-radius: 0;
@@ -125,9 +131,10 @@ const tail = cmd.slice(split + 1);
 	.brew-chip__cmd span {
 		white-space: nowrap;
 	}
-	/* Copied sits in the command's cell so the chip holds its width while
-	   the text is away. */
-	.brew-chip__done {
+	/* Copied and Select to copy sit in the command's cell so the chip holds
+	   its width while the text is away. */
+	.brew-chip__done,
+	.brew-chip__fail {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -181,21 +188,16 @@ const tail = cmd.slice(split + 1);
 		}
 	}
 
-	/* The clipboard refused: the command stays, selected, and the hint takes
-	   the glyph's place at the right. */
-	.brew-chip__hint {
-		display: none;
-		grid-area: 1 / 2;
-		justify-self: end;
-		white-space: nowrap;
-		font-size: 0.7rem;
-		color: var(--ink-faint);
+	/* The clipboard refused: the label swaps the same way, without a check
+	   or a flash, and the command returns selected. */
+	.brew-chip[data-state='failed'] .brew-chip__cmd {
+		visibility: hidden;
 	}
-	.brew-chip[data-state='failed'] .brew-chip__hint {
-		display: block;
+	.brew-chip[data-state='failed'] .brew-chip__fail {
+		visibility: visible;
 	}
 	.brew-chip[data-state='failed'] .brew-chip__copy {
-		display: none;
+		opacity: 0;
 	}
 
 	.brew-chip__live {
