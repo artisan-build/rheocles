@@ -50,6 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             Log.info("Rheocles launched, pid \(ProcessInfo.processInfo.processIdentifier)")
+            Termination.install {
+                DaemonModel.shared.shutdown()
+                Log.info("Rheocles terminated by signal")
+            }
             DaemonModel.shared.connect()
         }
     }

@@ -74,15 +74,11 @@ final class DaemonModel {
     var stalled: Set<String> = []
     /// The daemon's settings: output root and default codec. `GET /settings`
     /// on connect, then the `settings` event.
-    var settings: DaemonSettings?
+    var settings: Settings.Values?
     /// `GET /takes`, newest first, for the Recent list. Refreshed on
     /// connect and whenever a take ends.
     var recent: [TakeEngine.Summary] = []
     var showRecent = false
-    /// `manifest.combined` by take id — the single-file artefact's state.
-    /// Kept beside the manifest until Engine's `Manifest` carries the field
-    /// itself; then this goes and `take.combined` is read directly.
-    var combined: [String: Combined] = [:]
     var settingsError: String?
     /// Rotate is two clicks: the first arms it, the second does it. A
     /// rotation cuts off every other paired client, so it is not one slip.
@@ -172,9 +168,12 @@ final class DaemonModel {
         model.streamStatus = streamStatus
         model.rotateArmed = rotateArmed
         if let root = discovery?.outputRoot {
-            model.settings = DaemonSettings(outputRoot: root, codec: .hevc, combine: combine)
+            model.settings = Settings.Values(outputRoot: root, codec: .hevc, combine: combine)
         }
-        if let take, let combined { model.combined[take.id] = combined }
+        if var staged = take, let combined {
+            staged.combined = combined
+            model.take = staged
+        }
         model.recent = recent
         model.showRecent = showRecent
         model.api.token = "3f9a1c77e2b04d5f8a6c1e2d9b7f4a0c5d6e7f8091a2b3c4d5e6f70819a2b3c4"
@@ -510,7 +509,7 @@ final class DaemonModel {
         case "settings":
             if let payload = message.json["settings"],
                 let data = try? JSONSerialization.data(withJSONObject: payload),
-                let values = try? JSONDecoder().decode(DaemonSettings.self, from: data)
+                let values = try? JSONDecoder().decode(Settings.Values.self, from: data)
             {
                 settings = values
             }

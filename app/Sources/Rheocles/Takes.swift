@@ -53,27 +53,18 @@ extension Manifest {
 /// daemon writes after stop when asked — one video track and every audio
 /// stream as its own track. A bonus artefact: its failure never marks the
 /// take incomplete.
-struct Combined: Decodable, Equatable {
-    var path: String
-    var state: String
-    var reason: String?
+typealias Combined = Manifest.Combined
 
-    var isPending: Bool { state == "pending" }
-    var isComplete: Bool { state == "complete" }
+extension Manifest.Combined {
+    var isPending: Bool { state == .pending }
+    var isComplete: Bool { state == .complete }
 }
 
 extension DaemonModel {
-    /// Decode a manifest and keep its `combined`, if it has one.
+    /// Decode a manifest off the wire.
     @discardableResult
     func absorbTake(_ data: Data) throws -> Manifest {
-        let manifest = try Manifest.wireDecoder.decode(Manifest.self, from: data)
-        struct Envelope: Decodable {
-            var combined: Combined?
-        }
-        if let envelope = try? JSONDecoder().decode(Envelope.self, from: data) {
-            combined[manifest.id] = envelope.combined
-        }
-        return manifest
+        try Manifest.wireDecoder.decode(Manifest.self, from: data)
     }
 
     /// `GET /takes`, newest first.
@@ -175,7 +166,6 @@ extension DaemonModel {
                 Log.info("recording take \(created.take.id)")
                 for warning in created.warnings { Log.info("take warning: \(warning)") }
                 take = created.take
-                combined[created.take.id] = nil
                 tick(recording: created.take.isRecording)
                 await refreshStreams()
             } catch {

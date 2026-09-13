@@ -86,7 +86,7 @@ struct RevealCombineTests {
 
     }
 
-    @Test("combined is read from the manifest, in every state, and absent when the daemon has none")
+    @Test("combined is read from the manifest in every state, and absent when the take has none")
     func combinedDecodes() throws {
         let model = DaemonModel.staged(.running)
         func manifest(combined: String?) -> Data {
@@ -99,24 +99,18 @@ struct RevealCombineTests {
                   "settings": { "codec": "hevc" }\(combined.map { ", \"combined\": \($0)" } ?? "") }
                 """.utf8)
         }
-        let take = try model.absorbTake(
+        let pending = try model.absorbTake(
             manifest(combined: #"{ "path": "combined.mov", "state": "pending" }"#))
-        #expect(take.id == "tk_1")
-        #expect(model.combined["tk_1"]?.isPending == true)
-
-        _ = try model.absorbTake(
+        #expect(pending.combined?.isPending == true)
+        let complete = try model.absorbTake(
             manifest(combined: #"{ "path": "combined.mov", "state": "complete" }"#))
-        #expect(model.combined["tk_1"]?.isComplete == true)
-
-        _ = try model.absorbTake(
+        #expect(complete.combined?.isComplete == true)
+        let failed = try model.absorbTake(
             manifest(
                 combined: #"{ "path": "combined.mov", "state": "failed", "reason": "disk full" }"#))
-        #expect(model.combined["tk_1"]?.reason == "disk full")
-        #expect(model.combined["tk_1"]?.isComplete == false)
-
-        // A manifest without the field (an older daemon) reads as absent.
-        _ = try model.absorbTake(manifest(combined: nil))
-        #expect(model.combined["tk_1"] == nil)
+        #expect(failed.combined?.reason == "disk full")
+        #expect(failed.combined?.isComplete == false)
+        #expect(try model.absorbTake(manifest(combined: nil)).combined == nil)
     }
 
     @Test("The combine setting is the daemon's: PATCHed, read back, and absent reads false")
@@ -132,12 +126,25 @@ struct RevealCombineTests {
         // bad_request — never a crash, never a stale checkbox.
         #expect(model.combine == false)
         model.updateSettings(combine: true)
-        try await Task.sleep(for: .milliseconds(400))
-        // Until the daemon knows the field it answers without it, and the
-        // checkbox stays honest: unchecked. Once it does, this reads true.
+        #expect(await eventually { model.combine })
         #expect(model.settingsError == nil)
-        #expect(model.settings != nil)
-        #expect(model.combine == (model.settings?.combine ?? false))
+
+        // And a take created under it carries `combined` from the start,
+        // pending, with the stub-written files it will never mux.
+        model.arm("microphone:fake", true)
+        #expect(await eventually { model.armedStreams.count == 1 })
+        model.record()
+        #expect(await eventually { model.take?.isRecording == true })
+        #expect(model.take?.combined?.isPending == true)
+        model.stop()
+        #expect(await eventually { model.take?.isOver == true })
+        #expect(await eventually(.seconds(8)) { model.take?.combined?.isPending == false })
+        // Null writers leave no files, so the mux has nothing to do; either
+        // outcome is reported, never left pending.
+        #expect(model.take?.combined != nil)
+
+        model.updateSettings(combine: false)
+        #expect(await eventually { !model.combine })
     }
 }
 

@@ -172,7 +172,7 @@ enum Preview {
                             streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
                             permissions: granted, take: manifest(state: "complete", elapsed: 743),
                             combine: true,
-                            combined: Combined(path: "combined.mov", state: "pending"))))
+                            combined: Combined(path: "combined.mov", state: .pending))))
             ),
             (
                 "take-complete-combined",
@@ -183,7 +183,7 @@ enum Preview {
                             streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
                             permissions: granted, take: manifest(state: "complete", elapsed: 743),
                             combine: true,
-                            combined: Combined(path: "combined.mov", state: "complete"),
+                            combined: Combined(path: "combined.mov", state: .complete),
                             recent: recentTakes(), showRecent: true)))
             ),
             (
@@ -196,7 +196,7 @@ enum Preview {
                             permissions: granted, take: manifest(state: "complete", elapsed: 743),
                             combine: true,
                             combined: Combined(
-                                path: "combined.mov", state: "failed",
+                                path: "combined.mov", state: .failed,
                                 reason: "export cancelled: disk full"))))
             ),
             (

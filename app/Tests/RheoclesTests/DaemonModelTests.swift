@@ -199,3 +199,38 @@ extension String {
         String(repeating: lhs, count: rhs)
     }
 }
+
+/// `kill -TERM` on the app must stop a daemon it started — the delegate's
+/// `applicationWillTerminate` never runs for a signal.
+@Suite("Termination", .serialized)
+@MainActor
+struct TerminationTests {
+    @Test("SIGTERM runs the shutdown, which stops the core we launched")
+    func sigterm() async throws {
+        let port = StubDaemon.freePort()
+        let scratch = StubDaemon.scratch()
+        var configuration = DaemonModel.Configuration()
+        configuration.port = port
+        configuration.tokenFile = scratch.appendingPathComponent("token")
+        configuration.coreExecutable = StubDaemon.python
+        configuration.coreArguments = StubDaemon.arguments(
+            port: port, tokenFile: configuration.tokenFile)
+        configuration.coreLog = scratch.appendingPathComponent("core.log")
+        configuration.pulse = .milliseconds(200)
+        let model = DaemonModel(configuration: configuration)
+        model.connect()
+        #expect(await eventually(.seconds(8)) { model.status == .running })
+        let pid = try #require(model.corePID)
+
+        var ran = false
+        Termination.install(signals: [SIGTERM], exits: false) {
+            model.shutdown()
+            ran = true
+        }
+        defer { Termination.uninstall() }
+        kill(getpid(), SIGTERM)
+        #expect(await eventually { ran })
+        #expect(await eventually { kill(pid, 0) != 0 })
+        #expect(model.corePID == nil)
+    }
+}

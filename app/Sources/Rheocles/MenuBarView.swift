@@ -399,7 +399,7 @@ struct TakeBar: View {
                 markers
             } else {
                 if daemon.combineAvailable { combineRow }
-                if let take, take.isOver, let combined = daemon.combined[take.id] {
+                if let take, take.isOver, let combined = take.combined {
                     combinedLine(take, combined)
                 }
                 if !daemon.recent.isEmpty { recentTakes }
@@ -453,7 +453,7 @@ struct TakeBar: View {
                     .font(Type.mono(9.5))
                     .foregroundStyle(Brand.script)
             } else if !combined.isComplete {
-                Text(combined.reason ?? combined.state)
+                Text(combined.reason ?? combined.state.rawValue)
                     .font(Type.mono(9.5))
                     .foregroundStyle(Brand.oxide)
                     .lineLimit(1)
