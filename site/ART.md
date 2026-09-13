@@ -12,18 +12,14 @@ image renders as a flat placeholder in its proportions
 the right edge, which the "no vases" rule did not anticipate. It reads as a
 plant, not a Sonocles pot; left as is.
 
-**One regeneration approved by Len, 13 Sep 2026, not yet run:** hero, 1 image.
-Kronos and the doorway are clipped by the left edge of the frame, which no
-post-processing can fix. The style block now says "everything fully inside
-the frame, nothing touching the edges", every future prompt carries that
-line, and the hero subject now asks for Kronos standing whole in a doorway
-well inside the frame. Until the rerun the hero plate ships on its cream
-rectangle (`boxed` in `index.astro`) rather than as a half-sticker:
-
-```sh
-python3 art/make.py --only hero --force --env <the .env with OPENAI_API_KEY>
-python3 site/art/sticker.py hero        # after removing "hero" from SKIP
-```
+**Regenerated 13 Sep 2026, one run, 1 image, gpt-image-2 at `high`:** hero.
+The first hero had Kronos and the doorway clipped by the left edge of the
+frame, which no post-processing can fix. The style block now says
+"everything fully inside the frame, nothing touching the edges", every
+future prompt carries that line, and the hero subject asks for Kronos
+standing whole in a doorway well inside the frame. The rerun came back with
+the whole scene inside the frame and cuts to a clean sticker; the hero plate
+no longer ships boxed.
 
 ## The sticker cut
 
@@ -44,7 +40,8 @@ python3 art/sticker.py rig stone  # just those
 Check each result at 1× against the page: no cream halo, no holes where the
 fill leaked through a thin outline into a pale interior (tighten
 `TOLERANCES[name]` in the script if it does). A plate whose drawing touches
-the frame goes in `SKIP` and ships boxed until it is regenerated.
+the frame goes in `SKIP` and ships boxed (`boxed` on its `<Plate>`) until it
+is regenerated; nothing is in `SKIP` today.
 
 The register is Sonocles' `STYLE_FLAT` with the source shifted from Attic vase
 painting to Minoan fresco — see `docs/BRAND.md` § The plates. The style block

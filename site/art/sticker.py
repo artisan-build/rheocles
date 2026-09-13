@@ -54,7 +54,7 @@ MARGIN = 24
 
 # Plates that touch the frame: the cut would show as a hard straight edge.
 # Copied through unchanged until they are regenerated (site/ART.md).
-SKIP = {"hero"}
+SKIP: set[str] = set()
 
 
 def background(rgb: np.ndarray) -> np.ndarray:
