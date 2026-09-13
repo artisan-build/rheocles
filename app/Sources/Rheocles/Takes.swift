@@ -49,7 +49,80 @@ extension Manifest {
     }()
 }
 
+/// `manifest.combined` (feature brief §2): the single passthrough file the
+/// daemon writes after stop when asked — one video track and every audio
+/// stream as its own track. A bonus artefact: its failure never marks the
+/// take incomplete.
+typealias Combined = Manifest.Combined
+
+extension Manifest.Combined {
+    var isPending: Bool { state == .pending }
+    var isComplete: Bool { state == .complete }
+}
+
+extension Manifest {
+    /// "Combine now" qualifies a finished take with no combined file and at
+    /// most one video stream (feature brief, addendum).
+    var canCombine: Bool {
+        isOver && combined == nil && streams.filter { $0.format.video != nil }.count <= 1
+    }
+}
+
 extension DaemonModel {
+    /// `POST /takes/{id}/combine`: the mux after the fact. Answers the
+    /// manifest with `combined` pending; completion comes on the `take`
+    /// event. The current take, or a recent one — whichever it was.
+    func combineNow(_ id: String) {
+        takeError = nil
+        Task {
+            do {
+                let manifest = try absorbTake(
+                    try await api.postData("/takes/\(id)/combine", EmptyBody()))
+                Log.info("combining \(id)")
+                place(manifest)
+            } catch {
+                takeError = "POST /takes/\(id)/combine → \(error)"
+            }
+        }
+    }
+
+    /// Where a manifest that arrived goes: the current take if it is the
+    /// same one or is recording; otherwise it is a recent take's detail.
+    func place(_ manifest: Manifest) {
+        if manifest.isRecording || take?.id == manifest.id || take == nil {
+            take = manifest
+            tick(recording: manifest.isRecording)
+        }
+        recentDetail[manifest.id] = manifest
+    }
+
+    /// The manifests behind the Recent rows, fetched when the fold opens so
+    /// the rows can say whether a take qualifies for Combine now.
+    func loadRecentDetail() async {
+        for summary in recent.prefix(5) where recentDetail[summary.id] == nil {
+            if let data = try? await api.bytes("/takes/\(summary.id)").0,
+                let manifest = try? absorbTake(data)
+            {
+                recentDetail[summary.id] = manifest
+            }
+        }
+    }
+
+    /// Decode a manifest off the wire.
+    @discardableResult
+    func absorbTake(_ data: Data) throws -> Manifest {
+        try Manifest.wireDecoder.decode(Manifest.self, from: data)
+    }
+
+    /// `GET /takes`, newest first.
+    func refreshRecent() async {
+        if let list = try? await api.get(
+            "/takes", as: [TakeEngine.Summary].self, decoder: Manifest.wireDecoder)
+        {
+            recent = list
+        }
+    }
+
     struct RecordBody: Encodable {
         var name: String?
         /// The daemon's own default, sent back explicitly: as of step 6
@@ -134,9 +207,9 @@ extension DaemonModel {
         let name = takeName.trimmingCharacters(in: .whitespaces)
         Task {
             do {
-                let created: TakeEngine.Created = try await api.post(
-                    "/record", RecordBody(name: name.isEmpty ? nil : name, codec: settings?.codec),
-                    decoder: Manifest.wireDecoder)
+                let data = try await api.postData(
+                    "/record", RecordBody(name: name.isEmpty ? nil : name, codec: settings?.codec))
+                let created = try Manifest.wireDecoder.decode(TakeEngine.Created.self, from: data)
                 Log.info("recording take \(created.take.id)")
                 for warning in created.warnings { Log.info("take warning: \(warning)") }
                 take = created.take
@@ -157,9 +230,11 @@ extension DaemonModel {
         takeError = nil
         Task {
             do {
-                try await api.post("/takes/\(id)/stop", EmptyBody())
+                take = try absorbTake(try await api.postData("/takes/\(id)/stop", EmptyBody()))
+                tick(recording: false)
                 Log.info("stopped take \(id)")
-                await refreshTake(id: id)
+                await refreshStreams()
+                await refreshRecent()
             } catch {
                 takeError = "POST /takes/\(id)/stop → \(error)"
                 Log.info("stop failed: \(error)")
@@ -173,8 +248,7 @@ extension DaemonModel {
     /// Re-read one take's manifest.
     func refreshTake(id: String) async {
         do {
-            take = try await api.get(
-                "/takes/\(id)", as: Manifest.self, decoder: Manifest.wireDecoder)
+            take = try absorbTake(try await api.bytes("/takes/\(id)").0)
             tick(recording: take?.isRecording == true)
             await refreshStreams()
         } catch {

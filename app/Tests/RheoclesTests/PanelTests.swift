@@ -119,6 +119,7 @@ struct PanelTests {
         #expect(await eventually { model.take?.isRecording == true })
         #expect(model.take?.settings.codec == .prores)
         #expect(model.take?.streams.first?.codec == "prores")
+        #expect(await eventually { !model.takeBusy })
         model.stop()
         #expect(await eventually { model.take?.isOver == true })
     }
@@ -143,6 +144,7 @@ struct PanelTests {
         #expect(model.settingsError?.contains("409") == true)
         #expect(model.settings?.outputRoot == before)
 
+        #expect(await eventually { !model.takeBusy })
         model.stop()
         #expect(await eventually { model.take?.isOver == true })
         model.updateSettings(outputRoot: "/tmp/elsewhere")

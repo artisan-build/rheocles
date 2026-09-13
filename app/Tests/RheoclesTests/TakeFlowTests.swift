@@ -116,6 +116,7 @@ struct TakeFlowTests {
         #expect(model.takeError?.contains("take_active") == true)
         #expect(model.take?.isRecording == true)
 
+        #expect(await eventually { !model.takeBusy })
         model.stop()
         #expect(await eventually { model.take?.isOver == true })
         #expect(model.take?.state == .complete)
@@ -165,6 +166,7 @@ struct TakeFlowTests {
         #expect(await eventually { model.take?.markers.count == 2 })
         #expect(model.take?.markers.last?.label == "marker 2")
 
+        #expect(await eventually { !model.takeBusy })
         model.stop()
         #expect(await eventually { model.take?.isOver == true })
         #expect(model.take?.markers.count == 2)
@@ -201,6 +203,7 @@ struct TakeFlowTests {
         model.leave("microphone:fake")
         #expect(await eventually { model.takeError?.contains("409") == true })
 
+        #expect(await eventually { !model.takeBusy })
         model.stop()
         #expect(await eventually { model.take?.isOver == true })
     }

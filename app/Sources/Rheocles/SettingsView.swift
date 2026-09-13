@@ -26,10 +26,8 @@ struct SettingsView: View {
                         daemon.chooseOutputRoot()
                     }
                     .disabled(daemon.settings == nil || Preview.isRendering)
-                    PillButton("Reveal", colour: Brand.aegean, filled: false) {
-                        daemon.revealOutputRoot()
-                    }
-                    .disabled(daemon.settings == nil)
+                    FinderButton { daemon.revealOutputRoot() }
+                        .disabled(daemon.settings == nil)
                 }
                 note("Where new takes land. Cannot move while a take is active.")
             }
