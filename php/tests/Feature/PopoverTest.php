@@ -26,7 +26,7 @@ it('renders the popover with the daemon address and the event stream URL', funct
         ->assertOk()
         ->assertSee('Rheocles')
         ->assertSee('REE-oh-kleez')
-        ->assertSee('http :17447 · loopback · bearer', false)
+        ->assertSee('http :17447 · local · bearer', false)
         ->assertSee('127.0.0.1:17447\\/events?access_token=abc123', false)
         ->assertSee('rheocles-core is being started');
     unlink($tokenFile);

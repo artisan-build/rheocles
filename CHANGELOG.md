@@ -7,6 +7,10 @@ section from this file, and the release workflow refuses to run without one.
 
 ## [Unreleased]
 
+### Changed
+
+- The status line at the foot of both apps says `local`, not `loopback` — the same fact, in the word the rest of the app uses.
+
 ## [0.1.1] — 2026-09-13
 
 ### Added
