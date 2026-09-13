@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import RheoclesCore
 import Testing
 
@@ -40,12 +41,30 @@ struct TakeFlowTests {
         }
     }
 
+    /// A free port is only free until someone binds it, and two picks in a
+    /// row can even return the same number: the engine is started with
+    /// fresh ports again if the first pair is taken.
     func engine() throws -> (Server, DaemonModel) {
+        var lastError: Error?
+        for _ in 0..<5 {
+            do {
+                return try startEngine()
+            } catch NWError.posix(.EADDRINUSE) {
+                // NWListener's word for it; the next attempt picks again.
+                lastError = NWError.posix(.EADDRINUSE)
+            }
+        }
+        throw lastError!
+    }
+
+    private func startEngine() throws -> (Server, DaemonModel) {
         let port = StubDaemon.freePort()
+        var wsPort = StubDaemon.freePort()
+        while wsPort == port { wsPort = StubDaemon.freePort() }
         let scratch = StubDaemon.scratch()
         var server = Server.Configuration()
         server.httpPort = port
-        server.wsPort = StubDaemon.freePort()
+        server.wsPort = wsPort
         server.catalog = TwoStreams()
         server.sessionFactory = FakeFactory()
         // The fake sessions deliver no frames, so a real writer would finish
