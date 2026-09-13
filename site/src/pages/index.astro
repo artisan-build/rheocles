@@ -460,6 +460,12 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 	.hero__brew > span {
 		color: var(--ink-faint);
 	}
+	/* The chip-and-button may shrink to the column; the "or" wraps above it
+	   on a phone rather than the button under the chip. */
+	.hero__brew > :global(.homebrew) {
+		flex: 0 1 auto;
+		min-width: 0;
+	}
 
 	.aside {
 		font-size: 0.92rem;
