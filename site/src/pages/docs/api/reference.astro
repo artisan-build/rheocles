@@ -61,6 +61,8 @@ const badges = (api.planned ?? 0) > 0;
 			<tr><td><code>405</code></td><td><code>method_not_allowed</code></td><td>the path exists, the method does not</td></tr>
 			<tr><td><code>409</code></td><td><code>conflict</code></td><td>destination already exists; a take is not in the state the verb needs</td></tr>
 			<tr><td><code>409</code></td><td><code>take_active</code></td><td>a take is recording; stop it first</td></tr>
+			<tr><td><code>400</code></td><td><code>combine_requires_single_video</code></td><td>a combine take may hold at most one video stream</td></tr>
+			<tr><td><code>400</code></td><td><code>nothing_to_combine</code></td><td><code>POST /takes/{'{id}'}/combine</code> on a take with no files on disk</td></tr>
 			<tr><td><code>500</code></td><td><code>internal</code></td><td>a handler threw</td></tr>
 			<tr><td><code>501</code></td><td><code>unsupported</code></td><td>this kind cannot be captured yet</td></tr>
 			<tr><td><code>503</code></td><td><code>device_unavailable</code></td><td>the device is gone, busy, or refused the configuration</td></tr>

@@ -47,6 +47,10 @@ to be reconstructed.
 | `complete` | stopped cleanly; every file finalised |
 | `incomplete` | stopped by a failure, superseded before it started, or cut short by the daemon going away; `reason` says which; every file is playable as far as it got |
 
+The single file, when there is one, has a state of its own — `combined.state`,
+[below](#combined) — and it never feeds back into `state`. A take whose
+combine failed is still `complete`.
+
 A daemon asked to quit — `SIGINT` or `SIGTERM` — finalises the active take
 first: every writer closes and the manifest reads `incomplete`, reason
 `daemon stopped`, so a cleanly stopped daemon never leaves a take saying
@@ -99,7 +103,8 @@ started is superseded by the next create and reads `incomplete` with reason
     }
   ],
   "markers": [],
-  "settings": { "codec": "hevc", "expectedDuration": 3600 }
+  "settings": { "codec": "hevc", "expectedDuration": 3600 },
+  "combined": { "path": "combined.mov", "state": "complete" }
 }
 ```
 
@@ -121,6 +126,7 @@ Where this page and the reference disagree, the reference is right.
 | `version` | the Rheocles that wrote it |
 | `machine` | `hostname` and `machineId` (the kernel host UUID), for two-box setups |
 | `settings` | `codec` and `expectedDuration` in effect |
+| `combined` | only when the take was created with `combine`, or one was run after the fact: the single file's `path`, `state` and, when failed, `reason` — [below](#combined) |
 
 ### Each stream
 
@@ -144,6 +150,33 @@ Where this page and the reference disagree, the reference is right.
 `{ t, label }`, `t` in seconds from the cue. Rheocles stamps `t`; the client
 owns `label`, and Rheocles never interprets it. See [Markers](/docs/markers).
 
+### `combined`
+
+Present only when the take asked for a single file — `combine: true` on
+create, `settings.combine` on by default, or `POST /takes/{id}/combine`
+afterwards. See [One file, when there is one
+camera](/docs/recording-a-take#one-file-when-there-is-one-camera) for what
+the file is.
+
+| field | is |
+|---|---|
+| `path` | `combined.mov`, relative to the take folder |
+| `state` | `pending`, `complete` or `failed` |
+| `reason` | only when `failed`: what went wrong — an export error, or `daemon died` |
+
+| `combined.state` | meaning |
+|---|---|
+| `pending` | the mux is running, or is queued behind stop; the file may already exist on disk and is not yet whole |
+| `complete` | the single file is final: the one video track, its `tmcd`, and every audio stream as its own track |
+| `failed` | the mux did not finish; `reason` says why; the per-stream files are untouched and the take's own `state` is what it was |
+
+The block is written `pending` at create (or when the after-the-fact call
+is made) and flips to `complete` or `failed` when the export finishes, which
+is after `stopped`; a `take` event carries the manifest each time. A
+`pending` that outlives the daemon — it died mid-mux — is rewritten
+`failed`, reason `daemon died`, on the next launch, and the half-written
+file is removed.
+
 ## Reading it
 
 ```sh
@@ -154,12 +187,16 @@ curl -s -H "$H" localhost:7447/takes/20260912T040433-fd9q \
 ```json title="GET /takes — recent takes, newest first"
 [ { "id": "20260912T040433-fd9q", "name": "Episode 12", "state": "complete",
     "created": "2026-09-12T04:04:33.235Z",
-    "destination": "takes/2026-09-11/210433-episode-12", "streams": 5 } ]
+    "destination": "takes/2026-09-11/210433-episode-12", "streams": 5,
+    "combined": { "path": "combined.mov", "state": "complete" } } ]
 ```
 
 `GET /takes/{id}` serves the manifest live while recording and from disk
 afterwards. `GET /takes` lists the active take, then this process's finished
-ones, then whatever the output root holds, up to fifty. The file is the
+ones, then whatever the output root holds, up to fifty. A summary carries
+the take's `combined` block when it has one — `path`, `state`, `reason` —
+so a list can show the single-file line without fetching each manifest; a
+take that never asked for one has no `combined` key at all. The file is the
 source; the API is a reader.
 
 The same manifest arrives as a `take` event on `/events` and the WebSocket

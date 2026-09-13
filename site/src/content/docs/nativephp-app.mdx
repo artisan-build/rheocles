@@ -14,9 +14,10 @@ NativePHP first, against the real daemon, and then lift it whole.
 
 So `php/` is a second front end with full parity to the [menu bar
 app](/docs/menu-bar-app): every stream with an arm toggle, preview on
-demand, one Record button, settings, the pairing code. It bundles its own
-copy of `rheocles-core` as a sidecar and launches it on demand, exactly as
-the Swift app does.
+demand, one Record button, the *Also save a single file* checkbox, Open in
+Finder wherever a destination is shown, settings, the pairing code. It
+bundles its own copy of `rheocles-core` as a sidecar and launches it on
+demand, exactly as the Swift app does.
 
 ## What it is not
 
@@ -24,6 +25,43 @@ It does not reimplement capture. AVFoundation and ScreenCaptureKit are not
 reachable from PHP, and nothing about recording happens in this app. "Feature
 complete" means the UI: everything you can click in the Swift popover you can
 click here, and both clicks become the same API call.
+
+## Open in Finder
+
+The same button in the same four places as the menu bar app, making the
+same calls:
+
+| beside | reveals | the call |
+|---|---|---|
+| the outcome line after `complete` or `incomplete` | that take's folder | `POST /takes/{id}/reveal {}` |
+| each recent take | that take's folder | `POST /takes/{id}/reveal {}` |
+| the *Single file · combined.mov* line, once `complete` | the file, selected in its folder | `POST /takes/{id}/reveal { "path": "combined.mov" }` |
+| the output root, in settings | the root | `POST /reveal {}` |
+
+NativePHP could open the Finder itself, and does not. The daemon reveals,
+on its own Mac, for every front end — this app, the Swift app, and a
+Pteroprompter page that cannot open the Finder at all — so there is one
+implementation rather than three. Against a daemon older than the route
+the button does nothing, because the daemon answers `404 not_found`; see
+[Troubleshooting](/docs/troubleshooting#open-in-finder-does-nothing).
+
+## Also save a single file
+
+The same checkbox as the menu bar app, in the take bar beside Record,
+bound to the daemon's `settings.combine` through `PATCH /settings`. Tick it
+in this app and it is ticked in the menu bar app, because it is one
+setting on one daemon.
+
+**Shown only while at most one video stream is armed**, hidden — not
+disabled — otherwise, and back when a video stream is disarmed. After
+stop, a *Single file · combined.mov* line with a spinner while
+`combined.state` is `pending`, its own Open in Finder when `complete`, the
+reason when `failed`; and on a finished take with no combined file and at
+most one video stream, a *Combine now* button that is
+`POST /takes/{id}/combine`. A failed combine never changes the take's own
+outcome. What the file is — a passthrough mux, no re-encode, no mixdown —
+is on [Recording a
+take](/docs/recording-a-take#one-file-when-there-is-one-camera).
 
 ## One daemon
 

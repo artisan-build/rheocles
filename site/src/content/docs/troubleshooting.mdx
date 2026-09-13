@@ -148,6 +148,37 @@ files are fragmented MOVs that play to their last fragment and WAVs that
 read, and the manifest has every stream's `started` and `timecode`. Nothing
 needs reconstructing, and nothing pretends the take finished.
 
+## The single-file box is missing
+
+*Also save a single file* is shown only while at most one video stream is
+armed. Two displays, a camera and a screen, a window and a display — any
+two video streams — and the checkbox is hidden, not greyed, because a
+passthrough mux has no single file to make from two pictures; Rheocles
+does not composite. Disarm one and it comes back, still ticked if it was.
+Over the API the same state is a `400 combine_requires_single_video` on
+`combine: true`, or, when only `settings.combine` asked for it, a take
+created without a combined file and a line in `warnings`.
+
+## `combined.mov` says `failed`, reason `daemon died`
+
+The daemon went — a crash, a `kill -9`, a power cut — while the mux was
+`pending`, and the next launch marked it and removed the half-written
+file. The take's own `state` is what it was; the per-stream files are
+untouched and are the take. Press *Combine now* or call
+`POST /takes/{id}/combine` and it is written again from those files.
+
+## Open in Finder does nothing
+
+The button is a call to the daemon — `POST /takes/{id}/reveal` or
+`POST /reveal` — and a daemon from before the route answers
+`404 not_found`, *no such route*, which the app has nothing to show for.
+This happens when the app has been updated and is paired to an older
+`rheocles-core` that was already running on 7447: the NativePHP app's, or
+one left over. Quit whatever started it and let the new app start its own;
+`GET /` reports the `version`. A `404` with *no such take* or a `path` that
+names nothing is the other case: the folder has been moved or deleted since
+the take, and there is nothing to reveal.
+
 ## Requests answer `401`
 
 The token does not match. It was rotated — from the popover or

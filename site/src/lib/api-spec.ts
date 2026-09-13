@@ -19,6 +19,7 @@ export interface Endpoint {
 	summary: string;
 	description?: string;
 	request?: Field[];
+	status?: string; // the 2xx the YAML pins; shown when there is no body to show
 	response?: string; // example JSON
 	responseTypes?: string[]; // content types the YAML lists for the 2xx
 	responseFields?: Field[]; // from the YAML schema

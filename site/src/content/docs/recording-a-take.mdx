@@ -104,7 +104,8 @@ Rheocles/                              ← output root, one field on GET /
     ├── prompter-xl.mov                HEVC, native resolution and rate, timecode track
     ├── elgato-4k-x.mov
     ├── scarlett-2i2-usb.wav           Broadcast Wave, 48 kHz 24-bit, bext time reference
-    └── system-audio.wav
+    ├── system-audio.wav
+    └── combined.mov                   only with combine: the one video plus every audio stream, muxed, not re-encoded
 ```
 
 | kind | container | `codec` | carries its time as |
@@ -201,6 +202,64 @@ feature.
 Broadcast Wave stops at 4 GB. At 48 kHz, 24-bit, that is 144 kB a second per
 channel: about 8.3 hours mono, about 4.1 hours stereo. It is the format's
 limit and Rheocles does not work around it.
+
+## One file, when there is one camera
+
+One video and one microphone is the Loom shape, and people who record that
+shape want one file. Set `combine: true` on `POST /takes` or `POST /record`
+(or leave it off and let `settings.combine` decide — it defaults to
+`false`) and when the take stops, after every per-stream file is final, the
+daemon writes `combined.mov` beside them.
+
+**What it is.** A passthrough mux. The video track is copied as-is, with
+its `tmcd` track, so the single file carries the same time of day as the
+per-stream one; every audio stream becomes its own track in the same file,
+each one enabled, so QuickTime plays them together and an NLE still has
+them apart. There is no re-encode — the bits are the ones the encoder
+already wrote — and there is no mixdown: two microphones are two tracks,
+not one. It is `AVMutableComposition` and a passthrough export, not ffmpeg.
+
+**When it appears.** The combine option is allowed when the armed set holds
+**at most one video stream**. Two displays, or a camera and a screen, is a
+`400 combine_requires_single_video` — a passthrough mux cannot put two
+pictures in one frame, and Rheocles does not compose. Zero video streams
+is allowed: an audio-only take combines to an audio-only `.mov` with a
+track per microphone. If `settings.combine` is on but the request never
+asked for `combine` and two or more video streams are armed, the take is
+created without a combined file and `warnings` says so — *combine is on by
+default but 2 video streams are armed; recording without a combined file*
+— because the front ends hide the checkbox in that state and a plain
+Record should still record.
+
+**What it is not.** It is not an edit and not a mixdown. It does not pick a
+level, does not duck one track under another, does not crop, scale or
+composite, and does not touch the per-stream files, which remain the take.
+It is one more file, for the person who wants one file.
+
+**After the fact.** `POST /takes/{id}/combine` runs the same mux on any
+take that is not the live one and qualifies — `complete`, or `incomplete`
+(a take that lost a stream is still worth a single file of what it kept).
+It answers at once with `combined.state: "pending"` and fires a `take`
+event when the mux finishes; a second call while one is pending returns the
+pending manifest rather than starting a second mux. `409` while the take is
+recording; `400 nothing_to_combine` if the take has no files on disk. In
+the apps this is the *Combine now* button, on a finished take that has no
+combined file and at most one video stream.
+
+**When it fails.** The manifest's `combined` block reads `failed` with a
+`reason`, and nothing else changes: a failed combine **never** marks the
+take `incomplete`. The per-stream files are the take; the combined file is
+a convenience. A combine that a dying daemon left `pending` is rewritten
+`failed`, reason `daemon died`, on the next launch, and the half-written
+file is removed — run `POST /takes/{id}/combine` again if you still want
+it.
+
+<Callout kind="note" title="Read the block, not the folder">
+`combined.mov` can exist on disk while `combined.state` is still `pending` —
+the export writes as it goes. The manifest says when it is done, and
+[Takes and the manifest](/docs/takes-and-the-manifest#combined) has the
+block's fields and states.
+</Callout>
 
 ## No pause
 

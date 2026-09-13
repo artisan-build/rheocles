@@ -108,6 +108,7 @@ function fromOpenApi(doc: Any): Map<string, Endpoint> {
 				summary: o.summary ?? '',
 				description: o.description,
 				request: request.length ? request : undefined,
+				status: ok?.[0],
 				response: example(okContent, deref),
 				responseTypes: Object.keys(okContent).length ? Object.keys(okContent) : undefined,
 				responseFields: okSchema ? fields(okSchema, deref) : undefined,
@@ -175,11 +176,23 @@ export function loadApi(): ApiSpec {
 			return { ...e, planned: true };
 		}),
 	}));
-	// Routes the YAML has that the spec table does not: append under Other.
+	// Routes the YAML has that the spec table does not: file each under the
+	// group whose routes share its first path segment (/takes/{id}/combine
+	// joins Takes), else under a group named for the segment (/reveal makes
+	// Reveal). Nothing about the route itself is hand-typed.
+	const segment = (path: string) => path.split('/').filter(Boolean)[0] ?? '';
 	const extra = [...fromYaml.entries()].filter(([k]) => !seen.has(k)).map(([, e]) => e);
-	if (extra.length) {
-		pinned += extra.length;
-		groups.push({ id: 'other', label: 'Other', endpoints: extra });
+	for (const e of extra) {
+		pinned++;
+		const seg = segment(e.path);
+		let group = groups.find((g) => g.endpoints.some((x) => x.method !== 'WS' && segment(x.path) === seg));
+		if (!group) {
+			group = { id: seg || 'other', label: seg ? seg[0].toUpperCase() + seg.slice(1) : 'Other', endpoints: [] };
+			// Before the WebSocket group, which closes the page.
+			const ws = groups.findIndex((g) => g.id === 'websocket');
+			groups.splice(ws < 0 ? groups.length : ws, 0, group);
+		}
+		group.endpoints.push(e);
 	}
 	// Events the YAML pins, then the spec's planned ones it does not name yet.
 	const fromYamlEvents = (doc['x-events'] as Any[] | undefined)?.map((ev) => ({
