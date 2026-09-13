@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  The FREE · OPEN SOURCE pill for the generated cards. astro-og-canvas has one
+  logo slot (the strip) and no second text block, but it composes a
+  background image over the ground before the logo and the title — so the
+  pill rides in as a transparent 1200×630 layer with nothing on it but the
+  pill, top right, level with the strip. The numbers mirror the route's
+  layout: padding 72, the strip 44 tall at the top-left margin.
+
+      cd site && node art/og.mjs og-pill.html src/assets/og-pill.png --transparent
+-->
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; margin:0; }
+  body { width:1200px; height:630px; background:transparent; overflow:hidden; position:relative; }
+  .pill { position:absolute; top:77px; right:72px; display:inline-flex; align-items:center; line-height:1;
+    background:#2e5c86; color:#faf2e4; font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:500;
+    letter-spacing:.12em; text-transform:uppercase; padding:9px 16px 8px 18px; border-radius:999px; }
+</style></head>
+<body><span class="pill">Free · Open source</span></body></html>
