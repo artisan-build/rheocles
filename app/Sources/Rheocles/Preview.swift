@@ -96,6 +96,18 @@ enum Preview {
                             permissions: granted, showWindows: true)))
             ),
             (
+                // rheocles.com's hero screenshot (site/ART.md § Screenshots):
+                // two streams chosen, a display and a window listed and left
+                // alone, nothing recording. "You choose" shown, not said.
+                "chosen",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, showWindows: true)))
+            ),
+            (
                 "permissions",
                 AnyView(
                     MenuBarView(

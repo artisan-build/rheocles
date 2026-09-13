@@ -8,8 +8,8 @@ const docs = await getCollection('docs');
 
 const pages: Record<string, { title: string; description: string }> = {
 	index: {
-		title: 'Every stream, its own file, on one cue.',
-		description: 'Cameras, microphones, displays, windows — each to its own file, time-of-day timecode in every one. Free, open source, MIT.',
+		title: 'Every stream, in its own file, on one cue.',
+		description: 'The cameras, microphones, displays and windows you choose — each in its own file, time-of-day timecode in every one. Free, open source, MIT.',
 	},
 	'404': { title: 'Not found.', description: 'Nothing at this path. The manifest would have said.' },
 	'docs/api/reference': {
