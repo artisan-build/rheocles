@@ -139,6 +139,10 @@ struct RevealCombineTests {
         model.stop()
         #expect(await eventually { model.take?.isOver == true })
         #expect(await eventually(.seconds(8)) { model.take?.combined?.isPending == false })
+        // And what the popover holds is what the daemon says.
+        let id = try #require(model.take?.id)
+        let onWire = try model.absorbTake(try await model.api.bytes("/takes/\(id)").0)
+        #expect(onWire.combined?.state == model.take?.combined?.state)
         // Null writers leave no files, so the mux has nothing to do; either
         // outcome is reported, never left pending.
         #expect(model.take?.combined != nil)
@@ -230,6 +234,9 @@ struct CombineNowTests {
         model.combineNow(id)
         #expect(await eventually { model.take?.combined != nil })
         #expect(await eventually(.seconds(8)) { model.take?.combined?.isPending == false })
+        // And what the popover holds is what the daemon says.
+        let onWire = try model.absorbTake(try await model.api.bytes("/takes/\(id)").0)
+        #expect(onWire.combined?.state == model.take?.combined?.state)
         #expect(model.take?.canCombine == false)
         #expect(model.recentDetail[id]?.combined != nil)
         #expect(model.take?.combined?.isComplete == false)
@@ -290,7 +297,7 @@ struct OrderingTests {
         #expect(model.take?.isRecording == true)
     }
 
-    @Test("A re-combine is progress: failed → pending and complete → pending are applied")
+    @Test("A stop answer's pending never undoes the mux's result; a retry we asked for does")
     func combineRetry() throws {
         func finished(combined: String) throws -> Manifest {
             try Manifest.wireDecoder.decode(
@@ -307,13 +314,21 @@ struct OrderingTests {
         model.place(
             try finished(
                 combined: #"{ "path": "combined.mov", "state": "failed", "reason": "mux died" }"#))
+        // The stop answer (pending at the moment of stop) landing after the
+        // mux's completion event must not undo the result.
         model.place(try finished(combined: #"{ "path": "combined.mov", "state": "pending" }"#))
+        #expect(model.take?.combined?.isPending == false)
+        #expect(model.recentDetail["tk"]?.combined?.isPending == false)
+        // A retry this app asked for is placed regardless; its result then
+        // lands like any other, and a stale pending after it is ignored.
+        model.place(
+            try finished(combined: #"{ "path": "combined.mov", "state": "pending" }"#), force: true)
         #expect(model.take?.combined?.isPending == true)
         #expect(model.recentDetail["tk"]?.combined?.isPending == true)
         model.place(try finished(combined: #"{ "path": "combined.mov", "state": "complete" }"#))
         #expect(model.take?.combined?.isComplete == true)
         model.place(try finished(combined: #"{ "path": "combined.mov", "state": "pending" }"#))
-        #expect(model.take?.combined?.isPending == true)
+        #expect(model.take?.combined?.isComplete == true)
     }
 
     @Test("A `recording` event from before a join does not undo the join's answer")

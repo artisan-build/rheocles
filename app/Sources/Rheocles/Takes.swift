@@ -78,10 +78,17 @@ extension Manifest {
             other.streams.count + other.streams.reduce(0) { $0 + $1.events.count }
             + other.markers.count
         if mine != theirs { return mine > theirs }
-        // A combined result appearing is progress. Any change in one that is
-        // there is progress too: failed → pending and complete → pending
-        // are a retry, which the daemon allows on any finished take.
+        // A combined result appearing is progress, and so is one finishing.
+        // A `pending` over a finished result is not — it is the stop answer
+        // (pending at the moment of stop) landing after the mux's own
+        // completion event, which happens on null writers in a millisecond
+        // and would leave the row pulsing for ever. A retry that this app
+        // asked for is placed with `force:`; one another client asked for
+        // shows when its own completion lands.
         if (combined == nil) != (other.combined == nil) { return combined != nil }
+        if let mine = combined, let theirs = other.combined {
+            return !(mine.isPending && !theirs.isPending)
+        }
         return true
     }
 
@@ -103,7 +110,7 @@ extension DaemonModel {
                 let manifest = try absorbTake(
                     try await api.postData("/takes/\(id)/combine", EmptyBody()))
                 Log.info("combining \(id)")
-                place(manifest)
+                place(manifest, force: true)
             } catch {
                 takeError = "POST /takes/\(id)/combine → \(error)"
             }
@@ -120,9 +127,9 @@ extension DaemonModel {
     /// hold is applied only if it is at least as far along — by state, and
     /// within a state by what it has accumulated — which is what made
     /// "Join adds a cold stream's file mid-take" fail one CI run in ten.
-    func place(_ manifest: Manifest) {
+    func place(_ manifest: Manifest, force: Bool = false) {
         if let current = take, current.id == manifest.id {
-            if manifest.isAtLeastAsFarAlong(as: current) {
+            if force || manifest.isAtLeastAsFarAlong(as: current) {
                 take = manifest
                 tick(recording: manifest.isRecording)
             }
@@ -130,7 +137,9 @@ extension DaemonModel {
             take = manifest
             tick(recording: manifest.isRecording)
         }
-        if let known = recentDetail[manifest.id], !manifest.isAtLeastAsFarAlong(as: known) {
+        if !force, let known = recentDetail[manifest.id],
+            !manifest.isAtLeastAsFarAlong(as: known)
+        {
             return
         }
         recentDetail[manifest.id] = manifest
@@ -308,7 +317,10 @@ extension DaemonModel {
     /// one that was running when the app launched. Called from the pulse
     /// until the event stream carries `state`.
     func discoverActiveTake() async {
-        if let take, take.isRecording {
+        if let take, take.isRecording || take.combined?.isPending == true {
+            // Recording, or a finished take whose combine is still running:
+            // both change under us, and an event can be missed while the
+            // stream reconnects, so the pulse reads them either way.
             await refreshTake(id: take.id)
             return
         }
