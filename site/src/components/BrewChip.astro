@@ -1,0 +1,211 @@
+---
+// The hero's Homebrew chip: a button that copies the command. The command
+// lives once, in `data-cmd`; the script reads it from there and never
+// repeats it. The two halves of the command are nowrap so the only place it
+// may break is the space between them, never at the hyphen in artisan-build.
+//
+// Copied and failed states are set on `data-state`; the styles below do the
+// swap. The check draws itself and the ground flashes to the aegean on
+// success; base.css already switches every animation off under
+// prefers-reduced-motion, and the base styles here are the finished states,
+// so reduced motion gets the plain swap for free.
+interface Props {
+	cmd: string;
+}
+const { cmd } = Astro.props;
+const split = cmd.lastIndexOf(' ');
+const head = cmd.slice(0, split);
+const tail = cmd.slice(split + 1);
+---
+
+<button type="button" class="brew-chip" data-cmd={cmd} aria-label="Copy the Homebrew command">
+	<code class="brew-chip__cmd"><span>{head}</span> <span>{tail}</span></code>
+	<span class="brew-chip__done" aria-hidden="true">
+		<svg class="brew-chip__check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M3 8.5l3.2 3.2L13 5" pathLength="1" />
+		</svg>
+		Copied
+	</span>
+	<span class="brew-chip__fail" aria-hidden="true">Select to copy</span>
+	<svg class="brew-chip__copy" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+		<rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5" />
+		<path d="M10.5 5.5V3.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2" />
+	</svg>
+</button>
+<span class="brew-chip__live" aria-live="polite"></span>
+
+<script>
+	const copy = async (cmd: string) => {
+		try {
+			await navigator.clipboard.writeText(cmd);
+			return true;
+		} catch {
+			// No async clipboard (an insecure context, or a permission refused):
+			// the old way, through a textarea the user never sees.
+			const area = document.createElement('textarea');
+			area.value = cmd;
+			area.setAttribute('readonly', '');
+			area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+			document.body.append(area);
+			area.select();
+			let ok = false;
+			try {
+				ok = document.execCommand('copy');
+			} catch {}
+			area.remove();
+			return ok;
+		}
+	};
+
+	for (const chip of document.querySelectorAll<HTMLButtonElement>('.brew-chip[data-cmd]')) {
+		const cmd = chip.dataset.cmd ?? '';
+		const code = chip.querySelector('.brew-chip__cmd')!;
+		const live = chip.nextElementSibling as HTMLElement | null;
+		let timer = 0;
+		chip.addEventListener('click', async () => {
+			clearTimeout(timer);
+			// A second click while Copied is showing restarts the draw and the
+			// flash: the state has to leave and come back for the animation to.
+			chip.dataset.state = '';
+			void chip.offsetWidth;
+			if (await copy(cmd)) {
+				chip.dataset.state = 'copied';
+				if (live) live.textContent = 'Copied';
+				timer = window.setTimeout(() => {
+					chip.dataset.state = '';
+					if (live) live.textContent = '';
+				}, 1400);
+			} else {
+				// Select to copy shows in the command's place, then the command
+				// comes back already selected: Cmd-C is the rest of the job.
+				chip.dataset.state = 'failed';
+				if (live) live.textContent = 'Copy failed — select to copy';
+				const range = document.createRange();
+				range.selectNodeContents(code);
+				const selection = window.getSelection();
+				selection?.removeAllRanges();
+				selection?.addRange(range);
+				timer = window.setTimeout(() => {
+					chip.dataset.state = '';
+				}, 1400);
+			}
+		});
+	}
+</script>
+
+<style>
+	.brew-chip {
+		--ground: var(--limestone-deep);
+		display: inline-grid;
+		grid-template-columns: minmax(0, 1fr) 14px;
+		align-items: center;
+		column-gap: 0.55em;
+		position: relative;
+		margin: 0;
+		padding: 0.45em 0.8em;
+		border: 0;
+		border-radius: 7px;
+		background: var(--ground);
+		color: var(--ink);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+		user-select: text;
+		transition: background 120ms ease-out;
+	}
+	.brew-chip:hover {
+		--ground: var(--limestone-sink);
+	}
+	/* The chip is the box; the code inside sheds the inline-code styling. */
+	.brew-chip__cmd,
+	.brew-chip__done,
+	.brew-chip__fail {
+		grid-area: 1 / 1;
+		padding: 0;
+		border-radius: 0;
+		background: none;
+		font-family: var(--mono);
+		font-size: 0.8rem;
+		line-height: 1.55;
+	}
+	.brew-chip__cmd span {
+		white-space: nowrap;
+	}
+	/* Copied and Select to copy sit in the command's cell so the chip holds
+	   its width while the text is away. */
+	.brew-chip__done,
+	.brew-chip__fail {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4em;
+		visibility: hidden;
+	}
+	.brew-chip__check {
+		color: var(--aegean);
+	}
+	.brew-chip__check path {
+		stroke-dasharray: 1;
+		stroke-dashoffset: 0;
+	}
+	.brew-chip__copy {
+		grid-area: 1 / 2;
+		color: var(--ink-soft);
+		opacity: 0;
+		transition: opacity 120ms ease-out;
+	}
+	.brew-chip:hover .brew-chip__copy,
+	.brew-chip:focus-visible .brew-chip__copy {
+		opacity: 1;
+	}
+
+	.brew-chip[data-state='copied'] {
+		animation: brew-flash 1400ms ease-out;
+	}
+	.brew-chip[data-state='copied'] .brew-chip__cmd {
+		visibility: hidden;
+	}
+	.brew-chip[data-state='copied'] .brew-chip__done {
+		visibility: visible;
+	}
+	.brew-chip[data-state='copied'] .brew-chip__check path {
+		animation: brew-draw 160ms ease-out;
+	}
+	.brew-chip[data-state='copied'] .brew-chip__copy {
+		opacity: 0;
+	}
+	@keyframes brew-flash {
+		from {
+			background: color-mix(in oklab, var(--aegean) 12%, var(--ground));
+		}
+		to {
+			background: var(--ground);
+		}
+	}
+	@keyframes brew-draw {
+		from {
+			stroke-dashoffset: 1;
+		}
+	}
+
+	/* The clipboard refused: the label swaps the same way, without a check
+	   or a flash, and the command returns selected. */
+	.brew-chip[data-state='failed'] .brew-chip__cmd {
+		visibility: hidden;
+	}
+	.brew-chip[data-state='failed'] .brew-chip__fail {
+		visibility: visible;
+	}
+	.brew-chip[data-state='failed'] .brew-chip__copy {
+		opacity: 0;
+	}
+
+	.brew-chip__live {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+</style>
