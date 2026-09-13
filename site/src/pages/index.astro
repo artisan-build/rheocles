@@ -78,9 +78,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		/>
 		<p class="hero__stand">
 			<strong>Separate files for your edit, or one file to send straight away — you choose per
-			take.</strong> No compositor decides the layout before the light goes red. Arm what you
-			might want, cue once, cut later; or tick one box and the take is also written as a single
-			<code>combined.mov</code>, ready to share.
+			take.</strong> Arm what you might want, cue once, cut later.
 		</p>
 		<p class="hero__note">
 			Local only (for now). An HTTP and WebSocket API, one bearer token, zero clicks to pair.
@@ -306,12 +304,12 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 
 <style>
 	.hero {
-		padding-block: 4.5rem 1rem;
+		padding-block: 1.75rem 1rem;
 		max-width: var(--page);
 	}
 	.hero__title {
 		font-size: clamp(2.5rem, 7vw, 4.6rem);
-		margin: 1.4rem 0 1.6rem;
+		margin: 1.1rem 0 1.3rem;
 	}
 	.hero__accent {
 		color: var(--aegean);
@@ -323,9 +321,6 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 	}
 	.hero__stand strong {
 		font-weight: 600;
-	}
-	.hero__stand code {
-		font-size: 0.82em;
 	}
 	/* A grid or flex item, so it must not stretch to the column. */
 	.hero .pill {
@@ -369,6 +364,25 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 			grid-row: 1 / span 7;
 			justify-self: end;
 			margin-top: 0.4rem;
+		}
+	}
+
+	/* Wider still: the hero keeps the header's left edge and runs 220px past
+	   its right, so the popover sits at its native width and the three
+	   buttons fit on one row beside it. `left` is a visual shift only — the
+	   box stays centred in flow — and the breakpoint is where the shift
+	   still fits inside the viewport. */
+	@media (min-width: 1200px) {
+		.hero {
+			width: min(100% - 2 * var(--gutter), calc(var(--page) + 220px));
+			max-width: none;
+			position: relative;
+			left: 110px;
+			grid-template-columns: minmax(0, 1fr) 344px;
+			column-gap: 3rem;
+		}
+		.hero__title {
+			font-size: 3.2rem;
 		}
 	}
 

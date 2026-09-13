@@ -398,7 +398,7 @@ enum Preview {
               "started": "\(iso.format(cue))"\(stopped),
               "outputRoot": "\(FileManager.default.homeDirectoryForCurrentUser.path)/Movies/Rheocles",
               "destination": "takes/2026-09-11/140217-ep12",
-              "version": "0.1.0",
+              "version": "\(Rheocles.version)",
               "machine": { "hostname": "lens-macbook-pro.local", "machineId": "CD3B7EE5" },
               "streams": [\(streams.joined(separator: ","))],
               "markers": [\((0..<markers).map { "{ \"t\": \(38.7 + Double($0) * 90), \"label\": \"marker \($0 + 1)\" }" }.joined(separator: ","))],
@@ -506,7 +506,7 @@ enum Preview {
         let json = """
             {
               "name": "Rheocles",
-              "version": "0.1.0",
+              "version": "\(Rheocles.version)",
               "hostname": "lens-macbook-pro.local",
               "machineId": "CD3B7EE5-5E6C-5155-854A-72E4728555F7",
               "outputRoot": "\(FileManager.default.homeDirectoryForCurrentUser.path)/Movies/Rheocles",

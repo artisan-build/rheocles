@@ -12,12 +12,18 @@ image renders as a flat placeholder in its proportions
 the right edge, which the "no vases" rule did not anticipate. It reads as a
 plant, not a Sonocles pot; left as is.
 
-**Queued for one regeneration, on Len's word:** hero. Kronos and the doorway
-are clipped by the left edge of the frame, which no post-processing can fix.
-The style block now says "everything fully inside the frame, nothing touching
-the edges", and every future prompt carries that line. Until the rerun the
-hero plate ships on its cream rectangle (`boxed` in `index.astro`) rather
-than as a half-sticker.
+**One regeneration approved by Len, 13 Sep 2026, not yet run:** hero, 1 image.
+Kronos and the doorway are clipped by the left edge of the frame, which no
+post-processing can fix. The style block now says "everything fully inside
+the frame, nothing touching the edges", every future prompt carries that
+line, and the hero subject now asks for Kronos standing whole in a doorway
+well inside the frame. Until the rerun the hero plate ships on its cream
+rectangle (`boxed` in `index.astro`) rather than as a half-sticker:
+
+```sh
+python3 art/make.py --only hero --force --env <the .env with OPENAI_API_KEY>
+python3 site/art/sticker.py hero        # after removing "hero" from SKIP
+```
 
 ## The sticker cut
 
@@ -90,9 +96,9 @@ crown of leaves, one asleep, one waving. Rhea has one hand raised, palm out,
 index finger up, in the exact gesture of someone about to count in a band.
 Every baby is looking at her hand.
 
-At the far left edge, half through a doorway, a large scowling bearded figure
-in an ochre robe — Kronos — looks put out, arms folded. Nobody is paying him
-any attention.
+At the left, standing whole in a doorway that sits well inside the frame, a
+large scowling bearded figure in an ochre robe — Kronos — looks put out, arms
+folded. Nobody is paying him any attention.
 
 The joke is that each child has its own cradle and they are all about to start
 on the same word.
@@ -152,10 +158,16 @@ and two windows listed but not, the take bar idle with "Also save a single
 file" unticked — so "you choose" is visible rather than stated.
 
 ```sh
-cd app && swift build -c release --product Rheocles
+cd app
+./Scripts/generate-version.sh 0.1.1      # the current tag, so the status line is true
+swift build -c release --product Rheocles
 .build/release/Rheocles --render-preview /tmp/rheocles-previews
+./Scripts/generate-version.sh            # back to the committed dev fallback
 cp /tmp/rheocles-previews/chosen.png ../site/src/assets/popover.png
 ```
+
+The fixture reads `Rheocles.version`, so the daemon line in the popover says
+whatever the build was stamped with — stamp it first or it reads 0.0.0-dev.
 
 The PNG is the popover alone, 688×1332 (344×666 at 1×), no window chrome;
 `index.astro` gives it the shadow.

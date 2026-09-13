@@ -83,9 +83,9 @@ PLATES = {
         palm out, index finger up, in the exact gesture of someone about to count
         in a band. Every baby is looking at her hand.
 
-        At the far left edge, half through a doorway, a large scowling bearded
-        figure in an ochre robe — Kronos — looks put out, arms folded. Nobody is
-        paying him any attention.
+        At the left, standing whole in a doorway that sits well inside the
+        frame, a large scowling bearded figure in an ochre robe — Kronos — looks
+        put out, arms folded. Nobody is paying him any attention.
 
         The joke is that each child has its own cradle and they are all about to
         start on the same word.
