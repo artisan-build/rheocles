@@ -2,9 +2,13 @@ import Foundation
 
 /// Identity and defaults shared by the daemon and its clients.
 public enum Rheocles {
-    /// The engine version reported on `GET /` and written into every manifest.
-    /// Bumped by hand with the release tag; the build number comes from git.
-    public static let version = "0.1.0"
+    /// The engine version reported on `GET /`, written into every manifest, and
+    /// printed by `--version`. It comes from the build, not a hand-typed
+    /// constant: `Scripts/generate-version.sh` stamps `Version.generated.swift`
+    /// from the release tag (bundle.sh and the release workflow run it), so the
+    /// wire version can never drift from `Info.plist`. A plain `swift build`
+    /// reports the `0.0.0-dev` fallback checked in there.
+    public static let version = GeneratedVersion.value
 
     /// Ports were chosen only to avoid Sonocles' 7357/7358 (spec §11).
     public static let defaultHTTPPort: UInt16 = 7447
