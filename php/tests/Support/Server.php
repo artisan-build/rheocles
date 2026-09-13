@@ -12,9 +12,25 @@ final class Server
     /** @var resource */
     private $process;
 
+    /** The stub's state file, when this is the stub: its request log lives there. */
+    public ?string $stateFile = null;
+
     private function __construct(public readonly int $port, $process)
     {
         $this->process = $process;
+    }
+
+    /**
+     * What the stub was asked, in order: `[{ method, path, body }]`, the
+     * body verbatim — for a test that cares exactly what went on the wire.
+     */
+    public function requests(): array
+    {
+        if ($this->stateFile === null || ! is_file($this->stateFile)) {
+            return [];
+        }
+
+        return (json_decode((string) file_get_contents($this->stateFile), true) ?: [])['__requests'] ?? [];
     }
 
     public static function freePort(): int
@@ -26,14 +42,17 @@ final class Server
         return $port;
     }
 
-    /** The stub, expecting `$token`. */
-    public static function stub(int $port, string $token, ?string $tokenFile = null): self
+    /** The stub, expecting `$token`; `$env` adds knobs (`STUB_COMBINE`: complete | failed | pending). */
+    public static function stub(int $port, string $token, ?string $tokenFile = null, array $env = []): self
     {
         $state = sys_get_temp_dir()."/rheo-stub-state-$port-".getmypid().'.json';
         @unlink($state);
 
-        return self::spawn($port, [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__.'/../stubs/core.php'],
-            ['STUB_TOKEN' => $token, 'STUB_STATE' => $state, 'STUB_TOKEN_FILE' => $tokenFile ?? '']);
+        $server = self::spawn($port, [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__.'/../stubs/core.php'],
+            $env + ['STUB_TOKEN' => $token, 'STUB_STATE' => $state, 'STUB_TOKEN_FILE' => $tokenFile ?? '']);
+        $server->stateFile = $state;
+
+        return $server;
     }
 
     /** The real daemon, on spare ports, with its own token file and output root. */

@@ -99,13 +99,45 @@ final class Client
         return $this->post("/takes/$takeId/markers", ['label' => $label]);
     }
 
-    /** `GET /settings` — the daemon's output root and default codec. */
+    /**
+     * `POST /takes/{id}/reveal { path? }` → `204`: the take's folder in the
+     * Finder, or one of its files when `path` names one (feature brief §1).
+     * The daemon reveals — never the app: a browser front end cannot open
+     * the Finder, and two native ones should not do it twice. The body is
+     * `{}` for the folder and `{ "path": … }` for a file, exactly.
+     */
+    public function revealTake(string $takeId, ?string $path = null): void
+    {
+        $this->post("/takes/$takeId/reveal", $path === null ? (object) [] : ['path' => $path]);
+    }
+
+    /**
+     * `POST /reveal { path }` → `204`: any path under the output root, the
+     * root itself when empty — the settings panel's folder button.
+     */
+    public function reveal(string $path = ''): void
+    {
+        $this->post('/reveal', ['path' => $path]);
+    }
+
+    /**
+     * `POST /takes/{id}/combine` → the manifest with `combined` pending:
+     * the single-file mux after the fact, on any finished take with at
+     * most one video (feature brief addendum). Completion arrives on the
+     * `take` event, exactly as it does after stop.
+     */
+    public function combine(string $takeId): array
+    {
+        return $this->post("/takes/$takeId/combine", (object) []);
+    }
+
+    /** `GET /settings` — the daemon's output root, default codec and default combine. */
     public function settings(): array
     {
         return $this->get('/settings');
     }
 
-    /** `PATCH /settings { outputRoot?, codec? }` → the full settings. */
+    /** `PATCH /settings { outputRoot?, codec?, combine? }` → the full settings. */
     public function updateSettings(array $changes): array
     {
         return $this->send('PATCH', '/settings', fn (PendingRequest $r) => $r->patch($this->base().'/settings', $changes), timeout: 10);
@@ -197,6 +229,11 @@ final class Client
 
         $status = $response->status();
         if ($status >= 200 && $status < 300) {
+            // `204` is an answer with nothing to say (reveal); every other
+            // success is JSON, and a body that is not is a broken daemon.
+            if ($status === 204 || trim($response->body()) === '') {
+                return [];
+            }
             $json = $response->json();
             if (! is_array($json)) {
                 throw new Malformed("$method $path: not JSON");

@@ -63,8 +63,11 @@ $forward = function (\Closure $call, int $status = 200) {
         // that resolve under the facade's namespace, silently and to nothing.
         $status = $e instanceof Rejected ? $e->status : ($e instanceof Unauthorized ? 401 : 503);
         $code = $e instanceof Rejected ? $e->reason : ($e instanceof Unauthorized ? 'unauthorized' : 'unreachable');
+        // The daemon's own words, not "404 not_found: …" twice over: the
+        // page prefixes the status and code itself.
+        $error = $e instanceof Rejected ? $e->error : $e->getMessage();
 
-        return response()->json(['error' => $e->getMessage(), 'code' => $code], $status);
+        return response()->json(['error' => $error, 'code' => $code], $status);
     }
 };
 
@@ -88,6 +91,9 @@ Route::post('/api/record', fn (Request $request) => $forward(function (Client $c
 
 Route::post('/api/takes/{id}/stop', fn (string $id) => $forward(fn (Client $c) => $c->stop($id)));
 
+/* Combine now: the single-file mux after the fact on a finished take (feature brief addendum). */
+Route::post('/api/takes/{id}/combine', fn (string $id) => $forward(fn (Client $c) => $c->combine($id)));
+
 /*
  * A marker is a label and the daemon's clock (spec §10): Rheocles knows
  * when, the client knows what. An empty label is named for its number.
@@ -101,10 +107,33 @@ Route::post('/api/takes/{id}/markers', fn (Request $request, string $id) => $for
     return $c->mark($id, $label);
 }));
 
-/* The daemon's settings (spec §12): output root and default codec. */
+/*
+ * Open in Finder (feature brief §1): the daemon reveals, never the app —
+ * a browser front end cannot open the Finder, and two native front ends
+ * should not do it twice. The take's folder with no `path`; one of its
+ * files with `path`; the output root, or a path under it, from /api/reveal.
+ * `204` through, as the daemon answers; a refusal in the daemon's words —
+ * and a daemon too old to have the route says `no such route`, which the
+ * page reads as "update Rheocles", not as a missing file.
+ */
+$reveal = fn (\Closure $call) => $forward(function (Client $c) use ($call) {
+    $call($c);
+
+    return [];
+}, 204);
+Route::post('/api/takes/{id}/reveal', fn (Request $request, string $id) => $reveal(function (Client $c) use ($request, $id) {
+    $path = $request->input('path');
+    $c->revealTake($id, is_string($path) && $path !== '' ? $path : null);
+}));
+Route::post('/api/reveal', fn (Request $request) => $reveal(function (Client $c) use ($request) {
+    $path = $request->input('path');
+    $c->reveal(is_string($path) ? $path : '');
+}));
+
+/* The daemon's settings (spec §12): output root, default codec, default combine. */
 Route::get('/api/settings', fn () => $forward(fn (Client $c) => $c->settings()));
 Route::patch('/api/settings', fn (Request $request) => $forward(
-    fn (Client $c) => $c->updateSettings(array_intersect_key($request->all(), ['outputRoot' => 1, 'codec' => 1]))
+    fn (Client $c) => $c->updateSettings(array_intersect_key($request->all(), ['outputRoot' => 1, 'codec' => 1, 'combine' => 1]))
 ));
 
 /* Change… : a native folder chooser, then PATCH. Cancel changes nothing. */
@@ -121,14 +150,6 @@ Route::post('/api/settings/choose-root', function () use ($forward) {
     }
 
     return $forward(fn (Client $c) => $c->updateSettings(['outputRoot' => $path]));
-});
-
-Route::post('/api/settings/reveal', function () {
-    $root = Client::fromConfig()->settings()['outputRoot'] ?? null;
-    abort_unless(is_string($root), 503);
-    Shell::showInFolder($root);
-
-    return response()->json(['revealed' => $root]);
 });
 
 /*

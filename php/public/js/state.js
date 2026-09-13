@@ -11,7 +11,7 @@ export function decodeEvent(text) {
   return json && typeof json.event === 'string' ? json : null
 }
 
-export const initial = () => ({ streams: [], permissions: null, take: null, levels: {}, settings: null })
+export const initial = () => ({ streams: [], permissions: null, take: null, levels: {}, settings: null, recent: [] })
 
 /** `GET /streams`, verbatim: the list and what macOS lets the daemon see. */
 export const setStreams = (state, list) => ({
@@ -35,7 +35,15 @@ export function reduce(state, event) {
       return { ...state, streams }
     }
     case 'take':
-      return event.take && event.take.state ? { ...state, take: event.take } : state
+      // The manifest on every state change, and when a combined mux
+      // finishes: the same take, its `combined` block moved on. A finished
+      // take's summary in the recent list moves with it, so the fold
+      // agrees with the outcome line before the next GET /takes.
+      if (!event.take || !event.take.state) return state
+      // Another take's mux finishing (Combine now on a recent take, from
+      // any client) must not displace the one that is recording.
+      if (isRecording(state) && state.take.id !== event.take.id) return { ...state, recent: withSummary(state.recent, event.take) }
+      return { ...state, take: event.take, recent: withSummary(state.recent, event.take) }
     case 'levels': {
       // Per-stream peak dBFS ~4×/s while recording (audio only). Kept by
       // id; an unmeasured level is absent, never zero.
@@ -58,6 +66,14 @@ export function reduce(state, event) {
 }
 
 export const armedCount = state => state.streams.filter(s => s.armed).length
+
+/** `GET /takes`, newest first — the recent fold under the take bar. */
+export const setRecent = (state, list) => ({ ...state, recent: Array.isArray(list) ? list : [] })
+
+/** A manifest's summary, folded into the list where its id already is. */
+function withSummary(recent, take) {
+  return recent.map(r => (r.id === take.id ? { ...r, state: take.state, name: take.name, combined: take.combined } : r))
+}
 
 /**
  * Recording is a take the daemon says is recording — with one check the
@@ -199,6 +215,77 @@ export function lateJoined(take) {
   return (take.streams || []).slice(0, 4)
     .map((s, i) => (s.started && Date.parse(s.started) - cue > 1000 ? i : -1))
     .filter(i => i >= 0)
+}
+
+// MARK: - the single file (feature brief §2)
+
+const hasVideo = s => !!((s.capabilities && s.capabilities.video) || (s.format && s.format.video))
+
+/**
+ * "Also save a single file" is shown only when at most one video stream
+ * is armed — a combined file is one video track plus every audio track,
+ * and two videos have no single file to be — and only when something is
+ * armed at all. Hidden, not disabled, otherwise; the setting itself is
+ * the daemon's `settings.combine` and is remembered either way.
+ */
+export function combineAvailable(streams) {
+  const armed = (streams || []).filter(s => s.armed)
+  return armed.length > 0 && armed.filter(hasVideo).length <= 1
+}
+
+/**
+ * The line under the outcome, from `manifest.combined`: pending while the
+ * daemon muxes (a pulse and "writing…"), complete with its own Open in
+ * Finder, failed with the daemon's reason. Null when the take has none —
+ * the box was off, or the daemon predates it. The take's own state is
+ * not consulted: a failed combine never marks a take incomplete.
+ */
+export function combinedLine(combined) {
+  if (!combined || !combined.state) return null
+  const path = combined.path || 'combined.mov'
+  const tone = combined.state === 'complete' ? 'complete' : combined.state === 'pending' ? 'pending' : 'failed'
+  return {
+    tone,
+    text: `Single file · ${path}`,
+    note: tone === 'pending' ? 'writing…' : tone === 'failed' ? (combined.reason || combined.state) : null,
+    revealable: tone === 'complete',
+    path,
+  }
+}
+
+/**
+ * "Combine now" (feature brief addendum): the mux after the fact, offered
+ * on a finished take — complete or incomplete — that has no `combined`
+ * yet and holds at most one video stream. Hidden otherwise: a take with
+ * two videos has no single file to be, and one with a `combined` block
+ * is already pending, done, or failed.
+ */
+export const canCombineNow = take =>
+  isOver(take) && !take.combined && (take.streams || []).length > 0 && (take.streams || []).filter(hasVideo).length <= 1
+
+/**
+ * What a refused reveal means. A daemon too old to have the route answers
+ * the dispatcher's 404 — "no such route" — and that is not a missing file,
+ * it is a missing daemon: say so. Any other refusal is in the daemon's words.
+ */
+export function revealError(route, status, body) {
+  const b = body || {}
+  if (status === 404 && b.code === 'not_found' && b.error === 'no such route') {
+    return `${route} → this rheocles-core has no Open in Finder; update Rheocles`
+  }
+  return `${route} → ${status} ${b.code || ''}: ${b.error || ''}`
+}
+
+/** A recent take's row: name (or id), when, and its state's tone. */
+export function recentRow(summary) {
+  const when = summary.created ? Date.parse(summary.created) : NaN
+  return {
+    id: summary.id,
+    name: summary.name || summary.id,
+    when: Number.isNaN(when) ? '' : new Date(when).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    tone: summary.state === 'complete' ? 'complete' : summary.state === 'recording' ? 'recording' : 'other',
+    combined: combinedLine(summary.combined),
+  }
 }
 
 /** The finished line: name · state · elapsed · n files — reason. */
