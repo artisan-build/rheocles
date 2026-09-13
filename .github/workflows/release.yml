@@ -4,6 +4,16 @@ name: Release
 # packages and attaches a DMG to a GitHub Release, so nobody has to install a
 # Swift toolchain to try a menu bar utility.
 #
+# RELEASING
+#
+# Every user-facing PR adds a line under `## [Unreleased]` in CHANGELOG.md,
+# written for the person using the app, not as a PR title. Cutting a version
+# renames `[Unreleased]` to `## [0.1.2] — <today>`, leaves a fresh empty
+# `[Unreleased]` above it, and adds the compare link at the bottom. The
+# release notes are that section, and this workflow refuses to release a
+# version that has no section — run it by hand from main first and it tells
+# you before anyone tags.
+#
 # SIGNING, AND WHY IT MATTERS MORE HERE THAN USUALLY
 #
 # This app needs the camera, the microphone and screen recording, and macOS
@@ -77,6 +87,28 @@ jobs:
           # contract test checks GET / against the tag being built — not a
           # constant that could drift from Info.plist.
           ./app/Scripts/generate-version.sh "$ver"
+
+      # The release notes are this version's section of CHANGELOG.md, and a
+      # version without one does not ship. This runs before the build, on a
+      # manual dispatch as well as a tag, so a dry run from main catches the
+      # missing section while it is still cheap to add.
+      - name: Changelog section
+        env:
+          VER: ${{ steps.v.outputs.ver }}
+        run: |
+          awk -v ver="$VER" '
+            /^## \[/ { inside = ($0 ~ ("^## \\[" ver "\\]")); next }
+            /^\[[^]]+\]: / { inside = 0 }
+            inside { print }
+          ' CHANGELOG.md \
+            | awk 'NF { started = 1 } started' \
+            | sed -e :a -e '/^$/{$d;N;ba' -e '}' \
+            > "$RUNNER_TEMP/changelog.md"
+          if ! grep -q '^- ' "$RUNNER_TEMP/changelog.md"; then
+            echo "::error title=No changelog::CHANGELOG.md has no section for $VER — add one under ## [$VER] before tagging"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/changelog.md"
 
       - name: Show toolchain
         run: swift --version
@@ -230,9 +262,15 @@ jobs:
         # shell string here is a trap: a blank line at column zero closes the
         # YAML block scalar, and the workflow becomes unparseable in a way that
         # reports only as "run failed" with no logs.
+        #
+        # The changelog section goes first, then the boilerplate. With
+        # --generate-notes GitHub prepends the notes file to its own "What's
+        # Changed" PR list and the Full Changelog compare link.
         run: |
           VER="${{ steps.v.outputs.tag }}"
           {
+            cat "$RUNNER_TEMP/changelog.md"
+            echo ""
             echo "Apple Silicon, macOS 15 or later."
             echo ""
             echo "Always-current download:"
@@ -245,6 +283,7 @@ jobs:
           gh release create "$VER" \
             --title "Rheocles $VER" \
             --notes-file "$RUNNER_TEMP/notes.md" \
+            --generate-notes \
             dist/*.dmg dist/*.zip dist/checksums.txt
 
       # The cask pins a version and a sha256, so an un-bumped tap keeps
