@@ -3,11 +3,17 @@
 // four horizontal strokes flowing right from it, staggered, with a slight
 // hand-made waver rather than ruled. They never merge; that is the point.
 // docs/BRAND.md § Mark. Decorative here; the wordmark carries the name.
+//
+// `color` is the stroke. It defaults to currentColor, which is right where
+// the mark sits in coloured text (the plate placeholder); the header passes
+// the Aegean, because a class from the parent never reaches this <svg> —
+// Astro scopes the parent's styles to the parent's own elements.
 interface Props {
 	size?: number;
 	class?: string;
+	color?: string;
 }
-const { size = 28, class: cls } = Astro.props;
+const { size = 28, class: cls, color = 'currentColor' } = Astro.props;
 ---
 
 <svg
@@ -16,7 +22,7 @@ const { size = 28, class: cls } = Astro.props;
 	height={size}
 	viewBox="0 0 32 32"
 	fill="none"
-	stroke="currentColor"
+	stroke={color}
 	stroke-width="3"
 	stroke-linecap="round"
 	aria-hidden="true"

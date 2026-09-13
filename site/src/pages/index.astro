@@ -308,7 +308,9 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 
 <style>
 	.hero {
-		padding-block: 1.25rem 1rem;
+		/* The header row no longer pads below itself (sonocles.com's measure);
+		   the room moved here, so the hero sits where it did. */
+		padding-block: 2.5rem 1rem;
 		max-width: var(--page);
 	}
 	.hero__title {
