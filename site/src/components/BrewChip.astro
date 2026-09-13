@@ -114,9 +114,11 @@ const tail = cmd.slice(split + 1);
 	   styling of base.css and carries its own. One line, never wrapped: the
 	   head is an inline-block capped at what is left beside the tap path
 	   (--tail, the path's length in ch — mono, so ch is the glyph), and gives
-	   way to an ellipsis first; only when it is gone does the path lose its
-	   end. Inline-blocks, not flex items, so a selection of the chip reads as
-	   one line. */
+	   way to an ellipsis first; the path loses its end only once the head is
+	   down to its floor. The floor matters: a head at zero width paints
+	   nothing and drops out of a selection, and "select to copy" would hand
+	   over the path without the verb. Inline-blocks, not flex items, so a
+	   selection of the chip reads as one line. */
 	.homebrew__cmd {
 		display: block;
 		flex: 1 1 auto;
@@ -136,7 +138,7 @@ const tail = cmd.slice(split + 1);
 	.homebrew__head {
 		display: inline-block;
 		vertical-align: top;
-		max-width: calc(100% - var(--tail));
+		max-width: max(2.5ch, calc(100% - var(--tail)));
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
