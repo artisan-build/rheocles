@@ -68,12 +68,22 @@ jobs:
 
       - name: Version
         id: v
-        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          ver="${tag#v}"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          # Stamp the daemon's code version before the tests run, so the
+          # contract test checks GET / against the tag being built — not a
+          # constant that could drift from Info.plist.
+          ./app/Scripts/generate-version.sh "$ver"
 
       - name: Show toolchain
         run: swift --version
 
       - name: Test
+        env:
+          RHEOCLES_EXPECTED_VERSION: ${{ steps.v.outputs.ver }}
         run: swift test --package-path app
 
       # Which optional secrets exist, as step outputs. `if:` cannot read a

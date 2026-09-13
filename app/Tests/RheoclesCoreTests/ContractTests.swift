@@ -228,6 +228,21 @@ struct ContractTests {
         }
 
         try await validate("GET", "/", "/")
+        // The version on the wire must be the one the build was stamped with,
+        // not a constant that can drift from Info.plist (a 0.1.1 DMG once
+        // shipped a daemon still saying 0.1.0). It always equals the compiled
+        // `Rheocles.version`; in a release build the workflow also passes the
+        // tag as RHEOCLES_EXPECTED_VERSION, and it must equal that too.
+        let discovery = try Manifest.decoder.decode(
+            Discovery.self, from: try await request(server, "GET", "/").2)
+        #expect(discovery.version == Rheocles.version)
+        if let expected = ProcessInfo.processInfo.environment["RHEOCLES_EXPECTED_VERSION"],
+            !expected.isEmpty
+        {
+            #expect(
+                discovery.version == expected,
+                "GET / version \(discovery.version) != build version \(expected)")
+        }
         try await validate("GET", "/streams", "/streams")
         try await validate(
             "POST", "/streams/camera:fake/arm", "/streams/{id}/arm", body: #"{"armed": true}"#)

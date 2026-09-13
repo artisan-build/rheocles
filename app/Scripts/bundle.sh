@@ -31,6 +31,13 @@ VERSION="${VERSION#v}"
 # stored anywhere.
 BUILD="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 
+# Stamp the SAME version into the daemon's code, so GET /, every manifest's
+# `version`, and `--version` report it too — not just Info.plist. Restore the
+# checked-in dev fallback on exit so a local build leaves the tree clean (the
+# built app already carries the stamp; CI checkouts are throwaway).
+trap 'git -C "$ROOT" checkout -- Sources/RheoclesCore/Version.generated.swift 2>/dev/null || true' EXIT
+"$ROOT/Scripts/generate-version.sh" "$VERSION"
+
 # One invocation, not two. --show-bin-path is cheap but it still plans the
 # build, and there is no reason to do that twice for a path we can ask for once.
 BIN="$(swift build -c "$CONFIG" --package-path "$ROOT" --show-bin-path)"
