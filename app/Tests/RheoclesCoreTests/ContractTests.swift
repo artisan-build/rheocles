@@ -140,6 +140,7 @@ struct ContractTests {
             c.previewFactory = PushingFactory()
             c.writerFactory = NullWriterFactory()
             c.freeBytes = { _ in 1 << 40 }
+            c.reveal = { _ in }  // never open the Finder in a test
             c.permissions = {
                 Permissions(camera: .authorized, microphone: .authorized, screen: .authorized)
             }
@@ -264,8 +265,37 @@ struct ContractTests {
             _ = try await request(server, "POST", "/takes/\(stillActive.id)/stop")
         }
 
+        // A combine take (camera:fake is a single video) so a manifest carrying
+        // a live `combined` block is validated against the schema — GET /takes/{id}
+        // answers it with `combined.state: pending`.
+        let combineCreated = try Manifest.decoder.decode(
+            TakeEngine.Created.self,
+            from: try await request(
+                server, "POST", "/takes", body: #"{"name": "combine", "combine": true}"#
+            ).2)
+        #expect(combineCreated.take.combined?.state == .pending)
+        try await validate("GET", "/takes/\(combineCreated.take.id)", "/takes/{id}")
+
         try await validate("GET", "/settings", "/settings")
-        try await validate("PATCH", "/settings", "/settings", body: #"{"codec": "prores"}"#)
+        try await validate(
+            "PATCH", "/settings", "/settings", body: #"{"codec": "prores", "combine": true}"#)
+
+        // Reveal: daemon-side Finder actions, injected to a no-op here. Both
+        // answer 204 with no body; the reveal target (a stopped take's folder,
+        // the output root) exists on disk by now.
+        let (revealTake, _, _) = try await request(
+            server, "POST", "/takes/\(recorded.take.id)/reveal", body: "{}")
+        #expect(revealTake == 204)
+        seen.insert("POST /takes/{id}/reveal")
+        let (revealRoot, _, _) = try await request(server, "POST", "/reveal", body: "{}")
+        #expect(revealRoot == 204)
+        seen.insert("POST /reveal")
+
+        // Combine after the fact. NullWriterFactory writes no files, so a
+        // complete take has nothing to mux and answers 400 nothing_to_combine —
+        // still the documented shape for the path.
+        try await validate(
+            "POST", "/takes/\(recorded.take.id)/combine", "/takes/{id}/combine")
 
         // Preview: a JPEG for video, JSON level for audio.
         let (pStatus, pType, _) = try await request(server, "GET", "/preview/camera:fake")

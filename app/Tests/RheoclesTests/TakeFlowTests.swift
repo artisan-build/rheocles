@@ -94,7 +94,10 @@ struct TakeFlowTests {
 
         model.arm("camera:fake", true)
         #expect(await eventually { model.armedStreams.map(\.id) == ["camera:fake"] })
-        #expect(model.pending == nil)
+        // `pending` clears on the arm confirmation, a different message from the
+        // `stream` event that fills `armedStreams`; wait for it rather than
+        // assume the two land together.
+        #expect(await eventually { model.pending == nil })
         #expect(icon(model) == .armed)
 
         model.takeName = "flow test"
@@ -188,7 +191,10 @@ struct TakeFlowTests {
 
         model.leave("microphone:fake")
         #expect(await eventually { model.take?.writing.count == 1 })
-        #expect(model.take?.streams.first { $0.id == "microphone:fake" }?.stopped != nil)
+        #expect(
+            await eventually {
+                model.take?.streams.first { $0.id == "microphone:fake" }?.stopped != nil
+            })
         #expect(model.armedStreams.map(\.id).contains("microphone:fake"))
 
         // Leaving twice is the daemon's 409, shown.

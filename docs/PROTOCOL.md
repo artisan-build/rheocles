@@ -62,8 +62,11 @@ next request.
 | `POST /takes/{id}/join` | `{ "stream": id }` — arms if needed, starts that stream's writer now | step 6 |
 | `POST /takes/{id}/leave` | `{ "stream": id }` — finalizes that file; the stream stays armed | step 6 |
 | `POST /takes/{id}/markers` | `{ "label": "…" }` → the manifest with the marker appended | step 6 |
-| `GET /settings` | the daemon's output root and default codec | step 6 |
-| `PATCH /settings` | `{ "outputRoot"?, "codec"? }` — change either | step 6 |
+| `GET /settings` | the daemon's output root, default codec and default combine | step 6 |
+| `PATCH /settings` | `{ "outputRoot"?, "codec"?, "combine"? }` — change any | step 6 |
+| `POST /takes/{id}/combine` | passthrough-mux a `complete`/`incomplete` take into `combined.mov` → the manifest (`combined` pending; completion on the `take` event) | reveal+combine |
+| `POST /takes/{id}/reveal` | `{ "path"? }` — reveal the take folder (or a file in it) in the Finder; `204` | reveal+combine |
+| `POST /reveal` | `{ "path"? }` — reveal any path under the output root in the Finder; `204` | reveal+combine |
 | `POST /token/rotate` | `{}` → `{ "token" }` — new token, old one dead after the response | step 6 |
 | `GET /preview/{stream}` | one preview frame on demand — JPEG for video, a JSON level for audio; one at a time | step 7 |
 
@@ -258,7 +261,8 @@ the take folder (default: the stream's name slugged, `.mov` for video and
 `.wav` for audio, `window-<bundle id>.mov` for windows, `-2`, `-3` on
 collision); `codec`, `hevc` (default) or `prores`, one setting for the whole
 take; `expectedDuration` in seconds for the pre-flight (default 1800);
-`overwrite`.
+`overwrite`; `combine`, whether to write a single `combined.mov` when the
+take stops (default `settings.combine`).
 
 **Rules**
 
@@ -297,6 +301,32 @@ listing every stream's error. `409` if the take is not `recording`.
 **Record** — `POST /record` — is create followed by start in one call, with
 the same body and answer as create.
 
+**Combine ("Loom mode").** A take created with `combine: true` (or, by
+default, while `settings.combine` is on) writes a single `combined.mov`
+alongside the per-stream files when it stops. It is a **passthrough mux**, no
+re-encode: the take's one video stream is copied as-is (with its time-of-day
+`tmcd` track), and every audio stream becomes its own enabled track — no
+mixdown, every source kept separate for the edit. A combine take may hold **at
+most one video stream**; creating one with two or more is
+`400 combine_requires_single_video`. A take with no video combines to an
+audio-only `.mov`. The manifest gains
+`combined: { "path": "combined.mov", "state": "pending" }` at create; when the
+mux finishes after stop it flips to `complete` (or `failed` with a `reason`)
+and a `take` event fires. A **failed combine never marks the take itself
+incomplete** — the per-stream files are the take; the combined file is a
+convenience. `POST /takes/{id}/combine` runs the same mux **after the fact** on
+any take that is not the live take and qualifies — **`complete` or
+`incomplete`** (a take that lost a stream is still worth a single file of
+what it kept). It answers immediately with `combined.state: "pending"` and
+fires the `take` event on completion, exactly like the post-stop path; a
+second call while one is already pending is **idempotent** and returns the
+pending manifest rather than racing a second mux. It is `409` while the take
+is recording, `400 combine_requires_single_video` for more than one video,
+and `400 nothing_to_combine` if the take has no files on disk. Joining a
+second video into a live combine take is refused the same way. A combine left
+`pending` by a daemon that died mid-mux is rewritten `failed` (`daemon died`)
+on the next launch and its half-written file removed.
+
 **Daemon lifecycle.** On **SIGINT/SIGTERM** the daemon finalizes an active
 take — every writer closes and the manifest is written `incomplete` with
 reason `daemon stopped` — so a cleanly-stopped daemon never leaves a take
@@ -310,11 +340,14 @@ already shows it `incomplete`.
 **Read** — `GET /takes/{id}` answers the manifest at any time: live while
 recording, from disk afterwards. `GET /takes` lists recent takes newest
 first (the active one, then this process's finished ones, then whatever
-the output root holds, up to 50):
+the output root holds, up to 50). A take that has a combined file carries its
+`combined` block in the summary too, so a list can show the single-file line
+without a per-row fetch:
 
 ```json
 [ { "id": "20260912T040433-fd9q", "name": "Episode 12", "state": "complete",
-    "created": "2026-09-12T04:04:33.235Z", "destination": "takes/2026-09-11/210433-episode-12", "streams": 5 } ]
+    "created": "2026-09-12T04:04:33.235Z", "destination": "takes/2026-09-11/210433-episode-12", "streams": 5,
+    "combined": { "path": "combined.mov", "state": "complete" } } ]
 ```
 
 ### Join, leave, markers (spec §6, §10)
@@ -348,17 +381,20 @@ Daemon-owned defaults, persisted to
 `~/Library/Application Support/Rheocles/settings.json`.
 
 ```json
-GET /settings            → { "outputRoot": "/Users/gopher/Movies/Rheocles", "codec": "hevc" }
+GET /settings            → { "outputRoot": "/Users/gopher/Movies/Rheocles", "codec": "hevc", "combine": false }
 PATCH /settings { "codec": "prores" }              → the full settings
 PATCH /settings { "outputRoot": "/Volumes/SSD/Takes" } → the full settings
+PATCH /settings { "combine": true }                → the full settings
 ```
 
 `outputRoot` must be an absolute path, and it **cannot move while a take is
 active** (`created` or `recording`) — its files are already reserved beneath
 the old root — so that `PATCH` is `409`. `codec` is `hevc` or `prores` and is
 the **default codec for new takes**: a take with no `codec` in its body
-records in `settings.codec` (not a hardcoded HEVC). Every change emits a
-`settings` event. `GET /` reports the same output root.
+records in `settings.codec` (not a hardcoded HEVC). `combine` (default `false`) is the
+**default combine for new takes** — a take with no `combine` in its body
+follows it. Every change emits a `settings` event. `GET /` reports the same
+output root.
 
 Settings persist across launches. `rheocles-core --output-root DIR` is
 authoritative when given — it overrides and re-persists the stored root —
@@ -374,6 +410,25 @@ Rewrites the token file and invalidates the old token for **every request
 after this response** on both transports (a WebSocket that authenticated with
 the old token stays up but must re-`auth` with the new one for later
 commands). The pairing UI shows the new token; nothing else changes.
+
+### Reveal in the Finder
+
+```json
+POST /takes/{id}/reveal { "path": "combined.mov" }   → 204
+POST /takes/{id}/reveal {}                            → 204   (the take folder)
+POST /reveal { "path": "takes/2026-09-11" }           → 204
+POST /reveal {}                                        → 204   (the output root)
+```
+
+Both open a Finder window with the target selected, on the daemon's Mac —
+this is a daemon-side action, since a browser front end cannot open the
+Finder. `POST /takes/{id}/reveal` reveals the take's folder; an optional
+`path` selects a file **within** it, relative to the folder.
+`POST /reveal` reveals any path **under the output root**, relative to it;
+an empty or omitted `path` reveals the root itself. `path` must stay within
+its base — an absolute path or one that escapes with `..` is rejected — and
+must exist: an unknown take or a `path` that names nothing is `404`. No body
+on success (`204`).
 
 ### Preview (spec §12)
 
@@ -481,6 +536,8 @@ status in the status line, WebSocket in the frame's `status`.
 | 405 | `method_not_allowed` | the path exists, the method does not; the message names what would |
 | 409 | `conflict` | destination already exists; a take is not in the state the verb needs |
 | 409 | `take_active` | a take is recording; stop it first |
+| 400 | `combine_requires_single_video` | a combine take may hold at most one video stream |
+| 400 | `nothing_to_combine` | `POST /takes/{id}/combine` on a take with no files on disk |
 | 500 | `internal` | a handler threw something that is not an `APIError` |
 | 501 | `unsupported` | this kind cannot be captured yet |
 | 503 | `device_unavailable` | the device is gone, busy, or refused the configuration |
@@ -495,18 +552,18 @@ Every event has an `event` key naming its kind and no `id`.
 | event | since | carries |
 |---|---|---|
 | `stream` | step 3 | `stream`: the `StreamInfo` as it now is, on every change of armed state |
-| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) — carries join/leave events and markers |
+| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) and when a `combined` mux finishes — carries join/leave events and markers |
 | `levels` | step 6 | `take` id and `streams: [{ id, levelDb?, framesWritten, drift? }]`, ~4×/s while recording — meters and a live drift readout. `levelDb` is peak dBFS since the last event, audio only |
 | `marker` | step 6 | `take` id and the `{ t, label }` just added |
 | `stalled` | step 6 | `stream`: an armed or recording stream that stopped delivering frames (a camera with the lid closed) |
-| `settings` | step 6 | `settings`: the new `{ outputRoot, codec }` |
+| `settings` | step 6 | `settings`: the new `{ outputRoot, codec, combine }` |
 
 ```json
 { "event": "stream",   "stream": { "id": "microphone:…", "kind": "microphone", "armed": true, "active": { … }, "framesSeen": 0, … } }
 { "event": "levels",   "take": "20260912T045007-5kqn", "streams": [ { "id": "microphone:…", "levelDb": -18.3, "framesWritten": 96000, "drift": 0 } ] }
 { "event": "marker",   "take": "20260912T045007-5kqn", "marker": { "t": 2.042, "label": "chapter 1" } }
 { "event": "stalled",  "stream": { "id": "camera:…", "kind": "camera", "armed": true, "active": { … }, "framesSeen": 0, … } }
-{ "event": "settings", "settings": { "outputRoot": "/Users/gopher/Movies/Rheocles", "codec": "prores" } }
+{ "event": "settings", "settings": { "outputRoot": "/Users/gopher/Movies/Rheocles", "codec": "prores", "combine": false } }
 ```
 
 ## Consuming it

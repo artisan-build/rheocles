@@ -178,7 +178,9 @@ public final class WebSocketServer: Transport, @unchecked Sendable {
         var frame = Data(#"{"id":"#.utf8)
         frame.append(id ?? Data("null".utf8))
         frame.append(Data(#","status":\#(status),"body":"#.utf8))
-        frame.append(body)
+        // An empty body (a 204) must still be valid JSON in the frame: emit
+        // `null`, not nothing, or the client's JSON.parse throws on success.
+        frame.append(body.isEmpty ? Data("null".utf8) : body)
         frame.append(Data("}".utf8))
         sendText(conn, frame)
     }

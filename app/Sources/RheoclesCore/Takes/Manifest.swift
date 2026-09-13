@@ -27,6 +27,24 @@ public struct Manifest: Codable, Sendable, Equatable {
         public var expectedDuration: Double?
     }
 
+    /// The single-file combined artefact.
+    public struct Combined: Codable, Sendable, Equatable {
+        public enum State: String, Codable, Sendable {
+            case pending, complete, failed
+        }
+        /// Relative to the take folder — always `combined.mov`.
+        public var path: String
+        public var state: State
+        /// Present only when `failed`.
+        public var reason: String?
+
+        public init(path: String, state: State, reason: String? = nil) {
+            self.path = path
+            self.state = state
+            self.reason = reason
+        }
+    }
+
     public struct Marker: Codable, Sendable, Equatable {
         /// Seconds from the cue. Rheocles knows when; the client knows what.
         public var t: Double
@@ -89,6 +107,11 @@ public struct Manifest: Codable, Sendable, Equatable {
     public var streams: [Stream]
     public var markers: [Marker]
     public var settings: Settings
+    /// The optional single-file artefact (spec "Loom mode"): a passthrough mux
+    /// of the video and every audio stream into one MOV. A bonus — its state
+    /// is independent of the take's, and a failed combine never marks the take
+    /// incomplete. Absent unless the take was created with `combine`.
+    public var combined: Combined?
 
     /// Seconds from the cue for a host time, to the millisecond, or nil
     /// before the cue.

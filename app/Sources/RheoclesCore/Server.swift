@@ -28,6 +28,12 @@ public final class Server: Sendable {
         public var writerFactory: any WriterFactory = DeviceWriterFactory()
         /// Free space on a volume, for the disk pre-flight. Tests fake it.
         public var freeBytes: @Sendable (URL) -> Int64? = { Discovery.freeBytes(at: $0) }
+        /// Reveal a file/folder in Finder. The daemon opens it via
+        /// NSWorkspace on the main actor; tests inject a recorder so no
+        /// Finder window opens.
+        public var reveal: @Sendable (URL) -> Void = { url in
+            Task { @MainActor in Reveal.reveal(url) }
+        }
 
         public init() {}
     }
@@ -85,6 +91,7 @@ public final class Server: Sendable {
                 hostname: ProcessInfo.processInfo.hostName, machineId: Discovery.machineIdentifier()
             ),
             defaultCodec: { settings.codec },
+            defaultCombine: { settings.combine },
             freeBytes: configuration.freeBytes
         ) { manifest in
             let event = Event.take(manifest)
@@ -105,7 +112,8 @@ public final class Server: Sendable {
             Server.routes(
                 registry: registry, takes: takes, settings: settings, auth: auth,
                 tokenStore: configuration.tokenStore, permissions: configuration.permissions,
-                preview: preview, httpPort: configuration.httpPort, wsPort: configuration.wsPort))
+                preview: preview, reveal: configuration.reveal, httpPort: configuration.httpPort,
+                wsPort: configuration.wsPort))
         router.dispatcher = dispatcher
     }
 
@@ -145,13 +153,20 @@ public final class Server: Sendable {
     public struct SettingsPatch: Codable, Sendable {
         public var outputRoot: String?
         public var codec: Manifest.Codec?
+        public var combine: Bool?
+    }
+
+    /// `POST /takes/{id}/reveal` and `POST /reveal`.
+    public struct RevealRequest: Codable, Sendable {
+        public var path: String?
     }
 
     /// The command table. Order is the order `commands` lists them in.
     static func routes(
         registry: Registry, takes: TakeEngine, settings: Settings, auth: BearerAuth,
         tokenStore: TokenStore, permissions: @escaping @Sendable () -> Permissions,
-        preview: PreviewService, httpPort: UInt16, wsPort: UInt16
+        preview: PreviewService, reveal: @escaping @Sendable (URL) -> Void, httpPort: UInt16,
+        wsPort: UInt16
     ) -> [Command] {
         [
             Command("GET", "/") { _ in
@@ -231,7 +246,32 @@ public final class Server: Sendable {
                     settings.update(outputRoot: root)
                 }
                 if let codec = patch.codec { settings.update(codec: codec) }
+                if let combine = patch.combine { settings.update(combine: combine) }
                 return Response(json: settings.values)
+            },
+            Command("POST", "/takes/{id}/reveal") { request in
+                let body =
+                    request.body == nil ? RevealRequest() : try request.decode(RevealRequest.self)
+                let manifest = try await takes.manifest(request.params["id"] ?? "")
+                let folder = URL(fileURLWithPath: manifest.outputRoot)
+                    .appendingPathComponent(manifest.destination)
+                guard let url = Reveal.resolve(body.path, under: folder) else {
+                    throw APIError.notFound("no such path in take \(manifest.id)")
+                }
+                reveal(url)
+                return Response(status: 204, body: Data())
+            },
+            Command("POST", "/reveal") { request in
+                let body =
+                    request.body == nil ? RevealRequest() : try request.decode(RevealRequest.self)
+                guard let url = Reveal.resolve(body.path, under: settings.outputRoot) else {
+                    throw APIError.notFound("no such path under the output root")
+                }
+                reveal(url)
+                return Response(status: 204, body: Data())
+            },
+            Command("POST", "/takes/{id}/combine") { request in
+                Response(json: try await takes.combine(request.params["id"] ?? ""))
             },
             Command("GET", "/preview/{stream}") { request in
                 let result = try await preview.preview(request.params["stream"] ?? "")

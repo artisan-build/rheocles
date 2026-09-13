@@ -20,10 +20,14 @@ public actor TakeEngine {
         public var expectedDuration: Double?
         /// Reuse a destination that already exists. Never silently suffixed.
         public var overwrite: Bool?
+        /// Also write a single combined.mov (passthrough mux). Defaults to
+        /// `settings.combine`. Only valid with at most one video stream armed.
+        public var combine: Bool?
 
         public init(
             name: String? = nil, destination: String? = nil, files: [String: String]? = nil,
-            codec: Manifest.Codec? = nil, expectedDuration: Double? = nil, overwrite: Bool? = nil
+            codec: Manifest.Codec? = nil, expectedDuration: Double? = nil, overwrite: Bool? = nil,
+            combine: Bool? = nil
         ) {
             self.name = name
             self.destination = destination
@@ -31,6 +35,7 @@ public actor TakeEngine {
             self.codec = codec
             self.expectedDuration = expectedDuration
             self.overwrite = overwrite
+            self.combine = combine
         }
     }
 
@@ -49,18 +54,23 @@ public actor TakeEngine {
         public var created: Date
         public var destination: String
         public var streams: Int
+        /// The combined file, when the take has one — so a list can show the
+        /// single-file line and its Open in Finder without a per-row fetch.
+        public var combined: Manifest.Combined?
     }
 
     private struct Live {
         var manifest: Manifest
         var folder: URL
         var writers: [String: any Writer] = [:]
+        var combine = false
     }
 
     private let registry: Registry
     private let rootProvider: @Sendable () -> URL
     private var root: URL { rootProvider() }
     private let defaultCodec: @Sendable () -> Manifest.Codec
+    private let defaultCombine: @Sendable () -> Bool
     private let writerFactory: any WriterFactory
     private let machine: Manifest.Machine
     private let freeBytes: @Sendable (URL) -> Int64?
@@ -74,6 +84,10 @@ public actor TakeEngine {
     /// Finished takes this process has seen, newest first, so `GET /takes`
     /// does not have to touch the disk for the common case.
     private var recent: [Manifest] = []
+    /// The in-flight combine mux per take, so `shutdown` can wait for it, and
+    /// a generation counter so a superseded run's result is discarded.
+    private var combineTasks: [String: Task<Void, Never>] = [:]
+    private var combineGeneration: [String: Int] = [:]
 
     public static let defaultExpectedDuration: Double = 30 * 60
 
@@ -82,6 +96,7 @@ public actor TakeEngine {
         writerFactory: any WriterFactory,
         machine: Manifest.Machine,
         defaultCodec: @escaping @Sendable () -> Manifest.Codec = { .hevc },
+        defaultCombine: @escaping @Sendable () -> Bool = { false },
         freeBytes: @escaping @Sendable (URL) -> Int64? = { Discovery.freeBytes(at: $0) },
         onChange: @escaping @Sendable (Manifest) -> Void = { _ in },
         onEvent: @escaping @Sendable (String) -> Void = { _ in }
@@ -89,6 +104,7 @@ public actor TakeEngine {
         self.registry = registry
         self.rootProvider = outputRoot
         self.defaultCodec = defaultCodec
+        self.defaultCombine = defaultCombine
         self.writerFactory = writerFactory
         self.machine = machine
         self.freeBytes = freeBytes
@@ -154,37 +170,50 @@ public actor TakeEngine {
     /// `recording` on disk. Idempotent.
     public func shutdown() async {
         stopStatusTicker()
-        guard var current = live else { return }
-        switch current.manifest.state {
-        case .recording:
-            let end = Self.now()
-            for index in current.manifest.streams.indices {
-                guard let writer = current.writers[current.manifest.streams[index].id] else {
-                    continue
+        // Finalise the live take *first*: SIGTERM must always close its writers
+        // and write `daemon stopped` within the budget, so a long in-flight
+        // combine of an earlier take cannot delay finalising the one still
+        // recording.
+        if var current = live {
+            switch current.manifest.state {
+            case .recording:
+                let end = Self.now()
+                for index in current.manifest.streams.indices {
+                    guard let writer = current.writers[current.manifest.streams[index].id] else {
+                        continue
+                    }
+                    if let session = await registry.session(
+                        for: current.manifest.streams[index].id)
+                    {
+                        session.sink = nil
+                    }
+                    finalize(
+                        &current.manifest.streams[index], writer: writer, at: end,
+                        cueOffset: current.manifest.offset(of: end) ?? 0)
+                    _ = await writer.finish()
                 }
-                if let session = await registry.session(for: current.manifest.streams[index].id) {
-                    session.sink = nil
-                }
-                finalize(
-                    &current.manifest.streams[index], writer: writer, at: end,
-                    cueOffset: current.manifest.offset(of: end) ?? 0)
-                _ = await writer.finish()
+                current.writers.removeAll()
+                current.manifest.stopped = end
+                current.manifest.state = .incomplete
+                current.manifest.reason = "daemon stopped"
+            case .created:
+                current.manifest.state = .incomplete
+                current.manifest.reason = "daemon stopped before start"
+            default:
+                break
             }
-            current.writers.removeAll()
-            current.manifest.stopped = end
-            current.manifest.state = .incomplete
-            current.manifest.reason = "daemon stopped"
-        case .created:
-            current.manifest.state = .incomplete
-            current.manifest.reason = "daemon stopped before start"
-        default:
-            break
+            Self.writeManifest(current.manifest, folder: current.folder)
+            try? FileManager.default.removeItem(
+                at: current.folder.appendingPathComponent(Self.reserveName))
+            onChange(current.manifest)
+            live = nil
         }
-        Self.writeManifest(current.manifest, folder: current.folder)
-        try? FileManager.default.removeItem(
-            at: current.folder.appendingPathComponent(Self.reserveName))
-        onChange(current.manifest)
-        live = nil
+        // Then let any in-flight combine finish (it only needs the process
+        // alive) so we do not leave a `pending` beside a half-written file.
+        // Snapshot first — each task clears its own entry as it lands; a
+        // SIGKILL past Server.stop's budget is caught by recovery on launch.
+        for task in Array(combineTasks.values) { await task.value }
+        combineTasks.removeAll()
     }
 
     /// On launch, any manifest left `recording` or `created` is from a daemon
@@ -201,11 +230,26 @@ public actor TakeEngine {
         for case let url as URL in enumerator {
             if enumerator.level > 4 { enumerator.skipDescendants(); continue }
             guard url.lastPathComponent == "manifest.json", let data = try? Data(contentsOf: url),
-                var manifest = try? Manifest.decode(data),
-                manifest.state == .recording || manifest.state == .created
+                var manifest = try? Manifest.decode(data)
             else { continue }
-            manifest.state = .incomplete
-            manifest.reason = "daemon died"
+            var changed = false
+            if manifest.state == .recording || manifest.state == .created {
+                manifest.state = .incomplete
+                manifest.reason = "daemon died"
+                changed = true
+            }
+            // A combine still `pending` on launch means the daemon died mid-mux:
+            // the combined.mov (if any) is truncated. Fail it and remove the
+            // partial file, so a front end's "pending" spinner never hangs.
+            if manifest.combined?.state == .pending {
+                let path = manifest.combined?.path ?? "combined.mov"
+                try? fm.removeItem(
+                    at: url.deletingLastPathComponent().appendingPathComponent(path))
+                manifest.combined = Manifest.Combined(
+                    path: path, state: .failed, reason: "daemon died")
+                changed = true
+            }
+            guard changed else { continue }
             try? manifest.write(to: url)
             try? fm.removeItem(
                 at: url.deletingLastPathComponent().appendingPathComponent(reserveName))
@@ -251,6 +295,10 @@ public actor TakeEngine {
                 var superseded = current.manifest
                 superseded.state = .incomplete
                 superseded.reason = "superseded before start"
+                // It never recorded, so its `combined: pending` would never
+                // complete: drop it rather than leave a listing showing a
+                // combine that no task will ever finish.
+                superseded.combined = nil
                 Self.writeManifest(superseded, folder: current.folder)
                 onChange(superseded)
                 live = nil
@@ -284,8 +332,26 @@ public actor TakeEngine {
         // The client can pick a codec per take; otherwise the daemon's
         // default (settings.codec) applies — not a hardcoded HEVC.
         let codec = request.codec ?? defaultCodec()
-        let expected = request.expectedDuration ?? Self.defaultExpectedDuration
         var warnings: [String] = []
+        var combine = request.combine ?? defaultCombine()
+        // Passthrough mux allows at most one video stream (spec §2). An
+        // explicit `combine: true` with more is an error; but when combine was
+        // only the *default* (settings.combine) and the request never asked
+        // for it, drop it (with a warning) rather than refuse a plain record —
+        // the front end hides the checkbox in that state, so it never sent one.
+        if combine, armed.filter({ Self.isVideo($0.kind) }).count > 1 {
+            let videos = armed.filter { Self.isVideo($0.kind) }.count
+            if request.combine == true {
+                throw APIError(
+                    status: 400, code: "combine_requires_single_video",
+                    message: "combine allows at most one video stream; \(videos) are armed")
+            }
+            combine = false
+            warnings.append(
+                "combine is on by default but \(videos) video streams are armed; recording without a combined file"
+            )
+        }
+        let expected = request.expectedDuration ?? Self.defaultExpectedDuration
 
         // Disk pre-flight (spec §7): refuse if short, warn if tight.
         let estimate = armed.reduce(Int64(0)) {
@@ -321,7 +387,8 @@ public actor TakeEngine {
                     timecode: nil, timeReference: nil,
                     framesWritten: 0, drift: nil, events: [], error: nil)
             },
-            markers: [], settings: .init(codec: codec, expectedDuration: request.expectedDuration))
+            markers: [], settings: .init(codec: codec, expectedDuration: request.expectedDuration),
+            combined: combine ? Manifest.Combined(path: "combined.mov", state: .pending) : nil)
 
         do {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -333,7 +400,7 @@ public actor TakeEngine {
                 status: 500, code: "write_failed",
                 message: "could not create \(destination): \(error)")
         }
-        live = Live(manifest: manifest, folder: folder)
+        live = Live(manifest: manifest, folder: folder, combine: combine)
         onChange(manifest)
         return Created(take: manifest, warnings: warnings)
     }
@@ -412,6 +479,10 @@ public actor TakeEngine {
         recent.insert(current.manifest, at: 0)
         if recent.count > 50 { recent.removeLast() }
         onChange(current.manifest)
+        if current.combine {
+            startCombine(
+                id: current.manifest.id, folder: current.folder, manifest: current.manifest)
+        }
         return current.manifest
     }
 
@@ -427,6 +498,22 @@ public actor TakeEngine {
         }
         if current.writers[streamID] != nil {
             throw APIError.conflict("stream \(streamID) is already recording in take \(id)")
+        }
+        // The ≤1-video rule holds across the take's life, not just at create:
+        // a combine take must not gain a second video by joining one. The
+        // kind is in the id (`<kind>:<identifier>`), so refuse before arming.
+        if current.combine {
+            let joiningKind = StreamInfo.Kind(
+                rawValue: String(streamID.split(separator: ":").first ?? ""))
+            let joiningIsVideo = joiningKind.map(Self.isVideo) ?? false
+            let alreadyHasVideo = current.manifest.streams.contains {
+                Self.isVideo($0.kind) && $0.id != streamID
+            }
+            if joiningIsVideo && alreadyHasVideo {
+                throw APIError(
+                    status: 400, code: "combine_requires_single_video",
+                    message: "combine take \(id) already has a video stream; cannot join another")
+            }
         }
         // Arm if needed (join on a cold stream arms it first), then attach.
         let armed = try await registry.arm(streamID)
@@ -547,6 +634,108 @@ public actor TakeEngine {
         return created
     }
 
+    // MARK: Combine
+
+    static func isVideo(_ kind: StreamInfo.Kind) -> Bool {
+        kind == .display || kind == .window || kind == .camera
+    }
+
+    /// Combine a take after the fact (`POST /takes/{id}/combine`). The take
+    /// must not be the live take, must qualify (at most one video), and have
+    /// files to combine; an `incomplete` take (one that lost a stream) is
+    /// allowed — the streams it did keep are still worth a single file.
+    /// Returns the manifest with `combined` pending; the `take` event fires
+    /// again when the mux finishes.
+    public func combine(_ id: String) async throws -> Manifest {
+        if let current = live, current.manifest.id == id {
+            throw APIError.conflict("take \(id) is still recording")
+        }
+        var manifest = try await self.manifest(id)
+        // Idempotent while a mux is actually running *in this process*: two
+        // clients (or a double click) never race two exports to the same file.
+        // A persisted `pending` with no task behind it is stale — a combine the
+        // launch-time recovery sweep never saw (an external root that mounted
+        // late, a root switched in via PATCH) — so we fall through and re-run
+        // rather than answer a pending that will never complete.
+        if combineTasks[id] != nil { return manifest }
+        if manifest.streams.filter({ Self.isVideo($0.kind) }).count > 1 {
+            throw APIError(
+                status: 400, code: "combine_requires_single_video",
+                message: "combine allows at most one video stream")
+        }
+        let folder = URL(fileURLWithPath: manifest.outputRoot).appendingPathComponent(
+            manifest.destination)
+        guard Self.combineInputs(manifest, folder: folder).hasFiles else {
+            throw APIError(
+                status: 400, code: "nothing_to_combine", message: "the take has no files to combine"
+            )
+        }
+        manifest.combined = Manifest.Combined(path: "combined.mov", state: .pending)
+        store(manifest)
+        // Persist `pending` before the mux runs: a daemon killed mid-export is
+        // then recoverable — `recoverStaleManifests` turns a leftover pending
+        // into `failed` and removes the truncated file on next launch.
+        Self.writeManifest(manifest, folder: folder)
+        onChange(manifest)
+        startCombine(id: id, folder: folder, manifest: manifest)
+        return manifest
+    }
+
+    private func startCombine(id: String, folder: URL, manifest: Manifest) {
+        let generation = (combineGeneration[id] ?? 0) + 1
+        combineGeneration[id] = generation
+        let inputs = Self.combineInputs(manifest, folder: folder)
+        combineTasks[id] = Task { [weak self] in
+            let result = await Combiner.combine(
+                in: folder, videoPath: inputs.video, audioPaths: inputs.audio)
+            await self?.applyCombine(id: id, generation: generation, result)
+        }
+    }
+
+    private func applyCombine(id: String, generation: Int, _ combined: Manifest.Combined) {
+        // Drop a result from a superseded run: only the latest combine for
+        // this take may land, so a stale Task can never overwrite a newer one.
+        guard combineGeneration[id] == generation else { return }
+        combineTasks[id] = nil
+        if var manifest = recent.first(where: { $0.id == id }) ?? (try? diskManifest(id)) {
+            manifest.combined = combined
+            store(manifest)
+            let folder = URL(fileURLWithPath: manifest.outputRoot).appendingPathComponent(
+                manifest.destination)
+            Self.writeManifest(manifest, folder: folder)
+            onChange(manifest)
+        }
+    }
+
+    /// The video path (at most one) and audio paths whose files actually
+    /// exist on disk, for the mux.
+    static func combineInputs(_ manifest: Manifest, folder: URL) -> (
+        video: String?, audio: [String], hasFiles: Bool
+    ) {
+        func exists(_ path: String) -> Bool {
+            !path.isEmpty
+                && FileManager.default.fileExists(atPath: folder.appendingPathComponent(path).path)
+        }
+        let video = manifest.streams.first { isVideo($0.kind) && exists($0.path) }?.path
+        let audio = manifest.streams.filter { !isVideo($0.kind) && exists($0.path) }.map(\.path)
+        return (video, audio, video != nil || !audio.isEmpty)
+    }
+
+    private func store(_ manifest: Manifest) {
+        if let index = recent.firstIndex(where: { $0.id == manifest.id }) {
+            recent[index] = manifest
+        } else {
+            recent.insert(manifest, at: 0)
+        }
+    }
+
+    private func diskManifest(_ id: String) throws -> Manifest {
+        guard let found = scanDisk().first(where: { $0.id == id }) else {
+            throw APIError.notFound("no such take: \(id)")
+        }
+        return found
+    }
+
     // MARK: Read
 
     public func manifest(_ id: String) async throws -> Manifest {
@@ -569,7 +758,7 @@ public actor TakeEngine {
         return all.sorted { $0.created > $1.created }.prefix(50).map {
             Summary(
                 id: $0.id, name: $0.name, state: $0.state, created: $0.created,
-                destination: $0.destination, streams: $0.streams.count)
+                destination: $0.destination, streams: $0.streams.count, combined: $0.combined)
         }
     }
 

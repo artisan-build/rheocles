@@ -420,7 +420,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
       x-ws:
         request: { id: 13, method: GET, path: /settings }
-        response: { id: 13, status: 200, body: { outputRoot: /Users/gopher/Movies/Rheocles, codec: hevc } }
+        response: { id: 13, status: 200, body: { outputRoot: /Users/gopher/Movies/Rheocles, codec: hevc, combine: false } }
     patch:
       operationId: patchSettings
       summary: Change the output root and/or default codec. The root cannot move while a take is active.
@@ -438,6 +438,9 @@ paths:
                 codec:
                   type: string
                   enum: [hevc, prores]
+                combine:
+                  type: boolean
+                  description: Default `combine` for new takes.
       responses:
         '200':
           description: The full settings after the change.
@@ -456,8 +459,114 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
       x-ws:
-        request: { id: 14, method: PATCH, path: /settings, body: { codec: prores } }
-        response: { id: 14, status: 200, body: { outputRoot: /Users/gopher/Movies/Rheocles, codec: prores } }
+        request: { id: 14, method: PATCH, path: /settings, body: { codec: prores, combine: true } }
+        response: { id: 14, status: 200, body: { outputRoot: /Users/gopher/Movies/Rheocles, codec: prores, combine: true } }
+  /takes/{id}/reveal:
+    post:
+      operationId: revealTake
+      summary: Reveal the take folder in the Finder, or a file within it. Daemon-side.
+      parameters:
+        - $ref: '#/components/parameters/takeId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                path:
+                  type: string
+                  description: >
+                    A file within the take folder to select, relative to it.
+                    Omitted or empty reveals the folder itself. Must stay
+                    within the folder and must exist.
+      responses:
+        '204':
+          description: The Finder has been asked to reveal the target. No body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No such take, or `path` names nothing within it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 15, method: POST, path: /takes/20260912T040433-fd9q/reveal, body: { path: combined.mov } }
+        response: { id: 15, status: 204 }
+  /reveal:
+    post:
+      operationId: reveal
+      summary: Reveal any file or folder under the output root in the Finder. Daemon-side.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                path:
+                  type: string
+                  description: >
+                    Path relative to the output root. Omitted or empty reveals
+                    the output root itself. Must stay under the root and must
+                    exist.
+      responses:
+        '204':
+          description: The Finder has been asked to reveal the target. No body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: '`path` names nothing under the output root.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 16, method: POST, path: /reveal, body: { path: takes/2026-09-11 } }
+        response: { id: 16, status: 204 }
+  /takes/{id}/combine:
+    post:
+      operationId: combineTake
+      summary: >
+        Passthrough-mux a take into `combined.mov` after the fact — the one
+        video (if any) plus every audio stream as its own track. Starts the
+        mux and returns immediately with `combined.state` `pending`;
+        completion (`complete`, or `failed` with a reason) arrives as a `take`
+        event. Allowed on `complete` and `incomplete` takes; a second call
+        while one is pending is idempotent and returns the pending manifest.
+      parameters:
+        - $ref: '#/components/parameters/takeId'
+      responses:
+        '200':
+          description: The manifest with `combined.state` `pending`; watch for the `take` event to see `complete`/`failed`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '400':
+          description: >
+            More than one video stream (code `combine_requires_single_video`),
+            or the take has no files to combine (code `nothing_to_combine`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The take is still recording.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 17, method: POST, path: /takes/20260912T040433-fd9q/combine }
+        response: { id: 17, status: 200, body: { id: 20260912T040433-fd9q, combined: { path: combined.mov, state: pending } } }
   /token/rotate:
     post:
       operationId: rotateToken
@@ -622,6 +731,8 @@ components:
             - unsupported
             - device_unavailable
             - insufficient_storage
+            - combine_requires_single_video
+            - nothing_to_combine
     StreamList:
       type: object
       required: [streams, permissions]
@@ -748,6 +859,12 @@ components:
         overwrite:
           type: boolean
           description: Reuse a destination that already exists. Never silently suffixed.
+        combine:
+          type: boolean
+          description: >
+            Write a single passthrough-muxed `combined.mov` (the one video, if any,
+            plus every audio stream as its own track) when the take stops. Defaults
+            to `settings.combine`. Requires at most one video stream.
     TakeCreated:
       type: object
       required: [take, warnings]
@@ -777,6 +894,27 @@ components:
           type: string
         streams:
           type: integer
+        combined:
+          $ref: '#/components/schemas/Combined'
+    Combined:
+      type: object
+      description: >
+        The passthrough-muxed `combined.mov`, present only when the take was
+        created with `combine` (or one was run after the fact). `state`
+        advances from `pending` to `complete` or `failed`; completion arrives
+        as a `take` event. A failed combine never marks the take incomplete.
+      required: [path, state]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Combined file, relative to the take folder.
+        state:
+          type: string
+          enum: [pending, complete, failed]
+        reason:
+          type: string
+          description: Present only when `failed`.
     TakeState:
       type: string
       enum: [created, recording, complete, incomplete]
@@ -847,6 +985,8 @@ components:
               enum: [hevc, prores]
             expectedDuration:
               type: number
+        combined:
+          $ref: '#/components/schemas/Combined'
     ManifestStream:
       type: object
       required: [id, kind, name, model, path, codec, format, framesWritten, events]
@@ -939,7 +1079,7 @@ components:
           type: string
     Settings:
       type: object
-      required: [outputRoot, codec]
+      required: [outputRoot, codec, combine]
       additionalProperties: false
       properties:
         outputRoot:
@@ -948,6 +1088,9 @@ components:
         codec:
           type: string
           enum: [hevc, prores]
+        combine:
+          type: boolean
+          description: Default for a take's `combine` option — write a single `combined.mov` alongside the per-stream files.
     Discovery:
       type: object
       required: [name, version, hostname, machineId, outputRoot, auth, ports]

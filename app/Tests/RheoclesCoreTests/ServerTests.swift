@@ -32,6 +32,7 @@ struct ServerTests {
             configuration.writerFactory = FakeWriterFactory()
             configuration.previewFactory = PushingFactory()
             configuration.freeBytes = { _ in 1 << 40 }
+            configuration.reveal = { _ in }  // never open the Finder in a test
             configuration.permissions = {
                 Permissions(camera: .authorized, microphone: .denied, screen: .notDetermined)
             }
@@ -440,10 +441,17 @@ struct ServerTests {
         JSONValue]
     {
         try await task.send(.string(json))
-        guard case .string(let reply) = try await task.receive() else {
-            throw APIError.badRequest("not text")
+        // Command replies and broadcast events share the socket: arming, for
+        // one, pushes a `stream` event. A reply carries `status`; an event
+        // carries `event` and none. Skip events and return the command reply,
+        // so the reply is never mistaken for whichever frame arrived first.
+        while true {
+            guard case .string(let frame) = try await task.receive() else {
+                throw APIError.badRequest("not text")
+            }
+            let decoded = try JSONDecoder().decode([String: JSONValue].self, from: Data(frame.utf8))
+            if decoded["status"] != nil { return decoded }
         }
-        return try JSONDecoder().decode([String: JSONValue].self, from: Data(reply.utf8))
     }
 
     @Test("WebSocket: after the auth frame, GET / answers the same discovery as HTTP")
@@ -458,6 +466,27 @@ struct ServerTests {
         #expect(reply["status"] == .number(200))
         guard case .object(let body)? = reply["body"] else { Issue.record("no body"); return }
         #expect(body["name"] == .string("Rheocles"))
+        task.cancel(with: .normalClosure, reason: nil)
+    }
+
+    @Test("WebSocket: a 204 reveal is valid JSON (body null), parseable like any reply")
+    func wsRevealNoContent() async throws {
+        let server = try running()
+        defer { server.stop() }
+        // A take, so its folder (and the output root) exists to be revealed.
+        _ = try await post(server, "/streams/camera:fake/arm", #"{"armed": true}"#)
+        let (createStatus, _) = try await post(server, "/takes", #"{"name": "r"}"#)
+        #expect(createStatus == 201)
+
+        let task = socket(server)
+        _ = try await roundTrip(task, #"{"auth": "\#(server.token)"}"#)
+        // POST /reveal {} reveals the output root — 204, no body. Before the
+        // fix this frame was `{"id":1,"status":204,"body":}` and roundTrip's
+        // JSON decode would throw here.
+        let reply = try await roundTrip(
+            task, #"{"id": 1, "method": "POST", "path": "/reveal", "body": {}}"#)
+        #expect(reply["status"] == .number(204))
+        #expect(reply["body"] == .null)
         task.cancel(with: .normalClosure, reason: nil)
     }
 
