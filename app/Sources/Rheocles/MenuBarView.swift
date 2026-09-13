@@ -398,7 +398,18 @@ struct TakeBar: View {
             if recording {
                 markers
             } else {
-                if daemon.combineAvailable { combineRow }
+                if daemon.combineAvailable {
+                    combineRow
+                    // A refused or unreachable PATCH from the checkbox must be
+                    // seen where the checkbox is, not on the settings panel.
+                    if let error = daemon.settingsError {
+                        Text(error)
+                            .font(Type.mono(9.5))
+                            .foregroundStyle(Brand.oxide)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 if let take, take.isOver, let combined = take.combined {
                     combinedLine(take, combined)
                 }
@@ -435,32 +446,44 @@ struct TakeBar: View {
     /// with its own Open in Finder, or failed with the reason. The take's
     /// own state is unaffected either way.
     private func combinedLine(_ take: Manifest, _ combined: Combined) -> some View {
-        HStack(spacing: 6) {
-            if combined.isPending {
-                WorkingPulse(colour: Brand.aegean).frame(width: 25)
-            } else {
-                Circle()
-                    .fill(combined.isComplete ? Brand.olive : Brand.oxide)
-                    .frame(width: 5, height: 5)
-            }
-            Text("Single file · \(combined.path)")
-                .font(Type.mono(9.5))
-                .foregroundStyle(Brand.inkFaint)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            if combined.isPending {
-                Text("writing…")
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                if combined.isPending {
+                    WorkingPulse(colour: Brand.aegean).frame(width: 25)
+                } else {
+                    Circle()
+                        .fill(combined.isComplete ? Brand.olive : Brand.oxide)
+                        .frame(width: 5, height: 5)
+                }
+                Text("Single file · \(combined.path)")
                     .font(Type.mono(9.5))
-                    .foregroundStyle(Brand.script)
-            } else if !combined.isComplete {
-                Text(combined.reason ?? combined.state.rawValue)
+                    .foregroundStyle(Brand.inkFaint)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if combined.isPending {
+                    Text("writing…")
+                        .font(Type.mono(9.5))
+                        .foregroundStyle(Brand.script)
+                } else if !combined.isComplete {
+                    Text(combined.state.rawValue)
+                        .font(Type.mono(9.5))
+                        .foregroundStyle(Brand.oxide)
+                }
+                Spacer(minLength: 4)
+                if combined.isComplete {
+                    FinderButton { daemon.reveal(take: take.id, path: combined.path) }
+                }
+            }
+            // The failed state is the one where the words matter — an
+            // AVAssetExportSession error is a sentence — so the reason gets
+            // its own wrapped line, as the take's reason does.
+            if !combined.isPending, !combined.isComplete, let reason = combined.reason {
+                Text(reason)
                     .font(Type.mono(9.5))
                     .foregroundStyle(Brand.oxide)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 4)
-            if combined.isComplete {
-                FinderButton { daemon.reveal(take: take.id, path: combined.path) }
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 11)
             }
         }
     }

@@ -121,9 +121,8 @@ struct RevealCombineTests {
         model.connect()
         defer { model.shutdown() }
         #expect(await eventually { model.settings != nil })
-        // Today's engine does not know `combine`; the app reads that as
-        // false and a PATCH of it is either accepted or refused as
-        // bad_request — never a crash, never a stale checkbox.
+        // The daemon's default, off until asked; PATCH turns it on and a
+        // take created under it carries `combined` from the start.
         #expect(model.combine == false)
         model.updateSettings(combine: true)
         #expect(await eventually { model.combine })

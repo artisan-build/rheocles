@@ -218,16 +218,18 @@ struct TerminationTests {
         configuration.coreLog = scratch.appendingPathComponent("core.log")
         configuration.pulse = .milliseconds(200)
         let model = DaemonModel(configuration: configuration)
-        model.connect()
-        #expect(await eventually(.seconds(8)) { model.status == .running })
-        let pid = try #require(model.corePID)
-
+        // Installed before the core is launched, as the app does: SIG_IGN in
+        // the parent must not reach the child (Process resets dispositions).
         var ran = false
         Termination.install(signals: [SIGTERM], exits: false) {
             model.shutdown()
             ran = true
         }
         defer { Termination.uninstall() }
+        model.connect()
+        #expect(await eventually(.seconds(8)) { model.status == .running })
+        let pid = try #require(model.corePID)
+
         kill(getpid(), SIGTERM)
         #expect(await eventually { ran })
         #expect(await eventually { kill(pid, 0) != 0 })
