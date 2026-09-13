@@ -13,10 +13,25 @@ public final class Settings: Sendable {
     public struct Values: Codable, Sendable, Equatable {
         public var outputRoot: String
         public var codec: Manifest.Codec
+        /// Default for a take's `combine` option — write a single combined.mov
+        /// alongside the per-stream files. Default false.
+        public var combine: Bool
 
-        public init(outputRoot: String, codec: Manifest.Codec) {
+        public init(outputRoot: String, codec: Manifest.Codec, combine: Bool = false) {
             self.outputRoot = outputRoot
             self.codec = codec
+            self.combine = combine
+        }
+
+        // `combine` was added after the first settings shipped; decode an
+        // older settings.json / event that predates it as false rather than
+        // failing, so a stored root is not discarded and older clients keep
+        // working.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            outputRoot = try c.decode(String.self, forKey: .outputRoot)
+            codec = try c.decode(Manifest.Codec.self, forKey: .codec)
+            combine = try c.decodeIfPresent(Bool.self, forKey: .combine) ?? false
         }
     }
 
@@ -44,15 +59,19 @@ public final class Settings: Sendable {
 
     public var codec: Manifest.Codec { values.codec }
 
+    public var combine: Bool { values.combine }
+
     /// Apply a partial change, persist it, and announce it. Validation
     /// (e.g. refusing an outputRoot change mid-take) is the caller's.
     @discardableResult
-    public func update(outputRoot newRoot: String? = nil, codec newCodec: Manifest.Codec? = nil)
-        -> Values
-    {
+    public func update(
+        outputRoot newRoot: String? = nil, codec newCodec: Manifest.Codec? = nil,
+        combine newCombine: Bool? = nil
+    ) -> Values {
         let updated = state.withLock { values -> Values in
             if let newRoot { values.outputRoot = newRoot }
             if let newCodec { values.codec = newCodec }
+            if let newCombine { values.combine = newCombine }
             return values
         }
         persist(updated)

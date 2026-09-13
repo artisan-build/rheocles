@@ -20,10 +20,14 @@ public actor TakeEngine {
         public var expectedDuration: Double?
         /// Reuse a destination that already exists. Never silently suffixed.
         public var overwrite: Bool?
+        /// Also write a single combined.mov (passthrough mux). Defaults to
+        /// `settings.combine`. Only valid with at most one video stream armed.
+        public var combine: Bool?
 
         public init(
             name: String? = nil, destination: String? = nil, files: [String: String]? = nil,
-            codec: Manifest.Codec? = nil, expectedDuration: Double? = nil, overwrite: Bool? = nil
+            codec: Manifest.Codec? = nil, expectedDuration: Double? = nil, overwrite: Bool? = nil,
+            combine: Bool? = nil
         ) {
             self.name = name
             self.destination = destination
@@ -31,6 +35,7 @@ public actor TakeEngine {
             self.codec = codec
             self.expectedDuration = expectedDuration
             self.overwrite = overwrite
+            self.combine = combine
         }
     }
 
@@ -55,12 +60,14 @@ public actor TakeEngine {
         var manifest: Manifest
         var folder: URL
         var writers: [String: any Writer] = [:]
+        var combine = false
     }
 
     private let registry: Registry
     private let rootProvider: @Sendable () -> URL
     private var root: URL { rootProvider() }
     private let defaultCodec: @Sendable () -> Manifest.Codec
+    private let defaultCombine: @Sendable () -> Bool
     private let writerFactory: any WriterFactory
     private let machine: Manifest.Machine
     private let freeBytes: @Sendable (URL) -> Int64?
@@ -82,6 +89,7 @@ public actor TakeEngine {
         writerFactory: any WriterFactory,
         machine: Manifest.Machine,
         defaultCodec: @escaping @Sendable () -> Manifest.Codec = { .hevc },
+        defaultCombine: @escaping @Sendable () -> Bool = { false },
         freeBytes: @escaping @Sendable (URL) -> Int64? = { Discovery.freeBytes(at: $0) },
         onChange: @escaping @Sendable (Manifest) -> Void = { _ in },
         onEvent: @escaping @Sendable (String) -> Void = { _ in }
@@ -89,6 +97,7 @@ public actor TakeEngine {
         self.registry = registry
         self.rootProvider = outputRoot
         self.defaultCodec = defaultCodec
+        self.defaultCombine = defaultCombine
         self.writerFactory = writerFactory
         self.machine = machine
         self.freeBytes = freeBytes
@@ -284,6 +293,15 @@ public actor TakeEngine {
         // The client can pick a codec per take; otherwise the daemon's
         // default (settings.codec) applies — not a hardcoded HEVC.
         let codec = request.codec ?? defaultCodec()
+        let combine = request.combine ?? defaultCombine()
+        // Passthrough mux allows at most one video stream (spec §2).
+        if combine, armed.filter({ Self.isVideo($0.kind) }).count > 1 {
+            throw APIError(
+                status: 400, code: "combine_requires_single_video",
+                message:
+                    "combine allows at most one video stream; \(armed.filter { Self.isVideo($0.kind) }.count) are armed"
+            )
+        }
         let expected = request.expectedDuration ?? Self.defaultExpectedDuration
         var warnings: [String] = []
 
@@ -321,7 +339,8 @@ public actor TakeEngine {
                     timecode: nil, timeReference: nil,
                     framesWritten: 0, drift: nil, events: [], error: nil)
             },
-            markers: [], settings: .init(codec: codec, expectedDuration: request.expectedDuration))
+            markers: [], settings: .init(codec: codec, expectedDuration: request.expectedDuration),
+            combined: combine ? Manifest.Combined(path: "combined.mov", state: .pending) : nil)
 
         do {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -333,7 +352,7 @@ public actor TakeEngine {
                 status: 500, code: "write_failed",
                 message: "could not create \(destination): \(error)")
         }
-        live = Live(manifest: manifest, folder: folder)
+        live = Live(manifest: manifest, folder: folder, combine: combine)
         onChange(manifest)
         return Created(take: manifest, warnings: warnings)
     }
@@ -412,6 +431,10 @@ public actor TakeEngine {
         recent.insert(current.manifest, at: 0)
         if recent.count > 50 { recent.removeLast() }
         onChange(current.manifest)
+        if current.combine {
+            startCombine(
+                id: current.manifest.id, folder: current.folder, manifest: current.manifest)
+        }
         return current.manifest
     }
 
@@ -545,6 +568,89 @@ public actor TakeEngine {
         var created = try await create(request)
         created.take = try await start(created.take.id)
         return created
+    }
+
+    // MARK: Combine
+
+    static func isVideo(_ kind: StreamInfo.Kind) -> Bool {
+        kind == .display || kind == .window || kind == .camera
+    }
+
+    /// Combine a finished take after the fact (`POST /takes/{id}/combine`).
+    /// The take must not be recording, must qualify (at most one video), and
+    /// have files to combine. Returns the manifest with `combined` pending;
+    /// the `take` event fires again when the mux finishes.
+    public func combine(_ id: String) async throws -> Manifest {
+        if let current = live, current.manifest.id == id {
+            throw APIError.conflict("take \(id) is still recording")
+        }
+        var manifest = try await self.manifest(id)
+        if manifest.streams.filter({ Self.isVideo($0.kind) }).count > 1 {
+            throw APIError(
+                status: 400, code: "combine_requires_single_video",
+                message: "combine allows at most one video stream")
+        }
+        let folder = URL(fileURLWithPath: manifest.outputRoot).appendingPathComponent(
+            manifest.destination)
+        guard Self.combineInputs(manifest, folder: folder).hasFiles else {
+            throw APIError(
+                status: 400, code: "nothing_to_combine", message: "the take has no files to combine"
+            )
+        }
+        manifest.combined = Manifest.Combined(path: "combined.mov", state: .pending)
+        store(manifest)
+        onChange(manifest)
+        startCombine(id: id, folder: folder, manifest: manifest)
+        return manifest
+    }
+
+    private func startCombine(id: String, folder: URL, manifest: Manifest) {
+        let inputs = Self.combineInputs(manifest, folder: folder)
+        Task { [weak self] in
+            let result = await Combiner.combine(
+                in: folder, videoPath: inputs.video, audioPaths: inputs.audio)
+            await self?.applyCombine(id: id, result)
+        }
+    }
+
+    private func applyCombine(id: String, _ combined: Manifest.Combined) {
+        if var manifest = recent.first(where: { $0.id == id }) ?? (try? diskManifest(id)) {
+            manifest.combined = combined
+            store(manifest)
+            let folder = URL(fileURLWithPath: manifest.outputRoot).appendingPathComponent(
+                manifest.destination)
+            Self.writeManifest(manifest, folder: folder)
+            onChange(manifest)
+        }
+    }
+
+    /// The video path (at most one) and audio paths whose files actually
+    /// exist on disk, for the mux.
+    static func combineInputs(_ manifest: Manifest, folder: URL) -> (
+        video: String?, audio: [String], hasFiles: Bool
+    ) {
+        func exists(_ path: String) -> Bool {
+            !path.isEmpty
+                && FileManager.default.fileExists(atPath: folder.appendingPathComponent(path).path)
+        }
+        let video = manifest.streams.first { isVideo($0.kind) && exists($0.path) }?.path
+        let audio = manifest.streams.filter { !isVideo($0.kind) && exists($0.path) }.map(\.path)
+        return (video, audio, video != nil || !audio.isEmpty)
+    }
+
+    private func store(_ manifest: Manifest) {
+        if let index = recent.firstIndex(where: { $0.id == manifest.id }) {
+            recent[index] = manifest
+        } else {
+            recent.insert(manifest, at: 0)
+        }
+    }
+
+    private func diskManifest(_ id: String) throws -> Manifest {
+        guard let found = scanDisk().first(where: { $0.id == id }) else {
+            throw APIError.notFound("no such take: \(id)")
+        }
+        return found
     }
 
     // MARK: Read
