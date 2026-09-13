@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 
 /// A stand-in for `rheocles-core`: a small Python HTTP server that speaks
 /// just enough of the protocol for `DaemonModel` to find it, pair with it,
@@ -202,6 +203,13 @@ extension StubDaemon {
         return false
     }
 }
+
+/// Every suite that starts a process or an in-process engine runs under
+/// this one, serialized: they contend for CPU, ports and the main actor,
+/// and a cold CI runner loses those races when they run side by side.
+/// The pure suites (icon state, ordering) stay parallel.
+@Suite("Live", .serialized)
+enum Live {}
 
 /// Poll until a condition holds or the time is up. Returns as soon as the
 /// condition is true, so a generous ceiling costs nothing on a passing run —
