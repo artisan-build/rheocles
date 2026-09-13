@@ -6,7 +6,10 @@
 // the row and nothing below it, everything centred on one line. The type and
 // the colours stay ours.
 import Mark from './Mark.astro';
-const path = Astro.url.pathname;
+// With build.format 'file' the docs index builds as /docs.html, and that is
+// the pathname this sees; without the trim it was the one docs page that
+// counted as not-docs.
+const path = Astro.url.pathname.replace(/\.html$/, '');
 const inDocs = path === '/docs' || path.startsWith('/docs/');
 ---
 

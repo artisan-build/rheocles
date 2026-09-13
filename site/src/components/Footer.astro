@@ -1,7 +1,10 @@
 ---
 import Meander from './Meander.astro';
 import { version, releaseUrl } from '../lib/version';
-const path = Astro.url.pathname;
+// With build.format 'file' the docs index builds as /docs.html, and that is
+// the pathname this sees; without the trim it was the one docs page that
+// counted as not-docs.
+const path = Astro.url.pathname.replace(/\.html$/, '');
 const inDocs = path === '/docs' || path.startsWith('/docs/');
 ---
 
