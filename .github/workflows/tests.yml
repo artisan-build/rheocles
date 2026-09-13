@@ -1,11 +1,14 @@
 name: tests
 
+# php/** and docs/openapi.yaml are in the pull_request paths for the changelog
+# job: a PR that changes the NativePHP app or the API contract has changed
+# something a user sees, and needs its line in CHANGELOG.md like any other.
 on:
   push:
     branches: [main]
     paths: ['app/**', '.github/workflows/tests.yml']
   pull_request:
-    paths: ['app/**', '.github/workflows/tests.yml']
+    paths: ['app/**', 'php/**', 'docs/openapi.yaml', '.github/workflows/tests.yml']
 
 concurrency:
   group: tests-${{ github.ref }}
@@ -33,3 +36,27 @@ jobs:
 
       - name: Lint
         run: xcrun swift-format lint --recursive app/Sources app/Tests
+
+  # A PR that changes what a user sees carries its CHANGELOG.md line, or says
+  # why it has none. The compared range is the PR's own commits against the
+  # base branch, so a merge from main does not count as touching anything.
+  changelog:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: CHANGELOG.md moved with the code
+        if: "!contains(github.event.pull_request.labels.*.name, 'skip-changelog')"
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          CHANGED="$(git diff --name-only "origin/$BASE...HEAD")"
+          AREAS="$(echo "$CHANGED" | { grep -E '^(app/|php/|docs/openapi\.yaml$)' || true; } | sed -E 's#^(app/|php/).*#\1#' | sort -u | paste -sd ' ' -)"
+          if [ -n "$AREAS" ] && ! echo "$CHANGED" | grep -qx 'CHANGELOG.md'; then
+            echo "::error title=No changelog entry::This PR changes $AREAS but not CHANGELOG.md — add a line under ## [Unreleased], or label the PR skip-changelog"
+            exit 1
+          fi
+          echo "changed: ${AREAS:-nothing user-facing}"
