@@ -50,9 +50,10 @@
   .foot { max-width:var(--col); }
   .cat { font-size:26px; font-weight:600; color:var(--ink); letter-spacing:-.012em; line-height:1.2; }
   .meta { color:var(--ink-soft); font-size:21px; margin-top:8px; }
-  /* 600 wide on a 1502×954 sticker is 381 tall; bottom flush, right edge in
-     from the card so the last cradle keeps its margin. */
-  .art { position:absolute; right:14px; bottom:0; width:600px; z-index:1; display:block; }
+  /* The whole sticker inside the card — nothing cropped, the bench end and
+     the legs included — with 24px to the right and bottom edges plus the
+     sticker's own margin. 580 wide on a 1502×954 sticker is 368 tall. */
+  .art { position:absolute; right:24px; bottom:24px; width:580px; z-index:1; display:block; }
 </style></head>
 <body>
   <div class="bar"></div>
