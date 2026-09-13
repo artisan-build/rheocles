@@ -166,3 +166,24 @@ every tag; the real app always shows the daemon's version there.
 
 The PNG is the popover alone, 688×1332 (344×666 at 1×), no window chrome;
 `index.astro` gives it the shadow.
+
+## The social cards
+
+The landing page's card is composed, not cropped — `og.html` in Sonocles'
+shape with the hero sticker on the right — and rendered to
+`public/og/index.png`; every other page's card is generated at build by
+`src/pages/og/[...slug].ts` with the family strip (`og-strip.html` → the
+logo slot) and the pill (`og-pill.html` → a transparent background layer).
+`art/og.mjs` renders any of them with the Playwright Chromium (mock
+keychain, throwaway profile, killed by pid), rasterised at 2× and written at
+the size the tags state:
+
+```sh
+cd site
+node art/og.mjs og.html public/og/index.png                                  # after a hero plate change
+node art/og.mjs og-strip.html src/assets/og-strip.png --size 320x44 --transparent
+node art/og.mjs og-pill.html src/assets/og-pill.png --transparent
+```
+
+Re-render `index.png` whenever the hero plate or the tagline changes; the
+strip and pill only when the mark, wordmark or pill do.

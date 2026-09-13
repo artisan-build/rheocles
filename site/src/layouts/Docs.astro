@@ -21,7 +21,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 const { prev, next } = neighbours(id, existing);
 ---
 
-<Base title={`${title} — Rheocles docs`} description={description}>
+<Base title={`${title} — Rheocles docs`} description={description} card={{ alt: `Rheocles — ${title}` }}>
 	<div class:list={['wrap', 'wrap--wide', 'docs', { 'docs--wide': wide }]}>
 		<aside class="sidebar">
 			<p class="kicker">Docs</p>

@@ -1,0 +1,76 @@
+<!doctype html>
+<!--
+  Source for public/og/index.png — the landing page's social card, composed
+  rather than cropped, in the same shape as sonocles.com's: brand row, the
+  tagline, two lines that say what it is, the hero plate on the right. Not
+  part of the Astro build; render it when the card changes:
+
+      cd site && node art/og.mjs og.html public/og/index.png
+
+  (site/ART.md § Screenshots.) The generated cards for every other page come
+  from src/pages/og/[...slug].ts, which skips `index` for this reason.
+
+  The plate is 1502×954 with its cream lifted off (a sticker, art/sticker.py),
+  so it sits straight on the card's limestone with no seam to hide. It is a
+  wide plate, so it sits lower-right and the text column is narrower than
+  Sonocles' (--col): the two never share horizontal space, and the plate's
+  leftmost drawn pixel — Kronos's doorway, not the box edge — is what has to
+  clear the text. Verified by looking at the render, not by trusting this.
+
+  Nothing is set below 21px: a card is read at about 500px wide in a chat
+  timeline, where 21px renders around 9px.
+-->
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --limestone:#faf2e4; --ink:#2a211a; --ink-soft:#4e4034; --ink-faint:#6b5c4c; --script:#7a6a59;
+    --aegean:#2e5c86;
+    --col:540px;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { width:1200px; height:630px; background:var(--limestone); overflow:hidden;
+    font-family:'Instrument Sans',system-ui,sans-serif; position:relative; }
+  /* The Aegean leading bar the generated cards carry. */
+  .bar { position:absolute; top:0; bottom:0; left:0; width:18px; background:var(--aegean); z-index:3; }
+  .pad { padding:52px 58px 50px 76px; height:100%; display:flex; flex-direction:column; justify-content:space-between; position:relative; z-index:2; }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .brand svg { color:var(--aegean); }
+  .brand .name { font-family:'Fraunces',serif; font-weight:700; font-size:30px; color:var(--ink);
+    font-variation-settings:'SOFT' 30,'WONK' 1; letter-spacing:-.01em; }
+  .brand .say { font-family:'IBM Plex Mono',monospace; font-size:15px; color:var(--ink-faint); }
+  .pill { margin-left:auto; display:inline-flex; align-items:center; line-height:1; background:var(--aegean); color:var(--limestone);
+    font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:500; letter-spacing:.12em; text-transform:uppercase;
+    padding:9px 16px 8px 18px; border-radius:999px; }
+  /* Three authored lines, as on the page: the tagline breaks where it means
+     to, and the third line is the one in Aegean. */
+  h1 { font-family:'Fraunces',serif; font-weight:700; font-size:64px; line-height:1.06;
+    color:var(--ink); letter-spacing:-.015em; font-variation-settings:'SOFT' 30,'WONK' 1; margin-top:6px; white-space:nowrap; }
+  h1 em { font-style:normal; color:var(--aegean); }
+  .foot { max-width:var(--col); }
+  .cat { font-size:26px; font-weight:600; color:var(--ink); letter-spacing:-.012em; line-height:1.2; }
+  .meta { color:var(--ink-soft); font-size:21px; margin-top:8px; }
+  /* 600 wide on a 1502×954 sticker is 381 tall; bottom flush, right edge in
+     from the card so the last cradle keeps its margin. */
+  .art { position:absolute; right:14px; bottom:0; width:600px; z-index:1; display:block; }
+</style></head>
+<body>
+  <div class="bar"></div>
+  <img class="art" src="src/assets/plates/hero.png" alt="">
+  <div class="pad">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+        <path d="M5 4 V28"/><path d="M5 8.5 C 12 8, 20 9.2, 28 8.5"/><path d="M5 14 C 11 13.6, 17 14.6, 22 14"/>
+        <path d="M5 19.5 C 13 19, 19 20.2, 26 19.5"/><path d="M5 25 C 10 24.7, 14 25.4, 18 25"/>
+      </svg>
+      <span class="name">Rheocles</span>
+      <span class="say">REE-oh-kleez</span>
+      <span class="pill">Free · Open source</span>
+    </div>
+    <h1>Every stream,<br>in its own file,<br><em>on one cue.</em></h1>
+    <div class="foot">
+      <p class="cat">Every camera, mic, display and window you choose — each in its own file.</p>
+      <p class="meta">Time-of-day timecode in every one. macOS 15+.</p>
+    </div>
+  </div>
+</body></html>

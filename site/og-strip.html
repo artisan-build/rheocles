@@ -1,0 +1,30 @@
+<!doctype html>
+<!--
+  The family strip astro-og-canvas places at the top of every generated card
+  (src/pages/og/[...slug].ts): the mark, the wordmark, the pronunciation —
+  so a docs card says "Rheocles" as a wordmark, not a glyph. The library
+  takes one logo image; this is it. Transparent, 320×44:
+
+      cd site && node art/og.mjs og-strip.html src/assets/og-strip.png --size 320x44 --transparent
+-->
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; margin:0; }
+  body { width:320px; height:44px; background:transparent; overflow:hidden; }
+  .brand { display:flex; align-items:center; gap:12px; height:44px; }
+  .brand svg { color:#2e5c86; flex:none; }
+  .name { font-family:'Fraunces',serif; font-weight:700; font-size:30px; color:#2a211a;
+    font-variation-settings:'SOFT' 30,'WONK' 1; letter-spacing:-.01em; line-height:1; }
+  .say { font-family:'IBM Plex Mono',monospace; font-size:15px; color:#6b5c4c; line-height:1; padding-top:4px; }
+</style></head>
+<body>
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+      <path d="M5 4 V28"/><path d="M5 8.5 C 12 8, 20 9.2, 28 8.5"/><path d="M5 14 C 11 13.6, 17 14.6, 22 14"/>
+      <path d="M5 19.5 C 13 19, 19 20.2, 26 19.5"/><path d="M5 25 C 10 24.7, 14 25.4, 18 25"/>
+    </svg>
+    <span class="name">Rheocles</span>
+    <span class="say">REE-oh-kleez</span>
+  </div>
+</body></html>
