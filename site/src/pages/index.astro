@@ -63,7 +63,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 	<section class="hero wrap">
 		<p class="pill">Free · Open source · MIT</p>
 		<h1 class="hero__title">
-			Every <span class="hero__nowrap">available stream,</span><br />
+			Every <span class="hero__available">available </span>stream,<br />
 			in its own file,<br />
 			<span class="hero__accent">on one cue.</span>
 		</h1>
@@ -312,10 +312,7 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		max-width: var(--page);
 	}
 	.hero__title {
-		/* The 10vw term keeps "available stream," (8.5em in Fraunces at this
-		   weight) inside a phone's width; from 550px up the first line fits
-		   whole. */
-		font-size: min(10vw, clamp(2.5rem, 7vw, 4.6rem));
+		font-size: clamp(2.5rem, 7vw, 4.6rem);
 		margin: 0.9rem 0 1.1rem;
 		/* The lines are authored (the <br>s); the page-wide `balance` would
 		   otherwise shorten the first one to even them up and strand "Every". */
@@ -324,12 +321,15 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 	.hero__accent {
 		color: var(--aegean);
 	}
-	/* Three authored lines, and the first is the long one. Where it cannot
-	   fit — a phone — the only break allowed is after "Every"; "available"
-	   and "stream," never stand alone. Each breakpoint below sizes the title
-	   so the first line fits its column whole. */
-	.hero__nowrap {
-		white-space: nowrap;
+	/* Three authored lines, the first the long one, and never a fourth: where
+	   "Every available stream," does not fit its column whole at the hero's
+	   size — a phone, and the narrow split column — the word goes, and the
+	   line reads "Every stream,". The progression of shortening lines stays
+	   where there is room for it. */
+	@media (max-width: 550px), (min-width: 761px) and (max-width: 1239px) {
+		.hero__available {
+			display: none;
+		}
 	}
 	.hero__stand {
 		font-size: 1.15rem;
@@ -372,10 +372,9 @@ const ws = new WebSocket('ws://127.0.0.1:7448/')             // full duplex`;
 		.hero > * {
 			grid-column: 1;
 		}
-		/* 391px column: the first line breaks after "Every" here (it would
-		   need 1.95rem to fit whole, too small for a hero); four lines. */
+		/* 391px column: "Every stream," here — see .hero__available. */
 		.hero__title {
-			font-size: 2.3rem;
+			font-size: clamp(2.4rem, 4.2vw, 3rem);
 		}
 		/* Outranks the `.hero > *` column rule above. */
 		.hero > .hero__popover {
