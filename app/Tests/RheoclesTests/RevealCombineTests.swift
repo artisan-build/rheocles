@@ -136,6 +136,7 @@ struct RevealCombineTests {
         model.record()
         #expect(await eventually { model.take?.isRecording == true })
         #expect(model.take?.combined?.isPending == true)
+        #expect(await eventually { !model.takeBusy })
         model.stop()
         #expect(await eventually { model.take?.isOver == true })
         #expect(await eventually(.seconds(8)) { model.take?.combined?.isPending == false })
@@ -151,5 +152,108 @@ struct RevealCombineTests {
 extension String {
     fileprivate static func * (lhs: String, rhs: Int) -> String {
         String(repeating: lhs, count: rhs)
+    }
+}
+
+/// "Combine now" (feature brief, addendum): on a finished take with no
+/// combined file and at most one video stream, and nowhere else.
+@Suite("Combine now", .serialized)
+@MainActor
+struct CombineNowTests {
+    private func manifest(state: String, videos: Int, audios: Int, combined: Bool) throws
+        -> Manifest
+    {
+        let video = (0..<videos).map {
+            #"{ "id": "camera:\#($0)", "kind": "camera", "name": "c", "model": "m", "path": "c\#($0).mov", "codec": "hevc", "format": { "video": { "width": 1280, "height": 720, "maxFrameRate": 30 } }, "framesWritten": 1, "events": [] }"#
+        }
+        let audio = (0..<audios).map {
+            #"{ "id": "microphone:\#($0)", "kind": "microphone", "name": "a", "model": "m", "path": "a\#($0).wav", "codec": "pcm_s24le", "format": { "audio": { "sampleRate": 48000, "channels": 1 } }, "framesWritten": 1, "events": [] }"#
+        }
+        let json = """
+            { "id": "tk", "state": "\(state)", "created": "2026-09-11T14:02:09.412Z",
+              "outputRoot": "/tmp", "destination": "takes/x", "version": "0.1.0",
+              "machine": { "hostname": "h", "machineId": "m" },
+              "streams": [\((video + audio).joined(separator: ","))], "markers": [],
+              "settings": { "codec": "hevc" }\(combined ? #", "combined": { "path": "combined.mov", "state": "complete" }"# : "") }
+            """
+        return try Manifest.wireDecoder.decode(Manifest.self, from: Data(json.utf8))
+    }
+
+    @Test("Qualifies: finished, no combined, at most one video")
+    func rule() throws {
+        #expect(try manifest(state: "complete", videos: 1, audios: 2, combined: false).canCombine)
+        #expect(try manifest(state: "incomplete", videos: 0, audios: 1, combined: false).canCombine)
+        #expect(try manifest(state: "complete", videos: 0, audios: 0, combined: false).canCombine)
+        #expect(
+            !(try manifest(state: "complete", videos: 2, audios: 1, combined: false).canCombine))
+        #expect(!(try manifest(state: "complete", videos: 1, audios: 1, combined: true).canCombine))
+        #expect(
+            !(try manifest(state: "recording", videos: 1, audios: 1, combined: false).canCombine))
+        #expect(!(try manifest(state: "created", videos: 1, audios: 1, combined: false).canCombine))
+    }
+
+    @Test("Combine now on a finished take: pending on the answer, resolved on the event")
+    func combineNow() async throws {
+        let flow = TakeFlowTests()
+        let (daemon, model) = try flow.engine()
+        defer { daemon.stop() }
+        model.connect()
+        defer { model.shutdown() }
+        #expect(await eventually { model.settings != nil })
+        #expect(model.combine == false)
+
+        model.arm("microphone:fake", true)
+        #expect(await eventually { model.armedStreams.count == 1 })
+        model.record()
+        #expect(await eventually { model.take?.isRecording == true })
+        #expect(model.take?.combined == nil)
+        #expect(await eventually { !model.takeBusy })
+        model.stop()
+        #expect(await eventually { model.take?.isOver == true })
+        #expect(await eventually { !model.takeBusy })
+        let id = try #require(model.take?.id)
+        #expect(model.take?.canCombine == true)
+
+        // Null writers leave no files, and the daemon says so: nothing to
+        // combine is a 400, shown, and the take stays combinable.
+        model.combineNow(id)
+        #expect(await eventually { model.takeError?.contains("nothing_to_combine") == true })
+        #expect(model.take?.combined == nil)
+
+        // Give it files — empty ones will do for the flow: the answer is
+        // pending, the mux fails on them, and the row settles on failed.
+        let take = try #require(model.take)
+        let folder = URL(fileURLWithPath: take.outputRoot).appending(path: take.destination)
+        for stream in take.streams {
+            FileManager.default.createFile(
+                atPath: folder.appending(path: stream.path).path, contents: Data())
+        }
+        model.combineNow(id)
+        #expect(await eventually { model.take?.combined != nil })
+        #expect(await eventually(.seconds(8)) { model.take?.combined?.isPending == false })
+        #expect(model.take?.canCombine == false)
+        #expect(model.recentDetail[id]?.combined != nil)
+        #expect(model.take?.combined?.isComplete == false)
+        #expect(model.take?.combined?.reason != nil)
+    }
+
+    @Test(
+        "A finished take arriving by event does not displace the current one; a recording one does")
+    func placement() throws {
+        let model = DaemonModel.staged(.running)
+        let current = try manifest(state: "complete", videos: 1, audios: 1, combined: false)
+        model.place(current)
+        #expect(model.take?.id == "tk")
+
+        var older = try manifest(state: "complete", videos: 0, audios: 1, combined: true)
+        older.id = "tk_old"
+        model.place(older)
+        #expect(model.take?.id == "tk")
+        #expect(model.recentDetail["tk_old"]?.combined?.isComplete == true)
+
+        var live = try manifest(state: "recording", videos: 1, audios: 0, combined: false)
+        live.id = "tk_live"
+        model.place(live)
+        #expect(model.take?.id == "tk_live")
     }
 }

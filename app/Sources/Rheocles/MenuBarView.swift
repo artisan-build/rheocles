@@ -487,27 +487,54 @@ struct TakeBar: View {
             .buttonStyle(.plain)
             if daemon.showRecent {
                 ForEach(daemon.recent.prefix(5), id: \.id) { summary in
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(
-                                summary.state == .complete
-                                    ? Brand.olive
-                                    : summary.state == .recording ? Brand.oxide : Brand.script
-                            )
-                            .frame(width: 5, height: 5)
-                        Text(summary.name ?? summary.id)
-                            .font(Type.body(10.5, .medium))
-                            .foregroundStyle(Brand.ink)
-                            .lineLimit(1)
-                        Text(summary.created.formatted(date: .abbreviated, time: .shortened))
-                            .font(Type.mono(9))
-                            .foregroundStyle(Brand.inkFaint)
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                        FinderButton { daemon.reveal(take: summary.id) }
-                    }
+                    recentRow(summary)
                 }
             }
+        }
+        .task(id: daemon.showRecent) {
+            if daemon.showRecent { await daemon.loadRecentDetail() }
+        }
+    }
+
+    /// One recent take: name, when, its combined file's state if it has
+    /// one, Combine now if it qualifies, and Open in Finder.
+    private func recentRow(_ summary: TakeEngine.Summary) -> some View {
+        let detail = daemon.recentDetail[summary.id]
+        let combined = detail?.combined ?? summary.combined
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(
+                    summary.state == .complete
+                        ? Brand.olive : summary.state == .recording ? Brand.oxide : Brand.script
+                )
+                .frame(width: 5, height: 5)
+            Text(summary.name ?? summary.id)
+                .font(Type.body(10.5, .medium))
+                .foregroundStyle(Brand.ink)
+                .lineLimit(1)
+            Text(summary.created.formatted(date: .abbreviated, time: .shortened))
+                .font(Type.mono(9))
+                .foregroundStyle(Brand.inkFaint)
+                .lineLimit(1)
+            if let combined {
+                if combined.isPending {
+                    WorkingPulse(colour: Brand.aegean).frame(width: 25)
+                } else {
+                    Text(combined.isComplete ? "· single file" : "· combine failed")
+                        .font(Type.mono(9))
+                        .foregroundStyle(combined.isComplete ? Brand.olive : Brand.oxide)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 4)
+            if let combined, combined.isComplete {
+                FinderButton { daemon.reveal(take: summary.id, path: combined.path) }
+            } else if let detail, detail.canCombine {
+                PillButton("Combine now", colour: Brand.aegean, filled: false, compact: true) {
+                    daemon.combineNow(summary.id)
+                }
+            }
+            FinderButton { daemon.reveal(take: summary.id) }
         }
     }
 
@@ -619,10 +646,14 @@ struct TakeBar: View {
         var line =
             Text(take.name ?? take.id).foregroundColor(Brand.inkSoft) + Text(" · ")
             + Text(take.state.rawValue).foregroundColor(tone)
-        if let elapsed = take.elapsed(at: daemon.now) {
-            line = line + Text(" · \(elapsed.clock)")
+        // With Combine now beside it there is no room for the numbers; the
+        // name and the state are what matter, and Recent has the rest.
+        if !take.canCombine {
+            if let elapsed = take.elapsed(at: daemon.now) {
+                line = line + Text(" · \(elapsed.clock)")
+            }
+            line = line + Text(" · \(take.streams.count) files")
         }
-        line = line + Text(" · \(take.streams.count) files")
         if let reason = take.reason {
             line = line + Text(" — \(reason)").foregroundColor(Brand.oxide)
         }
@@ -633,7 +664,13 @@ struct TakeBar: View {
                 .foregroundStyle(Brand.inkFaint)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
             Spacer(minLength: 4)
+            if take.canCombine {
+                PillButton("Combine now", colour: Brand.aegean, filled: false, compact: true) {
+                    daemon.combineNow(take.id)
+                }
+            }
             FinderButton { daemon.reveal(take: take.id) }
         }
         .frame(maxWidth: .infinity)

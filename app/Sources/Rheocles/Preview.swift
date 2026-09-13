@@ -200,6 +200,21 @@ enum Preview {
                                 reason: "export cancelled: disk full"))))
             ),
             (
+                "take-complete-combine-now",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted,
+                            take: manifest(state: "complete", elapsed: 743, only: [1, 2]),
+                            recent: recentTakes(), showRecent: true,
+                            recentDetail: [
+                                "20260911T113000-a1b2": manifest(
+                                    state: "complete", elapsed: 120, only: [2, 3])
+                            ])))
+            ),
+            (
                 "take-complete",
                 AnyView(
                     MenuBarView(
@@ -328,7 +343,7 @@ enum Preview {
     /// names the index of one stream that joined four minutes in.
     private static func manifest(
         state: String, elapsed: Double, lateJoin: Int? = nil, reason: String? = nil,
-        markers: Int = 0
+        markers: Int = 0, only: [Int]? = nil
     ) -> Manifest {
         let iso = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
         let now = Date()
@@ -353,7 +368,8 @@ enum Preview {
                 "pcm_s24le", "\"audio\": { \"sampleRate\": 48000, \"channels\": 2 }"
             ),
         ]
-        let streams = files.enumerated().map { index, f in
+        let streams = files.enumerated().filter { only?.contains($0.offset) ?? true }.map {
+            index, f in
             let began = index == lateJoin ? cue.addingTimeInterval(240) : cue
             return """
                 { "id": "\(f.0)", "kind": "\(f.1)", "name": "\(f.2)", "model": "…",

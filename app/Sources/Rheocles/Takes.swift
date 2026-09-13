@@ -60,7 +60,54 @@ extension Manifest.Combined {
     var isComplete: Bool { state == .complete }
 }
 
+extension Manifest {
+    /// "Combine now" qualifies a finished take with no combined file and at
+    /// most one video stream (feature brief, addendum).
+    var canCombine: Bool {
+        isOver && combined == nil && streams.filter { $0.format.video != nil }.count <= 1
+    }
+}
+
 extension DaemonModel {
+    /// `POST /takes/{id}/combine`: the mux after the fact. Answers the
+    /// manifest with `combined` pending; completion comes on the `take`
+    /// event. The current take, or a recent one — whichever it was.
+    func combineNow(_ id: String) {
+        takeError = nil
+        Task {
+            do {
+                let manifest = try absorbTake(
+                    try await api.postData("/takes/\(id)/combine", EmptyBody()))
+                Log.info("combining \(id)")
+                place(manifest)
+            } catch {
+                takeError = "POST /takes/\(id)/combine → \(error)"
+            }
+        }
+    }
+
+    /// Where a manifest that arrived goes: the current take if it is the
+    /// same one or is recording; otherwise it is a recent take's detail.
+    func place(_ manifest: Manifest) {
+        if manifest.isRecording || take?.id == manifest.id || take == nil {
+            take = manifest
+            tick(recording: manifest.isRecording)
+        }
+        recentDetail[manifest.id] = manifest
+    }
+
+    /// The manifests behind the Recent rows, fetched when the fold opens so
+    /// the rows can say whether a take qualifies for Combine now.
+    func loadRecentDetail() async {
+        for summary in recent.prefix(5) where recentDetail[summary.id] == nil {
+            if let data = try? await api.bytes("/takes/\(summary.id)").0,
+                let manifest = try? absorbTake(data)
+            {
+                recentDetail[summary.id] = manifest
+            }
+        }
+    }
+
     /// Decode a manifest off the wire.
     @discardableResult
     func absorbTake(_ data: Data) throws -> Manifest {
