@@ -74,7 +74,15 @@ final class DaemonModel {
     var stalled: Set<String> = []
     /// The daemon's settings: output root and default codec. `GET /settings`
     /// on connect, then the `settings` event.
-    var settings: Settings.Values?
+    var settings: DaemonSettings?
+    /// `GET /takes`, newest first, for the Recent list. Refreshed on
+    /// connect and whenever a take ends.
+    var recent: [TakeEngine.Summary] = []
+    var showRecent = false
+    /// `manifest.combined` by take id — the single-file artefact's state.
+    /// Kept beside the manifest until Engine's `Manifest` carries the field
+    /// itself; then this goes and `take.combined` is read directly.
+    var combined: [String: Combined] = [:]
     var settingsError: String?
     /// Rotate is two clicks: the first arms it, the second does it. A
     /// rotation cuts off every other paired client, so it is not one slip.
@@ -141,7 +149,8 @@ final class DaemonModel {
         levels: [String: Double] = [:], previewing: String? = nil, previewFrame: NSImage? = nil,
         previewError: String? = nil, showSettings: Bool = false, tokenShown: Bool = false,
         stalled: Set<String> = [], streamStatus: [String: StreamStatus] = [:],
-        rotateArmed: Bool = false
+        rotateArmed: Bool = false, combine: Bool = false, combined: Combined? = nil,
+        recent: [TakeEngine.Summary] = [], showRecent: Bool = false
     ) -> DaemonModel {
         let model = DaemonModel()
         model.status = status
@@ -163,8 +172,11 @@ final class DaemonModel {
         model.streamStatus = streamStatus
         model.rotateArmed = rotateArmed
         if let root = discovery?.outputRoot {
-            model.settings = Settings.Values(outputRoot: root, codec: .hevc)
+            model.settings = DaemonSettings(outputRoot: root, codec: .hevc, combine: combine)
         }
+        if let take, let combined { model.combined[take.id] = combined }
+        model.recent = recent
+        model.showRecent = showRecent
         model.api.token = "3f9a1c77e2b04d5f8a6c1e2d9b7f4a0c5d6e7f8091a2b3c4d5e6f70819a2b3c4"
         if case .down(let why) = status { model.lastError = why }
         return model
@@ -407,6 +419,7 @@ final class DaemonModel {
     private func becameRunning() async {
         await refreshStreams()
         await refreshSettings()
+        await refreshRecent()
         await discoverActiveTake()
         listen()
     }
@@ -451,13 +464,15 @@ final class DaemonModel {
                 Task { await refreshStreams() }
             }
         case "take":
-            // The manifest, on every state change.
+            // The manifest, on every state change — and on the combine
+            // finishing, which is why it is absorbed whole.
             if let payload = message.json["take"],
                 let data = try? JSONSerialization.data(withJSONObject: payload),
-                let manifest = try? Manifest.wireDecoder.decode(Manifest.self, from: data)
+                let manifest = try? absorbTake(data)
             {
                 take = manifest
                 tick(recording: manifest.isRecording)
+                if manifest.isOver { Task { await refreshRecent() } }
             } else {
                 Task { await discoverActiveTake() }
             }
@@ -495,7 +510,7 @@ final class DaemonModel {
         case "settings":
             if let payload = message.json["settings"],
                 let data = try? JSONSerialization.data(withJSONObject: payload),
-                let values = try? JSONDecoder().decode(Settings.Values.self, from: data)
+                let values = try? JSONDecoder().decode(DaemonSettings.self, from: data)
             {
                 settings = values
             }

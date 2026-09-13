@@ -10,16 +10,42 @@ import RheoclesCore
 /// the daemon's file and rotates over `POST /token/rotate`. Only show
 /// windows is the app's own. The app holds no copy it could disagree with:
 /// what it shows is the daemon's last answer or the `settings` event.
+/// `GET /settings` as the app reads it: the daemon's output root, default
+/// codec, and whether takes also get a single combined file. Decoded here
+/// rather than as Engine's type so a field the daemon does not send yet
+/// (`combine`, until its PR lands) is simply absent.
+struct DaemonSettings: Codable, Equatable {
+    var outputRoot: String
+    var codec: Manifest.Codec
+    var combine: Bool?
+}
+
 extension DaemonModel {
     struct SettingsPatch: Encodable {
         var outputRoot: String?
         var codec: Manifest.Codec?
+        var combine: Bool?
+    }
+
+    /// "Also save a single file" — the daemon's default for every take
+    /// (feature brief §2), `false` until the daemon has said.
+    var combine: Bool { settings?.combine ?? false }
+
+    /// The checkbox is shown only when at most one video stream is armed:
+    /// a combined file is one video track plus every audio track, and two
+    /// videos have no single file to be. Hidden, not disabled, otherwise.
+    static func combineAvailable(armed: [StreamInfo]) -> Bool {
+        armed.filter { $0.capabilities.video != nil }.count <= 1
+    }
+
+    var combineAvailable: Bool {
+        !armedStreams.isEmpty && Self.combineAvailable(armed: armedStreams)
     }
 
     /// `GET /settings`: the daemon's output root and default codec.
     func refreshSettings() async {
         do {
-            settings = try await api.get("/settings", as: Settings.Values.self)
+            settings = try await api.get("/settings", as: DaemonSettings.self)
             settingsError = nil
         } catch {
             settingsError = "GET /settings → \(error)"
@@ -29,13 +55,16 @@ extension DaemonModel {
     /// `PATCH /settings`. The daemon validates — an absolute path, and no
     /// root change while a take is active (409) — and the answer is the
     /// full settings, which replace ours. A refusal is shown verbatim.
-    func updateSettings(outputRoot: String? = nil, codec: Manifest.Codec? = nil) {
+    func updateSettings(
+        outputRoot: String? = nil, codec: Manifest.Codec? = nil, combine: Bool? = nil
+    ) {
         settingsError = nil
         Task {
             do {
                 settings = try await api.patch(
-                    "/settings", SettingsPatch(outputRoot: outputRoot, codec: codec),
-                    as: Settings.Values.self)
+                    "/settings",
+                    SettingsPatch(outputRoot: outputRoot, codec: codec, combine: combine),
+                    as: DaemonSettings.self)
                 Log.info("settings: \(settings.map { "\($0.outputRoot) \($0.codec)" } ?? "")")
             } catch {
                 settingsError = "PATCH /settings → \(error)"
@@ -114,8 +143,32 @@ extension DaemonModel {
         }
     }
 
+    struct RevealBody: Encodable {
+        var path: String?
+    }
+
+    /// Open in Finder is the daemon's (feature brief §1): `POST /reveal`
+    /// for a path under the output root — the root itself when empty — and
+    /// `POST /takes/{id}/reveal` for a take's folder or one of its files.
+    /// Never `NSWorkspace` here: a browser front end cannot open Finder,
+    /// and two front ends should not do it twice.
     func revealOutputRoot() {
-        guard let root = settings?.outputRoot ?? discovery?.outputRoot else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: root)])
+        Task {
+            do {
+                try await api.post("/reveal", RevealBody(path: ""))
+            } catch {
+                settingsError = "POST /reveal → \(error)"
+            }
+        }
+    }
+
+    func reveal(take id: String, path: String? = nil) {
+        Task {
+            do {
+                try await api.post("/takes/\(id)/reveal", RevealBody(path: path))
+            } catch {
+                takeError = "POST /takes/\(id)/reveal → \(error)"
+            }
+        }
     }
 }

@@ -395,11 +395,120 @@ struct TakeBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             controls
-            if recording { markers }
+            if recording {
+                markers
+            } else {
+                if daemon.combineAvailable { combineRow }
+                if let take, take.isOver, let combined = daemon.combined[take.id] {
+                    combinedLine(take, combined)
+                }
+                if !daemon.recent.isEmpty { recentTakes }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(recording ? Brand.oxide.opacity(0.08) : Brand.inset)
+    }
+
+    /// "Also save a single file" (feature brief §2): the daemon's
+    /// `settings.combine`, shown only while at most one video stream is
+    /// armed — hidden, not disabled, otherwise.
+    private var combineRow: some View {
+        Button {
+            daemon.updateSettings(combine: !daemon.combine)
+        } label: {
+            HStack(spacing: 6) {
+                Checkbox(on: daemon.combine)
+                Text("Also save a single file")
+                    .font(Type.body(11))
+                    .foregroundStyle(Brand.inkSoft)
+                Text("combined.mov · no re-encode")
+                    .font(Type.mono(9))
+                    .foregroundStyle(Brand.script)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The single file after stop: pending (the daemon is muxing), complete
+    /// with its own Open in Finder, or failed with the reason. The take's
+    /// own state is unaffected either way.
+    private func combinedLine(_ take: Manifest, _ combined: Combined) -> some View {
+        HStack(spacing: 6) {
+            if combined.isPending {
+                WorkingPulse(colour: Brand.aegean).frame(width: 25)
+            } else {
+                Circle()
+                    .fill(combined.isComplete ? Brand.olive : Brand.oxide)
+                    .frame(width: 5, height: 5)
+            }
+            Text("Single file · \(combined.path)")
+                .font(Type.mono(9.5))
+                .foregroundStyle(Brand.inkFaint)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if combined.isPending {
+                Text("writing…")
+                    .font(Type.mono(9.5))
+                    .foregroundStyle(Brand.script)
+            } else if !combined.isComplete {
+                Text(combined.reason ?? combined.state)
+                    .font(Type.mono(9.5))
+                    .foregroundStyle(Brand.oxide)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if combined.isComplete {
+                FinderButton { daemon.reveal(take: take.id, path: combined.path) }
+            }
+        }
+    }
+
+    /// Recent takes, newest first, folded under the bar. Each has its own
+    /// Open in Finder — the daemon's, so ptero gets the same one.
+    private var recentTakes: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                daemon.showRecent.toggle()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: daemon.showRecent ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("RECENT TAKES")
+                        .font(Type.kicker())
+                        .kerning(1.1)
+                    Text("\(daemon.recent.count)")
+                        .font(Type.mono(9))
+                        .foregroundStyle(Brand.script)
+                }
+                .foregroundStyle(Brand.aegean)
+            }
+            .buttonStyle(.plain)
+            if daemon.showRecent {
+                ForEach(daemon.recent.prefix(5), id: \.id) { summary in
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(
+                                summary.state == .complete
+                                    ? Brand.olive
+                                    : summary.state == .recording ? Brand.oxide : Brand.script
+                            )
+                            .frame(width: 5, height: 5)
+                        Text(summary.name ?? summary.id)
+                            .font(Type.body(10.5, .medium))
+                            .foregroundStyle(Brand.ink)
+                            .lineLimit(1)
+                        Text(summary.created.formatted(date: .abbreviated, time: .shortened))
+                            .font(Type.mono(9))
+                            .foregroundStyle(Brand.inkFaint)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        FinderButton { daemon.reveal(take: summary.id) }
+                    }
+                }
+            }
+        }
     }
 
     /// A marker is a label and the daemon's clock (spec §10). Empty label
@@ -524,7 +633,29 @@ struct TakeBar: View {
                 .foregroundStyle(Brand.inkFaint)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            FinderButton { daemon.reveal(take: take.id) }
         }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Open in Finder: a folder, Aegean, wherever a destination is shown
+/// (feature brief §1). The daemon does the revealing.
+struct FinderButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "folder")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Brand.aegean)
+                .frame(width: 22, height: 17)
+                .background(RoundedRectangle(cornerRadius: 4).fill(Brand.wash))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open in Finder")
+        .help("Open in Finder")
     }
 }
 

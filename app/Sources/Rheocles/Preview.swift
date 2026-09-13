@@ -155,6 +155,51 @@ enum Preview {
                             take: manifest(state: "recording", elapsed: 257, lateJoin: 2))))
             ),
             (
+                "combine",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, combine: true)))
+            ),
+            (
+                "take-complete-combined-pending",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, take: manifest(state: "complete", elapsed: 743),
+                            combine: true,
+                            combined: Combined(path: "combined.mov", state: "pending"))))
+            ),
+            (
+                "take-complete-combined",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, take: manifest(state: "complete", elapsed: 743),
+                            combine: true,
+                            combined: Combined(path: "combined.mov", state: "complete"),
+                            recent: recentTakes(), showRecent: true)))
+            ),
+            (
+                "take-complete-combined-failed",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: ["camera:4kx", "microphone:scarlett"]),
+                            permissions: granted, take: manifest(state: "complete", elapsed: 743),
+                            combine: true,
+                            combined: Combined(
+                                path: "combined.mov", state: "failed",
+                                reason: "export cancelled: disk full"))))
+            ),
+            (
                 "take-complete",
                 AnyView(
                     MenuBarView(
@@ -333,6 +378,21 @@ enum Preview {
             }
             """
         return try! Manifest.wireDecoder.decode(Manifest.self, from: Data(json.utf8))
+    }
+
+    /// `GET /takes` as the daemon lists it, newest first.
+    private static func recentTakes() -> [TakeEngine.Summary] {
+        let json = """
+            [
+              { "id": "20260911T140217-7f3a", "name": "ep12", "state": "complete",
+                "created": "2026-09-11T14:02:09.412Z", "destination": "takes/2026-09-11/140217-ep12", "streams": 2 },
+              { "id": "20260911T113000-a1b2", "name": "cold open", "state": "complete",
+                "created": "2026-09-11T11:30:00.000Z", "destination": "takes/2026-09-11/113000-cold-open", "streams": 4 },
+              { "id": "20260910T170500-c3d4", "name": null, "state": "incomplete",
+                "created": "2026-09-10T17:05:00.000Z", "destination": "takes/2026-09-10/170500", "streams": 1 }
+            ]
+            """
+        return try! Manifest.wireDecoder.decode([TakeEngine.Summary].self, from: Data(json.utf8))
     }
 
     /// A stand-in preview frame: no daemon is rendering, so a 16:9 field of

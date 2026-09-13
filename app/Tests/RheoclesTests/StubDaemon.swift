@@ -25,6 +25,7 @@ enum StubDaemon {
             return args[args.index(name) + 1] if name in args else default
         port = int(opt("--port"))
         token_file = opt("--token-file")
+        post_log = opt("--post-log")
         if "--die" in args:
             sys.exit(1)
         if not os.path.exists(token_file):
@@ -53,6 +54,21 @@ enum StubDaemon {
                     return True
                 self.send_json(401, {"error": "no token", "code": "unauthorized"})
                 return False
+            def do_POST(self):
+                path = self.path.partition("?")[0]
+                if not self.authorized():
+                    return
+                length = int(self.headers.get("Content-Length") or 0)
+                body = self.rfile.read(length).decode() if length else ""
+                if post_log:
+                    with open(post_log, "a") as f:
+                        f.write(path + " " + body + "\\n")
+                if path == "/reveal" or (path.startswith("/takes/") and path.endswith("/reveal")):
+                    self.send_response(204)
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                else:
+                    self.send_json(404, {"error": "no such route", "code": "not_found"})
             def do_GET(self):
                 path = self.path.partition("?")[0]
                 if not self.authorized():
@@ -67,6 +83,8 @@ enum StubDaemon {
                         "camera": "authorized", "microphone": "authorized", "screen": "authorized"}})
                 elif path == "/takes":
                     self.send_json(200, [])
+                elif path == "/settings":
+                    self.send_json(200, {"outputRoot": "/tmp/stub", "codec": "hevc", "combine": False})
                 elif path == "/preview/microphone:stub":
                     self.send_json(200, {"levelDb": -12.5})
                 elif path == "/preview/camera:stub":
@@ -144,16 +162,18 @@ enum StubDaemon {
         return url
     }
 
-    static func arguments(port: UInt16, tokenFile: URL, die: Bool = false) -> [String] {
+    static func arguments(port: UInt16, tokenFile: URL, die: Bool = false, postLog: URL? = nil)
+        -> [String]
+    {
         [scriptURL.path, "--port", String(port), "--token-file", tokenFile.path]
-            + (die ? ["--die"] : [])
+            + (die ? ["--die"] : []) + (postLog.map { ["--post-log", $0.path] } ?? [])
     }
 
     /// Run a stub the test owns — the "something already answers" case.
-    static func launch(port: UInt16, tokenFile: URL) throws -> Process {
+    static func launch(port: UInt16, tokenFile: URL, postLog: URL? = nil) throws -> Process {
         let process = Process()
         process.executableURL = python
-        process.arguments = arguments(port: port, tokenFile: tokenFile)
+        process.arguments = arguments(port: port, tokenFile: tokenFile, postLog: postLog)
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
