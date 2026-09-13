@@ -21,15 +21,14 @@ const inDocs = path === '/docs' || path.startsWith('/docs/');
 </header>
 
 <style>
-	.header {
-		border-top: 4px solid var(--aegean);
-	}
 	.header__row {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
-		padding-block: 1.1rem;
+		/* A little more above than below, so the brand sits off the head band
+		   the way sonocles.com's does off its colonnade. */
+		padding-block: 1.6rem 1.1rem;
 	}
 	.brand {
 		display: inline-flex;

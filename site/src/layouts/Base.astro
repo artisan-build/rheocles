@@ -1,6 +1,7 @@
 ---
 import '../styles/base.css';
 import '../styles/code.css';
+import Meander from '../components/Meander.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 
@@ -67,6 +68,7 @@ const fonts =
 		<link rel="stylesheet" href={fonts} />
 	</head>
 	<body>
+		<Meander head />
 		<Header />
 		<main>
 			<slot />
