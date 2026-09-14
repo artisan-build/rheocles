@@ -12,6 +12,8 @@ extension Live {
     @Suite("Take flow")
     @MainActor
     struct TakeFlowTests {
+        private let scratch = Scratch()
+
         /// Sessions that only remember they were started.
         final class FakeSession: StreamSession, @unchecked Sendable {
             let info: StreamInfo
@@ -63,7 +65,7 @@ extension Live {
             let port = StubDaemon.freePort()
             var wsPort = StubDaemon.freePort()
             while wsPort == port { wsPort = StubDaemon.freePort() }
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             var server = Server.Configuration()
             server.httpPort = port
             server.wsPort = wsPort

@@ -104,7 +104,7 @@ it('arms the built-in microphone, records a take, and leaves a manifest and a fi
     // continuation". That is the daemon's bug, not this client's; name it
     // rather than reporting a timeout.
     $hung = function (Unreachable $e) {
-        $log = (string) @file_get_contents(sys_get_temp_dir()."/rheo-test-server-{$this->http}.log");
+        $log = $this->core->output();
         $this->fail(str_contains($log, 'CONTINUATION MISUSE')
             ? "rheocles-core hung and leaked a continuation (Engine bug) — {$e->getMessage()}\n$log"
             : "the daemon did not answer: {$e->getMessage()}\n$log");
@@ -185,9 +185,9 @@ it('rotates the token: the old one dies at once, the file has the new one', func
  * display preview follows a microphone preview, and sometimes on the first
  * device call after launch. Engine's bug; the third test names it.
  */
-function hungPreview(Unreachable $e, int $port): never
+function hungPreview(Unreachable $e, Server $core): never
 {
-    $log = (string) @file_get_contents(sys_get_temp_dir()."/rheo-test-server-$port.log");
+    $log = $core->output();
     test()->fail(str_contains($log, 'CONTINUATION MISUSE')
         ? "rheocles-core hung on GET /preview and leaked a continuation (Engine bug) — {$e->getMessage()}\n$log"
         : "the daemon did not answer: {$e->getMessage()}\n$log");
@@ -201,7 +201,7 @@ it('previews video as one JPEG frame on demand', function () {
     try {
         $frame = $this->client->preview($display['id']);
     } catch (Unreachable $e) {
-        hungPreview($e, $this->http);
+        hungPreview($e, $this->core);
     }
     expect($frame['contentType'])->toStartWith('image/jpeg')
         ->and(substr($frame['body'], 0, 3))->toBe("\xFF\xD8\xFF")
@@ -217,7 +217,7 @@ it('previews audio as a level', function () {
     try {
         $sample = $this->client->preview($mic['id']);
     } catch (Unreachable $e) {
-        hungPreview($e, $this->http);
+        hungPreview($e, $this->core);
     }
     expect($sample['contentType'])->toStartWith('application/json');
     $level = json_decode($sample['body'], true)['levelDb'] ?? null;
@@ -235,7 +235,7 @@ it('previews a display after a microphone (Engine: leaked continuation, 3 runs i
         $this->client->preview($mic['id']);
         $frame = $this->client->preview($display['id']);
     } catch (Unreachable $e) {
-        hungPreview($e, $this->http);
+        hungPreview($e, $this->core);
     }
     expect($frame['contentType'])->toStartWith('image/jpeg');
 });

@@ -40,8 +40,11 @@ final class FakeWriterFactory: WriterFactory, @unchecked Sendable {
 
 @Suite("Takes")
 struct TakeTests {
+    private let scratch = Scratch()
+
     struct World {
         // accessible to JoinLeaveTests
+        let scratch: Scratch
         let root: URL
         let registry: Registry
         let sessions: FakeFactory
@@ -50,21 +53,23 @@ struct TakeTests {
         let events: OSAllocatedUnfairLockBox<[String]>
     }
 
+    /// The world owns its scratch: the engine's root closure holds it, so the
+    /// directory lives as long as the engine does (JoinLeaveTests borrows this
+    /// from a throwaway `TakeTests()`).
     func world(freeBytes: Int64? = 1 << 40) async throws -> World {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rheocles-takes-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let scratch = Scratch("take-tests")
+        let root = scratch.url
         let sessions = FakeFactory()
         let registry = Registry(catalog: TwoStreams(), factory: sessions)
         let writers = FakeWriterFactory()
         let events = OSAllocatedUnfairLockBox<[String]>([])
         let engine = TakeEngine(
-            registry: registry, outputRoot: { root }, writerFactory: writers,
+            registry: registry, outputRoot: { scratch.url }, writerFactory: writers,
             machine: .init(hostname: "test.local", machineId: "TEST"), freeBytes: { _ in freeBytes }
         ) { manifest in events.withLock { $0.append("\(manifest.id):\(manifest.state.rawValue)") } }
         return World(
-            root: root, registry: registry, sessions: sessions, writers: writers, engine: engine,
-            events: events)
+            scratch: scratch, root: root, registry: registry, sessions: sessions, writers: writers,
+            engine: engine, events: events)
     }
 
     private func manifestOnDisk(_ w: World, _ destination: String) throws -> Manifest {
@@ -274,8 +279,7 @@ struct TakeTests {
 
     @Test("recoverStaleManifests rewrites a left-recording manifest to incomplete 'daemon died'")
     func recovery() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rheo-recover-\(UUID().uuidString)", isDirectory: true)
+        let root = scratch.directory("recover")
         let folder = root.appendingPathComponent("takes/x", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         // A manifest a dead daemon left mid-recording.

@@ -22,11 +22,10 @@ struct TwoVideos: StreamSource {
 
 @Suite("Reveal path resolution")
 struct RevealTests {
+    private let scratch = Scratch()
+
     private func tempDir() throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rheo-reveal-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        scratch.directory()
     }
 
     @Test("An empty or nil path resolves to the base folder itself")
@@ -86,6 +85,8 @@ struct RevealTests {
 
 @Suite("Combine", .serialized)
 struct CombineTests {
+    private let scratch = Scratch()
+
     final class Events: @unchecked Sendable {
         let lock = NSLock()
         var manifests: [Manifest] = []
@@ -96,6 +97,7 @@ struct CombineTests {
     }
 
     struct World {
+        let scratch: Scratch
         let root: URL
         let registry: Registry
         let engine: TakeEngine
@@ -103,18 +105,18 @@ struct CombineTests {
     }
 
     private func world(catalog: any StreamSource, defaultCombine: Bool = false) throws -> World {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rheo-combine-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let scratch = Scratch("combine-tests")
+        let root = scratch.url
         let registry = Registry(catalog: catalog, factory: FakeFactory())
         let events = Events()
         let engine = TakeEngine(
-            registry: registry, outputRoot: { root }, writerFactory: FakeWriterFactory(),
+            registry: registry, outputRoot: { scratch.url }, writerFactory: FakeWriterFactory(),
             machine: .init(hostname: "test.local", machineId: "TEST"),
             defaultCombine: { defaultCombine },
             freeBytes: { _ in 1 << 40 }
         ) { events.record($0) }
-        return World(root: root, registry: registry, engine: engine, events: events)
+        return World(
+            scratch: scratch, root: root, registry: registry, engine: engine, events: events)
     }
 
     // MARK: Validation and manifest state
@@ -310,10 +312,7 @@ struct CombineTests {
 
     @Test("A real video plus two audio files mux to a three-track combined.mov, tmcd kept")
     func realFileMux() async throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rheo-mux-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let dir = scratch.directory("mux")
 
         let seconds = 1.0
         try SyntheticMedia.writeVideo(

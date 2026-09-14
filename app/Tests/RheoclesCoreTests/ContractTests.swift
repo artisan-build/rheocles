@@ -14,6 +14,8 @@ import Testing
 /// taking a Swift YAML dependency.
 @Suite("OpenAPI contract", .serialized)
 struct ContractTests {
+    private let scratch = Scratch()
+
     // MARK: Load the spec
 
     static func specURL() -> URL {
@@ -147,8 +149,7 @@ struct ContractTests {
             let base = UInt16.random(in: 20000...60000)
             c.httpPort = base
             c.wsPort = base + 1
-            let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
-                "rheo-contract-\(UUID().uuidString)")
+            let dir = scratch.directory()
             c.tokenStore = TokenStore(fileURL: dir.appendingPathComponent("token"))
             c.settingsFileURL = dir.appendingPathComponent("settings.json")
             c.outputRoot = dir.appendingPathComponent("out")

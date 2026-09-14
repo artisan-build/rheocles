@@ -7,6 +7,8 @@ import Testing
 /// a front end does, minus the popover.
 @Suite("Server", .serialized)
 struct ServerTests {
+    private let scratch = Scratch()
+
     struct FakeCatalog: StreamSource {
         func streams() async -> [StreamInfo] {
             [
@@ -39,8 +41,7 @@ struct ServerTests {
             let base = UInt16.random(in: 20000...60000)
             configuration.httpPort = base
             configuration.wsPort = base + 1
-            let dir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("rheocles-tests-\(UUID().uuidString)", isDirectory: true)
+            let dir = scratch.directory()
             configuration.tokenStore = TokenStore(fileURL: dir.appendingPathComponent("token"))
             configuration.settingsFileURL = dir.appendingPathComponent("settings.json")
             configuration.outputRoot = dir
@@ -282,9 +283,7 @@ struct ServerTests {
         #expect(s1 == 200)
         #expect(try JSONDecoder().decode(Settings.Values.self, from: d1).codec == .prores)
 
-        let newRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
-            UUID().uuidString
-        ).path
+        let newRoot = scratch.file("new-root").path
         #expect(try await patch(server, "/settings", #"{"outputRoot": "\#(newRoot)"}"#).0 == 200)
         #expect(server.settings.outputRoot.path == newRoot)
         #expect(try await patch(server, "/settings", #"{"outputRoot": "relative"}"#).0 == 400)
