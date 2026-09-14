@@ -45,9 +45,10 @@ struct HostClockTests {
 /// AVFoundation and by hand.
 @Suite("Writers", .serialized)
 struct WriterTests {
+    private let scratch = Scratch("writer-tests")
+
     private func temp(_ name: String) -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent(
-            "rheocles-writer-\(UUID().uuidString)-\(name)")
+        scratch.file(name)
     }
 
     private func frame(width: Int, height: Int, pts: Double, shade: UInt8) throws -> CMSampleBuffer

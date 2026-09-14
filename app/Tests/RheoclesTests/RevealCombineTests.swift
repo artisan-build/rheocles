@@ -11,6 +11,8 @@ extension Live {
     @Suite("Reveal and combine")
     @MainActor
     struct RevealCombineTests {
+        private let scratch = Scratch()
+
         private func stream(_ id: String, video: Bool, armed: Bool = true) -> StreamInfo {
             StreamInfo(
                 id: id, kind: video ? .camera : .microphone, name: id, model: "x",
@@ -54,7 +56,7 @@ extension Live {
         @Test("Open in Finder is the daemon's: the take, a file in it, and the output root")
         func reveal() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let log = scratch.appendingPathComponent("posts.log")
             let stub = try StubDaemon.launch(
                 port: port, tokenFile: scratch.appendingPathComponent("token"), postLog: log)

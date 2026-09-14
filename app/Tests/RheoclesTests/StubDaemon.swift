@@ -123,11 +123,13 @@ enum StubDaemon {
         server.serve_forever()
         """
 
-    /// The script on disk, written once per test process.
+    /// The script on disk, written once per test process and removed when
+    /// the process exits.
     static let scriptURL: URL = {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("rheocles-stub-\(ProcessInfo.processInfo.processIdentifier).py")
         try! script.write(to: url, atomically: true, encoding: .utf8)
+        atexit { try? FileManager.default.removeItem(at: StubDaemon.scriptURL) }
         return url
     }()
 
@@ -153,14 +155,6 @@ enum StubDaemon {
             }
         }
         return UInt16(bigEndian: address.sin_port)
-    }
-
-    /// A scratch directory for one test: token file and core log live here.
-    static func scratch() -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rheocles-app-tests-\(UUID().uuidString)", isDirectory: true)
-        try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
     }
 
     static func arguments(port: UInt16, tokenFile: URL, die: Bool = false, postLog: URL? = nil)

@@ -15,6 +15,9 @@ final class Server
     /** The stub's state file, when this is the stub: its request log lives there. */
     public ?string $stateFile = null;
 
+    /** The process's output, one file per port; read on a failed start, gone with the server. */
+    private string $log;
+
     private function __construct(public readonly int $port, $process)
     {
         $this->process = $process;
@@ -102,9 +105,11 @@ final class Server
         $log = sys_get_temp_dir()."/rheo-test-server-$port.log";
         $process = proc_open($cmd, [0 => ['file', '/dev/null', 'r'], 1 => ['file', $log, 'a'], 2 => ['file', $log, 'a']], $pipes, null, $env + getenv());
         if (! is_resource($process)) {
+            @unlink($log);
             throw new \RuntimeException('could not start '.implode(' ', $cmd));
         }
         $server = new self($port, $process);
+        $server->log = $log;
         $server->waitForPort();
 
         return $server;
@@ -123,9 +128,9 @@ final class Server
             }
             usleep(50_000);
         }
+        $why = trim((string) @file_get_contents($this->log));
         $this->stop();
-        $log = sys_get_temp_dir()."/rheo-test-server-{$this->port}.log";
-        throw new \RuntimeException("nothing listening on :{$this->port} after {$timeout}s — ".trim((string) @file_get_contents($log)));
+        throw new \RuntimeException("nothing listening on :{$this->port} after {$timeout}s — $why");
     }
 
     public function running(): bool
@@ -133,11 +138,22 @@ final class Server
         return is_resource($this->process) && proc_get_status($this->process)['running'];
     }
 
+    /** The process's output so far — for a test that reads what the daemon said. */
+    public function output(): string
+    {
+        return (string) @file_get_contents($this->log);
+    }
+
+    /** Stop the process and take its files with it: nothing of a test stays in $TMPDIR. */
     public function stop(): void
     {
         if (is_resource($this->process)) {
             proc_terminate($this->process, 15);
             proc_close($this->process);
+        }
+        @unlink($this->log);
+        if ($this->stateFile !== null) {
+            @unlink($this->stateFile);
         }
     }
 

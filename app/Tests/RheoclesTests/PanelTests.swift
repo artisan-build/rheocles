@@ -11,6 +11,8 @@ extension Live {
     @Suite("Levels, preview, settings")
     @MainActor
     struct PanelTests {
+        private let scratch = Scratch()
+
         private func message(_ json: String) throws -> EventStream.Message {
             let data = Data(json.utf8)
             let object = try #require(
@@ -63,7 +65,7 @@ extension Live {
         @Test("Preview polls one stream, shows its frame, and stops when asked")
         func preview() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let stub = try StubDaemon.launch(
                 port: port, tokenFile: scratch.appendingPathComponent("token"))
             defer { stub.terminate() }

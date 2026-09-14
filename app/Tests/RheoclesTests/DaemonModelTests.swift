@@ -11,6 +11,8 @@ extension Live {
     @Suite("DaemonModel")
     @MainActor
     struct DaemonModelTests {
+        private let scratch = Scratch()
+
         /// A model pointed at a spare port and a scratch token file, launching
         /// the stub as its core. Fast pulse so the tests do not wait on the
         /// real three seconds.
@@ -33,7 +35,7 @@ extension Live {
         @Test("Probe, then use: a daemon already on the port is used, not replaced")
         func probeThenUse() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let tokenFile = scratch.appendingPathComponent("token")
             let theirs = try StubDaemon.launch(port: port, tokenFile: tokenFile)
             defer { theirs.terminate() }
@@ -57,7 +59,7 @@ extension Live {
         @Test("Probe, then launch: nothing answers, so the bundled core is started and waited for")
         func probeThenLaunch() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let model = model(port: port, scratch: scratch)
             #expect(!FileManager.default.fileExists(atPath: model.tokenFile.path))
 
@@ -79,7 +81,7 @@ extension Live {
         @Test("A core that dies is relaunched, and comes back with a new pid")
         func relaunchOnDeath() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let model = model(port: port, scratch: scratch)
             model.connect()
             defer { model.shutdown() }
@@ -95,7 +97,7 @@ extension Live {
         @Test("Three exits in a minute and the model stops relaunching and says so")
         func crashLoopGuard() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let model = model(port: port, scratch: scratch, die: true, crashLimit: 3)
             model.connect()
             defer { model.shutdown() }
@@ -113,7 +115,7 @@ extension Live {
         @Test("Relaunch after the guard fires forgets the count and tries again")
         func relaunchButton() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let model = model(port: port, scratch: scratch, die: true, crashLimit: 1)
             model.connect()
             defer { model.shutdown() }
@@ -135,7 +137,7 @@ extension Live {
         @Test("Events are dispatched as they arrive, not on the next pulse")
         func eventsArrive() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let tokenFile = scratch.appendingPathComponent("token")
             let theirs = try StubDaemon.launch(port: port, tokenFile: tokenFile)
             defer { theirs.terminate() }
@@ -164,7 +166,7 @@ extension Live {
         @Test("The token is read from the file; a stale one is a refusal, not a relaunch")
         func tokenLoading() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             let tokenFile = scratch.appendingPathComponent("token")
             try ("cd" * 32 + "\n").write(to: tokenFile, atomically: true, encoding: .utf8)
             let theirs = try StubDaemon.launch(port: port, tokenFile: tokenFile)
@@ -180,7 +182,7 @@ extension Live {
 
             // Wrong token: the daemon answers 401, and launching another daemon
             // behind it would not help — so this is "down", with the reason.
-            let other = StubDaemon.scratch()
+            let other = self.scratch.directory()
             try ("ef" * 32 + "\n").write(
                 to: other.appendingPathComponent("token"), atomically: true, encoding: .utf8)
             let refused = model(port: port, scratch: other)
@@ -208,10 +210,12 @@ extension Live {
     @Suite("Termination")
     @MainActor
     struct TerminationTests {
+        private let scratch = Scratch()
+
         @Test("SIGTERM runs the shutdown, which stops the core we launched")
         func sigterm() async throws {
             let port = StubDaemon.freePort()
-            let scratch = StubDaemon.scratch()
+            let scratch = self.scratch.directory()
             var configuration = DaemonModel.Configuration()
             configuration.port = port
             configuration.tokenFile = scratch.appendingPathComponent("token")

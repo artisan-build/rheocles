@@ -119,9 +119,10 @@ struct JoinLeaveTests {
 
 @Suite("Settings and token")
 struct SettingsTests {
+    private let scratch = Scratch()
+
     private func temp() -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent(
-            "rheo-settings-\(UUID().uuidString)")
+        scratch.directory()
     }
 
     @Test("Settings persist and reload, and update announces")
