@@ -1,5 +1,6 @@
 <?php
 
+use App\Logging\CappedRotatingFileHandler;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -52,10 +53,26 @@ return [
 
     'channels' => [
 
+        // Not read from LOG_STACK: the bundle carries whatever .env it was
+        // built from, and a desktop app's log must not be one dotfile away
+        // from filling a disk. One file per day, three days kept, a day
+        // capped at 20 MB (App\Logging\CappedRotatingFileHandler).
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => ['rheocles'],
             'ignore_exceptions' => false,
+        ],
+
+        'rheocles' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'info'),
+            'handler' => CappedRotatingFileHandler::class,
+            'with' => [
+                'filename' => storage_path('logs/laravel.log'),
+                'maxFiles' => 3,
+                'maxBytes' => 20 * 1024 * 1024,
+            ],
+            'processors' => [PsrLogMessageProcessor::class],
         ],
 
         'single' => [

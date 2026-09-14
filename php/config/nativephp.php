@@ -79,6 +79,16 @@ return [
         // collides with a real bundle on the protocol's 7447/7448. The
         // bundle gets the defaults (config/rheocles.php).
         'RHEOCLES_*',
+        // The bundle logs the way config/logging.php says, not the way a
+        // developer's .env did on build day (one file a day, three kept,
+        // info and up) — see App\Logging\CappedRotatingFileHandler.
+        'LOG_*',
+        // Laravel's skeleton .env says BROADCAST_CONNECTION=log, which turns
+        // every NativePHP event into an INFO line. Events reach the window
+        // through Electron, not through the broadcaster; the bundle gets
+        // Laravel's default (null). Set it to null in .env for the same quiet
+        // in development.
+        'BROADCAST_*',
     ],
 
     /**
