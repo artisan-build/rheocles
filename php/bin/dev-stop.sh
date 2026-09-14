@@ -2,8 +2,9 @@
 # Stop a `native:run` app the way Quit does — through Electron — so its child
 # processes (the watcher, and the core if it is ours) go with it and nothing
 # is orphaned on the port. Killing `native:run` itself instead leaves Electron
-# writing to a closed stdout: every write is an EPIPE, and each one used to be
-# a modal "JavaScript error" dialog until src/main/index.js learned to log them.
+# running with a closed stdout: every write is an EPIPE, and each one used to
+# be a modal "JavaScript error" dialog, then a stack trace in Rheocles-php.log
+# (2 GB of them, once); src/main/index.js now notes it once and goes quiet.
 set -euo pipefail
 osascript -e 'tell application "System Events" to (every process whose name is "Electron")' >/dev/null 2>&1 || true
 # Electron in development is not a named app, so signal the main process

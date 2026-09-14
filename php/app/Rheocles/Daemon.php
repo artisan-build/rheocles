@@ -382,7 +382,11 @@ final class Daemon
 
     private function fail(string $why): void
     {
-        Log::info("daemon down: $why");
+        // Once per reason, not once per pulse: the watcher asks again every
+        // three seconds for as long as the daemon is down.
+        if ($this->status !== self::DOWN || $this->why !== $why) {
+            Log::info("daemon down: $why");
+        }
         $this->why = $why;
         $this->discovery = null;
         $this->status = self::DOWN;

@@ -59,7 +59,8 @@ bin/dev-stop.sh                                    # …and off again
 seeds the app's data directory from `storage/` at every launch, and a stale
 compiled view there shadows the source. `dev-stop.sh` stops the app through
 Electron so its children go with it; killing `native:run` instead leaves
-Electron writing to a closed stdout, one `EPIPE` per line. ⌘R in the
+Electron running with a closed stdout — it notes that once in
+`Rheocles-php.log` and goes quiet, but it is still running. ⌘R in the
 popover reloads its page.
 
 **`plugin:build` is not optional.** NativePHP 2.3.0 publishes an
@@ -71,7 +72,15 @@ In development the daemon runs on **7467/7468** (`.env`); `:7447` belongs to
 whichever real app bundle is running, and Engine's dev core uses 7457/7458.
 The packaged app uses the protocol's 7447/7448. Logs: the core's output goes
 to `~/Library/Logs/Rheocles/rheocles-core-php.log`; Laravel's to the app's
-storage under `~/Library/Application Support/`.
+storage under `~/Library/Application Support/` (`logs/laravel-<date>.log`,
+one file a day, three kept, a day capped at 20 MB —
+`App\Logging\CappedRotatingFileHandler`); Electron's own errors — an
+uncaught exception in the main process, which would otherwise be a modal
+dialog — to `~/Library/Logs/Rheocles/Rheocles-php.log`, rotated and capped
+the same way. Nothing logs per pulse: the daemon's lifecycle, the take's,
+and errors. `LOG_*` and `BROADCAST_*` are stripped from the bundled `.env`
+so the bundle always logs this way; in development, `BROADCAST_CONNECTION=null`
+in `.env` keeps NativePHP's events out of the log too.
 
 `bin/sync-sidecar.sh` removes the old binary before copying: overwriting a
 Mach-O in place on Apple Silicon leaves the kernel's signature cache stale
