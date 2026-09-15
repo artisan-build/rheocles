@@ -7,6 +7,8 @@ section from this file, and the release workflow refuses to run without one.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-09-15
+
 ### Changed
 
 - The status line at the foot of both apps says `local`, not `loopback` — the same fact, in the word the rest of the app uses.
@@ -54,6 +56,7 @@ The first release. Rheocles records any number of input streams at once, each to
 - The NativePHP front end, driving the same daemon — signed, not yet notarized, and not yet in the download.
 - Signed and notarized DMG, a Homebrew cask (`brew install --cask artisan-build/tap/rheocles`), and [rheocles.com/docs](https://rheocles.com/docs) with an API reference generated from `docs/openapi.yaml`.
 
-[Unreleased]: https://github.com/artisan-build/rheocles/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/artisan-build/rheocles/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/artisan-build/rheocles/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/artisan-build/rheocles/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/artisan-build/rheocles/releases/tag/v0.1.0
