@@ -87,11 +87,16 @@ marked `incomplete` with the reason. Nothing is deleted.
 While a take is `recording`, `POST /takes` and `POST /record` answer
 `409 take_active`, naming it. Stop it first.
 
-A take that was **created but never started is superseded** by the next
-create: its manifest is rewritten `incomplete` with reason
-`superseded before start`, since nothing but the manifest exists on disk.
-Concurrent takes with disjoint stream sets — a background screen recording
-spanning several camera takes — are conceivable and deliberately deferred.
+A take that was **created but never started recorded nothing**: superseded by
+the next create (or still `created` when the daemon stops), its manifest-only
+folder is **removed** rather than left behind — otherwise a paired recorder
+that re-prepares its take on every arm change strews an empty folder per
+change. The final `take` event marks it `incomplete`, reason
+`superseded before start`, with `removed: true` so a client drops it, and
+`GET /takes/{id}` then answers `404`. A folder holding any recorded file is
+never removed. Concurrent takes with disjoint stream sets — a background screen
+recording spanning several camera takes — are conceivable and deliberately
+deferred.
 
 `POST /takes` with no armed streams is a `400`.
 
