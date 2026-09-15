@@ -54,13 +54,21 @@ combine failed is still `complete`.
 A daemon asked to quit — `SIGINT` or `SIGTERM` — finalises the active take
 first: every writer closes and the manifest reads `incomplete`, reason
 `daemon stopped`, so a cleanly stopped daemon never leaves a take saying
-`recording`. A manifest that *does* still say `recording` or `created` when
-the daemon next launches is from one that died without finalising — a
-crash, a `kill -9`, a power cut — and is rewritten `incomplete`, reason
-`daemon died`, on that launch. A recovered take is never served as the live
-take; `stop` or a marker against it is a `409`. A take created and never
-started is superseded by the next create and reads `incomplete` with reason
-`superseded before start`.
+`recording`. A manifest that *does* still say `recording` when the daemon
+next launches is from one that died without finalising — a crash, a
+`kill -9`, a power cut — and is rewritten `incomplete`, reason `daemon died`,
+on that launch. A recovered take is never served as the live take; `stop` or
+a marker against it is a `409`.
+
+A take **created but never started recorded nothing**, so it is not kept.
+Superseded by the next create, or still `created` when the daemon stops or on
+the next launch, its manifest-only folder is **removed** rather than left
+behind — a paired recorder that re-creates its take on every arm change would
+otherwise strew an empty folder per change. The final `take` event reads
+`incomplete` (reason `superseded before start`, `daemon stopped before start`,
+or `daemon died`) with `removed: true`, so a client drops it from its list, and
+`GET /takes/{id}` then answers `404`. A folder holding any recorded file is
+never removed.
 
 ## The shape
 
