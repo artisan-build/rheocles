@@ -342,6 +342,30 @@ enum Preview {
                             .running, discovery: discovery(), streams: streams(),
                             permissions: granted, showSettings: true, tokenShown: true)))
             ),
+            (
+                "alt-a",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "display:56A96CFC", "camera:4kx", "microphone:scarlett",
+                                "systemAudio:system",
+                            ]),
+                            permissions: granted, disarmPlacement: .kicker)))
+            ),
+            (
+                "alt-b",
+                AnyView(
+                    MenuBarView(
+                        daemon: .staged(
+                            .running, discovery: discovery(),
+                            streams: streams(armed: [
+                                "display:56A96CFC", "camera:4kx", "microphone:scarlett",
+                                "systemAudio:system",
+                            ]),
+                            permissions: granted, disarmPlacement: .takeBar)))
+            ),
             ("launching", AnyView(MenuBarView(daemon: .staged(.launching)))),
             (
                 "daemon-down",

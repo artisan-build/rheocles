@@ -43,8 +43,17 @@ struct StreamList: View {
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(sections, id: \.0) { kind, members in
-                SectionHeading(kind.heading)
+            ForEach(Array(sections.enumerated()), id: \.element.0) { index, section in
+                let (kind, members) = section
+                HStack {
+                    SectionHeading(kind.heading)
+                    Spacer()
+                    if index == 0, daemon.disarmPlacement == .kicker, !daemon.armedStreams.isEmpty {
+                        DisarmAllButton(daemon: daemon)
+                            .padding(.trailing, 14)
+                            .padding(.top, 5)
+                    }
+                }
                 ForEach(members) { stream in
                     StreamRow(stream: stream, daemon: daemon)
                     if daemon.previewing == stream.id, stream.capabilities.video != nil {

@@ -88,6 +88,18 @@ final class DaemonModel {
     /// Rotate is two clicks: the first arms it, the second does it. A
     /// rotation cuts off every other paired client, so it is not one slip.
     var rotateArmed = false
+
+    /// Where "Disarm all" lives. Three candidates rendered for Len's look;
+    /// one stays and this switch goes.
+    enum DisarmPlacement {
+        /// Beside the "Armed · N" pill in the header; the pronunciation yields.
+        case header
+        /// At the right end of the first section kicker ("DISPLAYS … Disarm all").
+        case kicker
+        /// A row above Record: "Armed · 4 · Disarm all"; the header pill loses its count.
+        case takeBar
+    }
+    var disarmPlacement: DisarmPlacement = .header
     /// The one stream being previewed, if any (spec §12: one at a time).
     var previewing: String?
     var previewFrame: NSImage?
@@ -151,6 +163,7 @@ final class DaemonModel {
         previewError: String? = nil, showSettings: Bool = false, tokenShown: Bool = false,
         stalled: Set<String> = [], streamStatus: [String: StreamStatus] = [:],
         rotateArmed: Bool = false, combine: Bool = false, combined: Combined? = nil,
+        disarmPlacement: DisarmPlacement = .header,
         recent: [TakeEngine.Summary] = [], showRecent: Bool = false,
         recentDetail: [String: Manifest] = [:]
     ) -> DaemonModel {
@@ -173,6 +186,7 @@ final class DaemonModel {
         model.stalled = stalled
         model.streamStatus = streamStatus
         model.rotateArmed = rotateArmed
+        model.disarmPlacement = disarmPlacement
         if let root = discovery?.outputRoot {
             model.settings = Settings.Values(outputRoot: root, codec: .hevc, combine: combine)
         }

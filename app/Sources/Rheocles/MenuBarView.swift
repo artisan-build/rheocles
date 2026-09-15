@@ -56,7 +56,9 @@ struct MenuBarView: View {
                     .fixedSize()
                 // The pronunciation is furniture; it yields to Disarm all,
                 // which needs the width when something is armed.
-                if !(daemon.status == .running && armedCount > 0) {
+                if !(daemon.status == .running && armedCount > 0
+                    && daemon.disarmPlacement == .header)
+                {
                     Text("REE-oh-kleez")
                         .font(Type.mono(9))
                         .foregroundStyle(Brand.inkFaint)
@@ -71,20 +73,8 @@ struct MenuBarView: View {
             // something is armed; while a take is recording it is there but
             // disabled — a take needs its streams, and the daemon would say
             // so with a 409 anyway — so the eye learns where it lives.
-            if daemon.status == .running, armedCount > 0 {
-                let enabled = daemon.canDisarmAll && daemon.pending == nil
-                Button {
-                    daemon.disarmAll()
-                } label: {
-                    Text("Disarm all")
-                        .font(Type.body(10.5, .medium))
-                        .foregroundStyle(enabled ? Brand.ochreInk : Brand.script)
-                        .underline(enabled, color: Brand.ochre.opacity(0.5))
-                }
-                .buttonStyle(.plain)
-                .disabled(!enabled)
-                .help(recording ? "Stop the take first" : "Disarm every armed stream")
-                .accessibilityLabel("Disarm all streams")
+            if daemon.status == .running, armedCount > 0, daemon.disarmPlacement == .header {
+                DisarmAllButton(daemon: daemon)
             }
 
             StatePill(label: stateLabel, colour: stateColour)
@@ -127,7 +117,12 @@ struct MenuBarView: View {
         switch daemon.status {
         case .running:
             if recording { return "Recording" }
-            return armedCount > 0 ? "Armed · \(armedCount)" : "Idle"
+            // With the count in the take bar (placement b) the pill just
+            // says the state.
+            if armedCount > 0 {
+                return daemon.disarmPlacement == .takeBar ? "Armed" : "Armed · \(armedCount)"
+            }
+            return "Idle"
         case .launching: return "Launching"
         case .down: return "Down"
         }
@@ -426,6 +421,9 @@ struct TakeBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if daemon.disarmPlacement == .takeBar, !daemon.armedStreams.isEmpty {
+                armedRow
+            }
             controls
             if recording {
                 markers
@@ -451,6 +449,20 @@ struct TakeBar: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(recording ? Brand.oxide.opacity(0.08) : Brand.inset)
+    }
+
+    /// Placement (b): the armed count and Disarm all above Record, where the
+    /// header pill then only says "Armed".
+    private var armedRow: some View {
+        HStack(spacing: 6) {
+            Circle().fill(Brand.ochre).frame(width: 5, height: 5)
+            Text("Armed · \(daemon.armedStreams.count)")
+                .font(Type.mono(10, .medium))
+                .foregroundStyle(Brand.ochreInk)
+            Text("·").font(Type.mono(10)).foregroundStyle(Brand.script)
+            DisarmAllButton(daemon: daemon)
+            Spacer(minLength: 0)
+        }
     }
 
     /// "Also save a single file" (feature brief §2): the daemon's
@@ -758,5 +770,29 @@ struct FieldChrome: ViewModifier {
             .padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: 6).fill(Brand.ground))
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Brand.line, lineWidth: 1))
+    }
+}
+
+/// "Disarm all", wherever it is placed: a text button in ochre ink, greyed
+/// while a take is recording — a take needs its streams, and the daemon
+/// would answer 409 take_active anyway.
+struct DisarmAllButton: View {
+    let daemon: DaemonModel
+
+    var body: some View {
+        let recording = daemon.take?.isRecording == true
+        let enabled = daemon.canDisarmAll && daemon.pending == nil
+        Button {
+            daemon.disarmAll()
+        } label: {
+            Text("Disarm all")
+                .font(Type.body(10.5, .medium))
+                .foregroundStyle(enabled ? Brand.ochreInk : Brand.script)
+                .underline(enabled, color: Brand.ochre.opacity(0.5))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(recording ? "Stop the take first" : "Disarm every armed stream")
+        .accessibilityLabel("Disarm all streams")
     }
 }
