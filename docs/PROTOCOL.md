@@ -287,9 +287,13 @@ take stops (default `settings.combine`).
   the estimate the take is created with a `warnings` line.
 - **One active take.** While a take is `recording`, `POST /takes` and
   `POST /record` answer `409 take_active` naming it. A take that was created
-  but never started is **superseded** by the next create: its manifest is
-  rewritten `incomplete` with reason `superseded before start`, since nothing
-  but the manifest exists on disk.
+  but never started is **superseded** by the next create. Since it recorded
+  nothing — its folder holds only the manifest — the folder is **removed**
+  rather than left behind: a paired recorder that re-creates its take on every
+  arm change would otherwise strew an empty folder per change. The `take` event
+  for it is `incomplete`, reason `superseded before start`, with `removed: true`
+  so a client drops it from its list. (A folder that somehow holds any other
+  file is never removed; its manifest is rewritten `incomplete` instead.)
 - `POST /takes` with no armed streams is `400 bad_request`.
 - Timestamps are UTC ISO 8601 with milliseconds; `t` values are seconds from
   the cue to the millisecond. The manifest is the authoritative clock across
@@ -340,12 +344,16 @@ on the next launch and its half-written file removed.
 **Daemon lifecycle.** On **SIGINT/SIGTERM** the daemon finalizes an active
 take — every writer closes and the manifest is written `incomplete` with
 reason `daemon stopped` — so a cleanly-stopped daemon never leaves a take
-saying `recording`. On **launch**, any manifest found `recording` or
-`created` on disk is from a daemon that died without finalizing it (a crash,
-a `SIGKILL`, a power cut); it is rewritten `incomplete` with reason
-`daemon died`. A recovered take is never served as the live take — a client
-that tries to `stop` or add a marker to it gets `409`, and `GET /takes/{id}`
-already shows it `incomplete`.
+saying `recording`. A take still `created` (never started) at shutdown
+recorded nothing, so its manifest-only folder is **removed** the same way a
+superseded one is, with a final `removed: true` event. On **launch**, any
+manifest found `recording` or `created` on disk is from a daemon that died
+without finalizing it (a crash, a `SIGKILL`, a power cut); a `recording` one is
+rewritten `incomplete` with reason `daemon died`, and a `created` one whose
+folder holds only the manifest is **removed** (no event — recovery runs before
+any client connects). A recovered take is never served as the live take — a
+client that tries to `stop` or add a marker to it gets `409`, and
+`GET /takes/{id}` already shows it `incomplete`.
 
 **Read** — `GET /takes/{id}` answers the manifest at any time: live while
 recording, from disk afterwards. `GET /takes` lists recent takes newest
@@ -562,7 +570,7 @@ Every event has an `event` key naming its kind and no `id`.
 | event | since | carries |
 |---|---|---|
 | `stream` | step 3 | `stream`: the `StreamInfo` as it now is, on every change of armed state |
-| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) and when a `combined` mux finishes — carries join/leave events and markers |
+| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) and when a `combined` mux finishes — carries join/leave events and markers; `removed: true` on the final event for a take whose empty folder was removed (superseded before start, or `created` at shutdown) |
 | `levels` | step 6 | `take` id and `streams: [{ id, levelDb?, framesWritten, drift? }]`, ~4×/s while recording — meters and a live drift readout. `levelDb` is peak dBFS since the last event, audio only |
 | `marker` | step 6 | `take` id and the `{ t, label }` just added |
 | `stalled` | step 6 | `stream`: an armed or recording stream that stopped delivering frames (a camera with the lid closed) |

@@ -112,6 +112,12 @@ public struct Manifest: Codable, Sendable, Equatable {
     /// is independent of the take's, and a failed combine never marks the take
     /// incomplete. Absent unless the take was created with `combine`.
     public var combined: Combined?
+    /// Set on the final `take` event for a take whose folder was removed
+    /// because it recorded nothing — superseded before start, or still
+    /// `created` when the daemon stopped. The take stays `incomplete` with the
+    /// reason; `removed` tells a client holding it to drop it from Recent.
+    /// Never written to disk (the folder is gone); absent everywhere else.
+    public var removed: Bool?
 
     /// Seconds from the cue for a host time, to the millisecond, or nil
     /// before the cue.

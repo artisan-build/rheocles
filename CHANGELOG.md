@@ -13,6 +13,7 @@ section from this file, and the release workflow refuses to run without one.
 
 ### Fixed
 
+- Arming and disarming no longer leave empty take folders. A paired recorder re-prepares its take on every arm change, and each abandoned one used to leave a folder holding only a manifest; a take that recorded nothing is now removed instead.
 - The NativePHP app's logs no longer grow without bound. `~/Library/Logs/Rheocles/Rheocles-php.log` reached 2 GB when the terminal that launched the app went away and every console line became a logged exception; it now notes that once and goes quiet. Both it and the app's Laravel log are one file a day, three days kept, a day capped at 20 MB, and nothing is logged per pulse or per event.
 
 ## [0.1.1] — 2026-09-13
