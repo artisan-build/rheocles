@@ -145,6 +145,34 @@ struct ServerTests {
         #expect(try await post(server, "/streams/camera:fake/arm", #"{"armed": "yes"}"#).0 == 400)
     }
 
+    @Test("POST /streams/disarm disarms all; 409 while a take is recording")
+    func disarmAll() async throws {
+        let server = try running()
+        defer { server.stop() }
+        _ = try await post(server, "/streams/camera:fake/arm", #"{"armed": true}"#)
+        _ = try await post(server, "/streams/microphone:fake/arm", #"{"armed": true}"#)
+
+        let (status, data) = try await post(server, "/streams/disarm", "")
+        #expect(status == 200)
+        let list = try JSONDecoder().decode(Server.StreamList.self, from: data)
+        #expect(list.streams.allSatisfy { !$0.armed }, "every stream disarmed")
+
+        // Idempotent: nothing armed, still 200.
+        #expect(try await post(server, "/streams/disarm", "").0 == 200)
+
+        // Refused while recording — a take needs its streams.
+        _ = try await post(server, "/streams/camera:fake/arm", #"{"armed": true}"#)
+        let (recStatus, recData) = try await post(server, "/record", #"{"name": "busy"}"#)
+        #expect(recStatus == 201)
+        let recording = try Manifest.decoder.decode(TakeEngine.Created.self, from: recData).take
+        let (blocked, blockedBody) = try await post(server, "/streams/disarm", "")
+        #expect(blocked == 409)
+        #expect(String(decoding: blockedBody, as: UTF8.self).contains("take_active"))
+        _ = try await post(server, "/takes/\(recording.id)/stop", "")
+        // After stop it is allowed again.
+        #expect(try await post(server, "/streams/disarm", "").0 == 200)
+    }
+
     @Test("Takes over HTTP: create 201, start, stop, read back, list; take events on WebSocket")
     func takes() async throws {
         let server = try running()

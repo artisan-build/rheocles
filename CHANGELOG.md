@@ -7,6 +7,10 @@ section from this file, and the release workflow refuses to run without one.
 
 ## [Unreleased]
 
+### Fixed
+
+- A take that was prepared but never started no longer appears on disk at all. A paired recorder re-prepares its next take the moment you stop, so one manifest-only folder used to sit there between takes; a prepared take now lives in memory and is written only when recording actually starts.
+
 ## [0.1.2] — 2026-09-15
 
 ### Changed

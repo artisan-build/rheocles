@@ -184,6 +184,19 @@ public final class Server: Sendable {
                 let stream = body.armed ? try await registry.arm(id) : try await registry.disarm(id)
                 return Response(json: stream)
             },
+            Command("POST", "/streams/disarm") { _ in
+                // Disarm all — the rig stays armed (cameras on, CPU busy) after
+                // a take, and switching four off one by one is a chore. Refused
+                // while recording: a take needs its streams (stop it first).
+                if let active = await takes.activeManifest, active.state == .recording {
+                    throw APIError(
+                        status: 409, code: "take_active",
+                        message: "take \(active.id) is recording; stop it before disarming")
+                }
+                return Response(
+                    json: StreamList(
+                        streams: await registry.disarmArmed(), permissions: permissions()))
+            },
             Command("POST", "/takes") { request in
                 let body =
                     request.body == nil

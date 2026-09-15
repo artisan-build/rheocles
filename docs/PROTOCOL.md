@@ -53,7 +53,8 @@ next request.
 | `GET /` | discovery: name, version, hostname, machine id, output root, free bytes, auth mode, ports | step 1 |
 | `GET /streams` | every stream with armed state, plus what macOS lets this process see | step 2 |
 | `POST /streams/{id}/arm` | `{ "armed": true\|false }` — device live or not; never stamps, never writes | step 3 |
-| `POST /takes` | create: snapshot the armed set, reserve paths, pre-flight the disk, write the manifest; nothing records | step 4 |
+| `POST /streams/disarm` | disarm every armed stream at once; `409 take_active` while recording | prepared+disarm |
+| `POST /takes` | prepare: snapshot the armed set, reserve paths, pre-flight the disk; the take lives in memory, nothing on disk until start | step 4 |
 | `POST /takes/{id}/start` | the cue | step 4 |
 | `POST /takes/{id}/stop` | finalize every writer and the manifest | step 4 |
 | `POST /record` | create + start, the one-click form | step 4 |
@@ -201,6 +202,13 @@ already exist. Arming never stamps and never writes. Both directions are
 idempotent and answer the stream as it now is. Disarming a joined stream
 implies leave (step 6).
 
+**Disarm all** — `POST /streams/disarm` — disarms every armed stream in one
+call and answers the stream list, the same shape as `GET /streams`. The rig
+stays armed after a take (armed means live — cameras on, CPU busy), and
+switching four off one by one is a chore. It is **`409 take_active` while a
+take is recording** — a take needs its streams, so stop it first. Each stream
+that disarms emits its `stream` event as usual.
+
 What arming holds, per kind:
 
 - **camera** — an `AVCaptureSession` with the device's *current* format,
@@ -228,12 +236,16 @@ quarter of a core on an M1.
 
 ### Takes
 
-The manifest is the take (spec §2, §9). `POST /takes` writes it with
-`state: created` and answers it; every later state change rewrites it
-atomically (temp file + rename), so `manifest.json` is always either the
-previous complete version or the next. Clients hold the id; every path in
-the answer is relative — the take folder to the output root, each file to
-the take folder.
+The manifest is the take (spec §2, §9). `POST /takes` prepares it as
+`state: created` and answers it, but keeps it **in memory** — nothing is
+written to disk yet. `GET /takes/{id}`, the `take` event and the listing are
+served from memory until start. The folder and `manifest.json` are written at
+**start**, immediately before the first writer opens (still "before frame
+one"), and every later state change rewrites the manifest atomically (temp
+file + rename), so `manifest.json` is always either the previous complete
+version or the next. A take prepared but never started therefore never touches
+disk at all. Clients hold the id; every path in the answer is relative — the
+take folder to the output root, each file to the take folder.
 
 ```json
 → POST /takes  { "name": "Episode 12", "expectedDuration": 3600 }
@@ -287,13 +299,11 @@ take stops (default `settings.combine`).
   the estimate the take is created with a `warnings` line.
 - **One active take.** While a take is `recording`, `POST /takes` and
   `POST /record` answer `409 take_active` naming it. A take that was created
-  but never started is **superseded** by the next create. Since it recorded
-  nothing — its folder holds only the manifest — the folder is **removed**
-  rather than left behind: a paired recorder that re-creates its take on every
-  arm change would otherwise strew an empty folder per change. The `take` event
-  for it is `incomplete`, reason `superseded before start`, with `removed: true`
-  so a client drops it from its list. (A folder that somehow holds any other
-  file is never removed; its manifest is rewritten `incomplete` instead.)
+  but never started is **superseded** by the next create. Since it lived in
+  memory only — nothing on disk — superseding it touches no filesystem at all;
+  a paired recorder re-preparing its take on every arm change leaves no trace.
+  The `take` event for it is `incomplete`, reason `superseded before start`,
+  with `removed: true` so a client drops it from its list.
 - `POST /takes` with no armed streams is `400 bad_request`.
 - Timestamps are UTC ISO 8601 with milliseconds; `t` values are seconds from
   the cue to the millisecond. The manifest is the authoritative clock across
@@ -344,16 +354,16 @@ on the next launch and its half-written file removed.
 **Daemon lifecycle.** On **SIGINT/SIGTERM** the daemon finalizes an active
 take — every writer closes and the manifest is written `incomplete` with
 reason `daemon stopped` — so a cleanly-stopped daemon never leaves a take
-saying `recording`. A take still `created` (never started) at shutdown
-recorded nothing, so its manifest-only folder is **removed** the same way a
-superseded one is, with a final `removed: true` event. On **launch**, any
-manifest found `recording` or `created` on disk is from a daemon that died
-without finalizing it (a crash, a `SIGKILL`, a power cut); a `recording` one is
-rewritten `incomplete` with reason `daemon died`, and a `created` one whose
-folder holds only the manifest is **removed** (no event — recovery runs before
-any client connects). A recovered take is never served as the live take — a
-client that tries to `stop` or add a marker to it gets `409`, and
-`GET /takes/{id}` already shows it `incomplete`.
+saying `recording`. A take still `created` (never started) at shutdown lived
+in memory only, so it simply disappears — a final `incomplete` /
+`daemon stopped before start` event with `removed: true`, nothing on disk. On
+**launch**, any manifest found `recording` or `created` on disk is from a
+daemon that died without finalizing it (a crash, a `SIGKILL`, a power cut); a
+`recording` one is rewritten `incomplete` with reason `daemon died`, and a
+`created` one whose folder holds only the manifest — a stale one written by a
+daemon predating in-memory prepared takes — is **removed**. A recovered take is
+never served as the live take — a client that tries to `stop` or add a marker
+to it gets `409`, and `GET /takes/{id}` already shows it `incomplete`.
 
 **Read** — `GET /takes/{id}` answers the manifest at any time: live while
 recording, from disk afterwards. `GET /takes` lists recent takes newest

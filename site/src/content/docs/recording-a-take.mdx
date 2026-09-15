@@ -1,6 +1,6 @@
 ---
 title: Recording a take
-description: A take is created, cued, and stopped. Creating reserves the paths and writes the manifest before a single frame; starting is the cue.
+description: A take is created, cued, and stopped. Creating reserves the paths in memory; the folder and manifest are written at start, before a single frame; starting is the cue.
 ---
 import Callout from '../../components/Callout.astro';
 import Cards from '../../components/Cards.astro';
@@ -8,14 +8,17 @@ import Card from '../../components/Card.astro';
 
 A take is three calls. The first does everything that can be done before
 recording — snapshots the armed set, resolves the destination, pre-flights
-the disk, reserves every file name, writes the manifest — so that by the
-time the cue comes there is nothing left to decide.
+the disk, reserves every file name — so that by the time the cue comes there
+is nothing left to decide. It writes nothing to disk: the folder and the
+manifest are written at the cue, immediately before the first writer opens
+(still before frame one), so a take prepared but never started never touches
+disk at all.
 
 ## Create, start, stop
 
 | call | does | state after |
 |---|---|---|
-| `POST /takes` | snapshot the armed set, reserve paths, pre-flight the disk, write the manifest | `created` |
+| `POST /takes` | snapshot the armed set, reserve paths, pre-flight the disk (in memory — nothing on disk yet) | `created` |
 | `POST /takes/{id}/start` | the cue: every stream's writer starts on frames that are already flowing | `recording` |
 | `POST /takes/{id}/stop` | finalise every writer and the manifest | `complete` |
 
@@ -87,15 +90,15 @@ marked `incomplete` with the reason. Nothing is deleted.
 While a take is `recording`, `POST /takes` and `POST /record` answer
 `409 take_active`, naming it. Stop it first.
 
-A take that was **created but never started recorded nothing**: superseded by
-the next create (or still `created` when the daemon stops), its manifest-only
-folder is **removed** rather than left behind — otherwise a paired recorder
-that re-prepares its take on every arm change strews an empty folder per
-change. The final `take` event marks it `incomplete`, reason
-`superseded before start`, with `removed: true` so a client drops it, and
-`GET /takes/{id}` then answers `404`. A folder holding any recorded file is
-never removed. Concurrent takes with disjoint stream sets — a background screen
-recording spanning several camera takes — are conceivable and deliberately
+A take that was **created but never started recorded nothing**, and it lived in
+memory only — nothing on disk. Superseded by the next create (or still
+`created` when the daemon stops), it simply disappears: a final `take` event
+marks it `incomplete`, reason `superseded before start` (or
+`daemon stopped before start`), with `removed: true` so a client drops it, and
+no folder is ever left behind. A paired recorder that re-prepares its take on
+every arm change leaves no trace. Concurrent takes with disjoint stream sets — a
+background screen recording spanning several camera takes — are conceivable and
+deliberately
 deferred.
 
 `POST /takes` with no armed streams is a `400`.

@@ -250,9 +250,18 @@ struct CombineTests {
     func recoveryFailsPending() async throws {
         let w = try world(catalog: TwoStreams())
         try await w.registry.arm("camera:fake")
-        // A combine take writes `combined: pending` to disk at create.
         let created = try await w.engine.create(.init(combine: true))
-        let folder = w.root.appendingPathComponent(created.take.destination)
+        // A combine only runs after a take is materialised and stopped, so the
+        // on-disk state a dead daemon leaves is a finished take with
+        // `combined: pending` and a half-written combined.mov. Build it
+        // directly (§1: create no longer writes anything).
+        var stale = created.take
+        stale.state = .complete
+        stale.started = Date()
+        stale.stopped = Date()
+        let folder = w.root.appendingPathComponent(stale.destination)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try stale.write(to: folder.appendingPathComponent("manifest.json"))
         let partial = folder.appendingPathComponent("combined.mov")
         try Data("truncated".utf8).write(to: partial)  // a half-written mux
 
