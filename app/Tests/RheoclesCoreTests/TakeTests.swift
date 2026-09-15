@@ -87,7 +87,7 @@ struct TakeTests {
     }
 
     @Test(
-        "Create snapshots the armed set, reserves paths and writes a created manifest — nothing records"
+        "Create snapshots the armed set and reserves paths in memory — nothing on disk, nothing records"
     )
     func create() async throws {
         let w = try await world()
@@ -104,7 +104,14 @@ struct TakeTests {
             take.streams[0].format.video?.width == 640, "the active format, not the advertised one")
         #expect(take.machine.machineId == "TEST" && take.version == Rheocles.version)
         #expect(created.warnings.isEmpty)
-        #expect(try manifestOnDisk(w, take.destination) == take)
+        // §1: a prepared take lives in memory — nothing on disk until start,
+        // but it is answered from memory by id and in the listing.
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: w.root.appendingPathComponent(take.destination).path),
+            "create writes nothing to disk")
+        #expect(try await w.engine.manifest(take.id) == take, "answered from memory")
+        #expect(await w.engine.list().contains { $0.id == take.id }, "listed from memory")
         #expect(w.writers.made.isEmpty, "create must not open a writer")
         #expect(w.sessions.made["camera:fake"]?.sink == nil)
     }
@@ -156,8 +163,8 @@ struct TakeTests {
         try await w.registry.arm("camera:fake")
         let first = try await w.engine.create(.init(name: "first")).take
         let second = try await w.engine.create(.init(name: "second")).take
-        // The superseded created take recorded nothing: its folder is removed,
-        // and the final event says so.
+        // The superseded prepared take lived in memory only (§1): it never
+        // reached disk, and the final event marks it removed.
         #expect(
             !FileManager.default.fileExists(
                 atPath: w.root.appendingPathComponent(first.destination).path))
@@ -235,20 +242,21 @@ struct TakeTests {
         #expect(stopped.streams[1].error == "disk full" && stopped.streams[0].error == nil)
     }
 
-    @Test("A manifest reserve is written at create and freed at stop (full-disk safety net)")
+    @Test("A manifest reserve is written at start and freed at stop (full-disk safety net)")
     func manifestReserve() async throws {
         let w = try await world()
         try await w.registry.arm("camera:fake")
         let take = try await w.engine.create(.init()).take
         let folder = w.root.appendingPathComponent(take.destination)
         let reserve = folder.appendingPathComponent(".manifest.reserve")
-        // Present after create, 64 KB, so a full disk can be relieved to land
-        // the final manifest truthfully.
+        // Nothing on disk after create (§1); the reserve lands at start, 64 KB,
+        // so a full disk can be relieved to land the final manifest truthfully.
+        #expect(!FileManager.default.fileExists(atPath: reserve.path))
+        _ = try await w.engine.start(take.id)
         #expect(FileManager.default.fileExists(atPath: reserve.path))
         let size =
             (try FileManager.default.attributesOfItem(atPath: reserve.path)[.size] as? Int) ?? 0
         #expect(size == 64 * 1024)
-        _ = try await w.engine.start(take.id)
         _ = try await w.engine.stop(take.id)
         #expect(
             !FileManager.default.fileExists(atPath: reserve.path),
@@ -329,22 +337,23 @@ struct TakeTests {
                 .state == .incomplete)
     }
 
-    @Test("A superseded take whose folder holds a file is kept, not removed")
-    func supersedeKeepsFolderWithMedia() async throws {
+    @Test("Neither create nor supersede touches disk until start")
+    func prepareWritesNothing() async throws {
         let w = try await world()
         try await w.registry.arm("camera:fake")
         let first = try await w.engine.create(.init(name: "first")).take
-        // Something landed in the folder before the next create.
-        try Data("frame".utf8).write(
-            to: w.root.appendingPathComponent(first.destination)
-                .appendingPathComponent("camera.mov"))
-        _ = try await w.engine.create(.init(name: "second")).take
+        let second = try await w.engine.create(.init(name: "second")).take
+        // Nothing was written for either prepared take.
         #expect(
-            FileManager.default.fileExists(
+            !FileManager.default.fileExists(
                 atPath: w.root.appendingPathComponent(first.destination).path))
-        #expect(try manifestOnDisk(w, first.destination).reason == "superseded before start")
-        let firstEvent = try #require(w.manifests.withLock { $0 }.last { $0.id == first.id })
-        #expect(firstEvent.removed != true)
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: w.root.appendingPathComponent(second.destination).path))
+        // Only start materialises the surviving one.
+        _ = try await w.engine.start(second.id)
+        #expect(try manifestOnDisk(w, second.destination).state == .recording)
+        _ = try await w.engine.stop(second.id)
     }
 
     @Test("A recorded take's folder survives a later create")
@@ -361,15 +370,18 @@ struct TakeTests {
         #expect(try manifestOnDisk(w, recorded.destination).state == .complete)
     }
 
-    @Test("shutdown removes a created-but-unstarted take's empty folder")
-    func shutdownRemovesEmptyCreated() async throws {
+    @Test("shutdown discards a prepared take that never reached disk")
+    func shutdownDiscardsPrepared() async throws {
         let w = try await world()
         try await w.registry.arm("camera:fake")
         let take = try await w.engine.create(.init()).take
         let folder = w.root.appendingPathComponent(take.destination)
-        #expect(FileManager.default.fileExists(atPath: folder.path))
+        // §1: a prepared take is in memory only — nothing on disk before or
+        // after shutdown; only the final event marks it removed.
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
         await w.engine.shutdown()
         #expect(!FileManager.default.fileExists(atPath: folder.path))
+        #expect(await w.engine.activeManifest == nil)
         let event = try #require(w.manifests.withLock { $0 }.last { $0.id == take.id })
         #expect(event.removed == true && event.reason == "daemon stopped before start")
     }

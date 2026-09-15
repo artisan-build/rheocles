@@ -199,15 +199,14 @@ public actor TakeEngine {
             case .created:
                 current.manifest.state = .incomplete
                 current.manifest.reason = "daemon stopped before start"
+                current.manifest.removed = true
             default:
                 break
             }
-            // A take still `created` at shutdown recorded nothing; if its folder
-            // holds only the manifest, remove it rather than leave it behind.
-            if current.manifest.started == nil, Self.recordedNothing(in: current.folder) {
-                try? FileManager.default.removeItem(at: current.folder)
-                current.manifest.removed = true
-            } else {
+            // A take still `created` at shutdown never started, so it never
+            // materialised on disk (§1): nothing to write or remove, just the
+            // final event. A recording take is finalised to disk as before.
+            if current.manifest.started != nil {
                 Self.writeManifest(current.manifest, folder: current.folder)
                 try? FileManager.default.removeItem(
                     at: current.folder.appendingPathComponent(Self.reserveName))
@@ -305,27 +304,16 @@ public actor TakeEngine {
                     status: 409, code: "take_active",
                     message: "take \(current.manifest.id) is recording; stop it first")
             case .created:
-                // Created but never started: nothing on disk but a manifest.
-                // The new take supersedes it rather than blocking forever on
-                // a client that changed its mind. A paired recorder re-creates
-                // its take on every arm change, so this is the common path.
+                // A prepared take lives in memory only until start (§1), so
+                // superseding it touches nothing on disk — a paired recorder
+                // re-creates its take on every arm change, and none of those
+                // now reach the filesystem. Emit the final event so a client
+                // holding it drops it from its list.
                 var superseded = current.manifest
                 superseded.state = .incomplete
                 superseded.reason = "superseded before start"
-                // It never recorded, so its `combined: pending` would never
-                // complete: drop it rather than leave a listing showing a
-                // combine that no task will ever finish.
                 superseded.combined = nil
-                // It recorded nothing, so its folder holds only the manifest:
-                // remove it instead of leaving an empty `incomplete` folder on
-                // disk for every arm/disarm. The `take` event carries
-                // `removed` so a client holding it drops it from Recent.
-                if Self.recordedNothing(in: current.folder) {
-                    try? FileManager.default.removeItem(at: current.folder)
-                    superseded.removed = true
-                } else {
-                    Self.writeManifest(superseded, folder: current.folder)
-                }
+                superseded.removed = true
                 onChange(superseded)
                 live = nil
             default:
@@ -341,7 +329,6 @@ public actor TakeEngine {
         let now = Self.now()
         let destination = try Self.destination(request.destination, name: request.name, at: now)
         let folder = root.appendingPathComponent(destination, isDirectory: true)
-        let manifestURL = folder.appendingPathComponent("manifest.json")
         let fm = FileManager.default
         var isDirectory: ObjCBool = false
         if fm.fileExists(atPath: folder.path, isDirectory: &isDirectory) {
@@ -416,16 +403,9 @@ public actor TakeEngine {
             markers: [], settings: .init(codec: codec, expectedDuration: request.expectedDuration),
             combined: combine ? Manifest.Combined(path: "combined.mov", state: .pending) : nil)
 
-        do {
-            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
-            // A 64 KB reserve, freed if a full disk blocks the final manifest.
-            try? Data(count: 64 * 1024).write(to: folder.appendingPathComponent(Self.reserveName))
-            try manifest.write(to: manifestURL)
-        } catch {
-            throw APIError(
-                status: 500, code: "write_failed",
-                message: "could not create \(destination): \(error)")
-        }
+        // Nothing on disk yet (§1): a `created` take lives in memory — answered
+        // from `live` on GET /takes/{id}, the listing and the event. The folder
+        // and manifest are written at `start`, before the first writer opens.
         live = Live(manifest: manifest, folder: folder, combine: combine)
         onChange(manifest)
         return Created(take: manifest, warnings: warnings)
@@ -439,6 +419,21 @@ public actor TakeEngine {
         }
         guard current.manifest.state == .created else {
             throw APIError.conflict("take \(id) is \(current.manifest.state.rawValue), not created")
+        }
+        // Materialise the prepared take on disk now — it lived in memory until
+        // this moment (§1). Still "before frame one": the folder, the reserve
+        // and the manifest land before any writer opens a file in the folder.
+        do {
+            try FileManager.default.createDirectory(
+                at: current.folder, withIntermediateDirectories: true)
+            // A 64 KB reserve, freed if a full disk blocks the final manifest.
+            try? Data(count: 64 * 1024).write(
+                to: current.folder.appendingPathComponent(Self.reserveName))
+            try current.manifest.write(to: current.folder.appendingPathComponent("manifest.json"))
+        } catch {
+            throw APIError(
+                status: 500, code: "write_failed",
+                message: "could not create \(current.manifest.destination): \(error)")
         }
         let cue = Self.now()
         current.manifest.started = cue

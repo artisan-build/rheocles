@@ -42,7 +42,7 @@ to be reconstructed.
 
 | `state` | meaning |
 |---|---|
-| `created` | paths reserved, manifest written, nothing recording |
+| `created` | prepared in memory: paths reserved, nothing on disk yet, nothing recording |
 | `recording` | the cue has happened; writers are live |
 | `complete` | stopped cleanly; every file finalised |
 | `incomplete` | stopped by a failure, superseded before it started, or cut short by the daemon going away; `reason` says which; every file is playable as far as it got |
@@ -60,15 +60,15 @@ next launches is from one that died without finalising — a crash, a
 on that launch. A recovered take is never served as the live take; `stop` or
 a marker against it is a `409`.
 
-A take **created but never started recorded nothing**, so it is not kept.
-Superseded by the next create, or still `created` when the daemon stops or on
-the next launch, its manifest-only folder is **removed** rather than left
-behind — a paired recorder that re-creates its take on every arm change would
-otherwise strew an empty folder per change. The final `take` event reads
-`incomplete` (reason `superseded before start`, `daemon stopped before start`,
-or `daemon died`) with `removed: true`, so a client drops it from its list, and
-`GET /takes/{id}` then answers `404`. A folder holding any recorded file is
-never removed.
+A take **created but never started recorded nothing**, and it lives in memory
+only — nothing is written to disk until start. Superseded by the next create,
+or still `created` when the daemon stops, it simply disappears: a final `take`
+event reads `incomplete` (reason `superseded before start` or
+`daemon stopped before start`) with `removed: true`, so a client drops it from
+its list, and no folder is ever left behind. A paired recorder that re-prepares
+its take on every arm change leaves no trace. (A stale `created` folder written
+by a daemon that predates in-memory prepared takes is removed on the next
+launch; a folder holding any recorded file is never removed.)
 
 ## The shape
 

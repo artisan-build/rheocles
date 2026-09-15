@@ -91,7 +91,8 @@ const es = new EventSource(`http://127.0.0.1:7447/events?access_token=${token}`)
 | `GET /` | discovery: hostname, machine id, version, output root, free space, auth mode |
 | `GET /streams` | every stream with armed state |
 | `POST /streams/{id}/arm` | `{ armed }` — never stamps |
-| `POST /takes` | create: reserve paths, write the manifest. Not recording |
+| `POST /streams/disarm` | disarm every armed stream; `409` while recording |
+| `POST /takes` | prepare: reserve paths in memory, pre-flight the disk. Nothing on disk until start |
 | `POST /takes/{id}/start` | the cue |
 | `POST /takes/{id}/stop` | finalise |
 | `POST /takes/{id}/join` | `{ stream }` — arms if needed, starts the writer |

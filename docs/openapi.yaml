@@ -141,10 +141,32 @@ paths:
       x-ws:
         request: { id: 3, method: POST, path: '/streams/camera:0x2300000fd9009c/arm', body: { armed: true } }
         response: { id: 3, status: 200, body: { id: 'camera:0x2300000fd9009c', kind: camera, name: Elgato 4K X, model: UVC Camera VendorID_4057 ProductID_156, capabilities: { video: { width: 3840, height: 2160, maxFrameRate: 30 } }, armed: true, active: { video: { width: 1280, height: 720, maxFrameRate: 120 } }, framesSeen: 0 } }
+  /streams/disarm:
+    post:
+      operationId: disarmAll
+      summary: Disarm every armed stream at once — the "disarm all" button. Refused while a take is recording.
+      responses:
+        '200':
+          description: The stream list after disarming, same shape as GET /streams.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: A take is recording (code `take_active`); stop it first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-ws:
+        request: { id: 18, method: POST, path: /streams/disarm }
+        response: { id: 18, status: 200, body: { streams: [], permissions: { camera: authorized, microphone: authorized, screen: authorized } } }
   /takes:
     post:
       operationId: createTake
-      summary: Create a take — snapshot the armed set, reserve paths, pre-flight the disk, write the manifest. Nothing records.
+      summary: Prepare a take — snapshot the armed set, reserve paths, pre-flight the disk. The take lives in memory as `created`; nothing is written to disk until start.
       requestBody:
         required: false
         content:

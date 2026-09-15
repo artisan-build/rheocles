@@ -292,6 +292,10 @@ struct ContractTests {
         #expect(combineCreated.take.combined?.state == .pending)
         try await validate("GET", "/takes/\(combineCreated.take.id)", "/takes/{id}")
 
+        // Disarm all — no take is recording here (the combine take is only
+        // `created`), so it answers 200 with the stream list.
+        try await validate("POST", "/streams/disarm", "/streams/disarm")
+
         try await validate("GET", "/settings", "/settings")
         try await validate(
             "PATCH", "/settings", "/settings", body: #"{"codec": "prores", "combine": true}"#)

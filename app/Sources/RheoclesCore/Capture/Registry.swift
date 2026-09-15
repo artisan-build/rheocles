@@ -86,9 +86,17 @@ public actor Registry {
         return stream
     }
 
-    /// Release everything, for shutdown.
+    /// Release everything, for shutdown. Silent — no per-stream event, since
+    /// the transports are coming down with it.
     public func disarmAll() async {
         for (_, session) in sessions { await session.stop() }
         sessions.removeAll()
+    }
+
+    /// Disarm every armed stream, announcing each — the "disarm all" button.
+    /// Returns the full stream list afterwards.
+    public func disarmArmed() async -> [StreamInfo] {
+        for id in Array(sessions.keys) { _ = try? await disarm(id) }
+        return await streams()
     }
 }

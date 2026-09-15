@@ -101,6 +101,20 @@ Both directions are idempotent and answer the stream as it now is. Every
 change of armed state is also pushed as a `stream` event to anything
 listening on `/events` or the WebSocket.
 
+### Disarm all
+
+```bash
+curl -s -H "$H" -X POST localhost:7447/streams/disarm
+```
+
+`POST /streams/disarm` disarms every armed stream in one call and answers the
+stream list, the same shape as `GET /streams`. The rig stays armed after a take
+— armed means live, so the cameras are still on and the CPU still busy — and
+switching four off one at a time is a chore. It is refused with
+`409 take_active` while a take is recording, since a take needs its streams:
+stop it first. Each stream that disarms emits its `stream` event as usual. Both
+apps put a **Disarm all** button next to the armed count.
+
 ### What arming holds, per kind
 
 | kind | while armed | and |
