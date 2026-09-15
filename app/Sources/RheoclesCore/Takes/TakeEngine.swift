@@ -202,9 +202,16 @@ public actor TakeEngine {
             default:
                 break
             }
-            Self.writeManifest(current.manifest, folder: current.folder)
-            try? FileManager.default.removeItem(
-                at: current.folder.appendingPathComponent(Self.reserveName))
+            // A take still `created` at shutdown recorded nothing; if its folder
+            // holds only the manifest, remove it rather than leave it behind.
+            if current.manifest.started == nil, Self.recordedNothing(in: current.folder) {
+                try? FileManager.default.removeItem(at: current.folder)
+                current.manifest.removed = true
+            } else {
+                Self.writeManifest(current.manifest, folder: current.folder)
+                try? FileManager.default.removeItem(
+                    at: current.folder.appendingPathComponent(Self.reserveName))
+            }
             onChange(current.manifest)
             live = nil
         }
@@ -232,6 +239,15 @@ public actor TakeEngine {
             guard url.lastPathComponent == "manifest.json", let data = try? Data(contentsOf: url),
                 var manifest = try? Manifest.decode(data)
             else { continue }
+            let folder = url.deletingLastPathComponent()
+            // A take still `created` on launch never started; if its folder
+            // holds only the manifest it recorded nothing, so remove it rather
+            // than leave an empty "daemon died" folder behind. (No event: this
+            // runs before any client connects.)
+            if manifest.state == .created, Self.recordedNothing(in: folder) {
+                try? fm.removeItem(at: folder)
+                continue
+            }
             var changed = false
             if manifest.state == .recording || manifest.state == .created {
                 manifest.state = .incomplete
@@ -291,7 +307,8 @@ public actor TakeEngine {
             case .created:
                 // Created but never started: nothing on disk but a manifest.
                 // The new take supersedes it rather than blocking forever on
-                // a client that changed its mind.
+                // a client that changed its mind. A paired recorder re-creates
+                // its take on every arm change, so this is the common path.
                 var superseded = current.manifest
                 superseded.state = .incomplete
                 superseded.reason = "superseded before start"
@@ -299,7 +316,16 @@ public actor TakeEngine {
                 // complete: drop it rather than leave a listing showing a
                 // combine that no task will ever finish.
                 superseded.combined = nil
-                Self.writeManifest(superseded, folder: current.folder)
+                // It recorded nothing, so its folder holds only the manifest:
+                // remove it instead of leaving an empty `incomplete` folder on
+                // disk for every arm/disarm. The `take` event carries
+                // `removed` so a client holding it drops it from Recent.
+                if Self.recordedNothing(in: current.folder) {
+                    try? FileManager.default.removeItem(at: current.folder)
+                    superseded.removed = true
+                } else {
+                    Self.writeManifest(superseded, folder: current.folder)
+                }
                 onChange(superseded)
                 live = nil
             default:
@@ -626,6 +652,19 @@ public actor TakeEngine {
             try? FileManager.default.removeItem(at: folder.appendingPathComponent(reserveName))
             try? manifest.write(to: url)
         }
+    }
+
+    /// A take folder that recorded nothing holds only its manifest and the
+    /// reserve — no media. Such a folder is safe to remove when the take is
+    /// abandoned (superseded before start, or `created` at shutdown/recovery);
+    /// a folder with any other file is left untouched, so media is never lost.
+    static func recordedNothing(in folder: URL) -> Bool {
+        let allowed: Set<String> = ["manifest.json", reserveName]
+        guard
+            let contents = try? FileManager.default.contentsOfDirectory(
+                atPath: folder.path)
+        else { return false }
+        return contents.allSatisfy { allowed.contains($0) }
     }
 
     public func record(_ request: CreateRequest) async throws -> Created {

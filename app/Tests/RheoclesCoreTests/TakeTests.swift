@@ -51,6 +51,9 @@ struct TakeTests {
         let writers: FakeWriterFactory
         let engine: TakeEngine
         let events: OSAllocatedUnfairLockBox<[String]>
+        /// Every manifest handed to `onChange`, for tests that need a field
+        /// beyond `id:state` — e.g. `removed` on a supersede.
+        let manifests: OSAllocatedUnfairLockBox<[Manifest]>
     }
 
     /// The world owns its scratch: the engine's root closure holds it, so the
@@ -63,13 +66,17 @@ struct TakeTests {
         let registry = Registry(catalog: TwoStreams(), factory: sessions)
         let writers = FakeWriterFactory()
         let events = OSAllocatedUnfairLockBox<[String]>([])
+        let manifests = OSAllocatedUnfairLockBox<[Manifest]>([])
         let engine = TakeEngine(
             registry: registry, outputRoot: { scratch.url }, writerFactory: writers,
             machine: .init(hostname: "test.local", machineId: "TEST"), freeBytes: { _ in freeBytes }
-        ) { manifest in events.withLock { $0.append("\(manifest.id):\(manifest.state.rawValue)") } }
+        ) { manifest in
+            events.withLock { $0.append("\(manifest.id):\(manifest.state.rawValue)") }
+            manifests.withLock { $0.append(manifest) }
+        }
         return World(
             scratch: scratch, root: root, registry: registry, sessions: sessions, writers: writers,
-            engine: engine, events: events)
+            engine: engine, events: events, manifests: manifests)
     }
 
     private func manifestOnDisk(_ w: World, _ destination: String) throws -> Manifest {
@@ -149,8 +156,16 @@ struct TakeTests {
         try await w.registry.arm("camera:fake")
         let first = try await w.engine.create(.init(name: "first")).take
         let second = try await w.engine.create(.init(name: "second")).take
-        #expect(try manifestOnDisk(w, first.destination).state == .incomplete)
-        #expect(try manifestOnDisk(w, first.destination).reason == "superseded before start")
+        // The superseded created take recorded nothing: its folder is removed,
+        // and the final event says so.
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: w.root.appendingPathComponent(first.destination).path))
+        let firstEvent = try #require(
+            w.manifests.withLock { $0 }.last { $0.id == first.id })
+        #expect(firstEvent.state == .incomplete)
+        #expect(firstEvent.reason == "superseded before start")
+        #expect(firstEvent.removed == true)
         _ = try await w.engine.start(second.id)
         await #expect(throws: APIError.self) { try await w.engine.create(.init(name: "third")) }
         do {
@@ -295,14 +310,68 @@ struct TakeTests {
         let recovered = try Manifest.decode(
             Data(contentsOf: folder.appendingPathComponent("manifest.json")))
         #expect(recovered.state == .incomplete && recovered.reason == "daemon died")
-        // A created-but-unstarted take is recovered too.
+        // A created-but-unstarted take recorded nothing: its manifest-only
+        // folder is removed on recovery, not rewritten.
         stale.state = .created
         try stale.write(to: folder.appendingPathComponent("manifest.json"))
         TakeEngine.recoverStaleManifests(in: root)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+
+        // But a `created` folder that holds a file is left alone (rewritten
+        // incomplete): the guard never deletes anything but a manifest.
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try stale.write(to: folder.appendingPathComponent("manifest.json"))
+        try Data("frame".utf8).write(to: folder.appendingPathComponent("camera.mov"))
+        TakeEngine.recoverStaleManifests(in: root)
+        #expect(FileManager.default.fileExists(atPath: folder.path))
         #expect(
             try Manifest.decode(Data(contentsOf: folder.appendingPathComponent("manifest.json")))
-                .state
-                == .incomplete)
+                .state == .incomplete)
+    }
+
+    @Test("A superseded take whose folder holds a file is kept, not removed")
+    func supersedeKeepsFolderWithMedia() async throws {
+        let w = try await world()
+        try await w.registry.arm("camera:fake")
+        let first = try await w.engine.create(.init(name: "first")).take
+        // Something landed in the folder before the next create.
+        try Data("frame".utf8).write(
+            to: w.root.appendingPathComponent(first.destination)
+                .appendingPathComponent("camera.mov"))
+        _ = try await w.engine.create(.init(name: "second")).take
+        #expect(
+            FileManager.default.fileExists(
+                atPath: w.root.appendingPathComponent(first.destination).path))
+        #expect(try manifestOnDisk(w, first.destination).reason == "superseded before start")
+        let firstEvent = try #require(w.manifests.withLock { $0 }.last { $0.id == first.id })
+        #expect(firstEvent.removed != true)
+    }
+
+    @Test("A recorded take's folder survives a later create")
+    func recordedFolderSurvivesLaterCreate() async throws {
+        let w = try await world()
+        try await w.registry.arm("camera:fake")
+        let recorded = try await w.engine.record(.init(name: "keep")).take
+        _ = try await w.engine.stop(recorded.id)
+        // A new take is created afterwards; the recorded one is untouched.
+        _ = try await w.engine.create(.init(name: "next")).take
+        #expect(
+            FileManager.default.fileExists(
+                atPath: w.root.appendingPathComponent(recorded.destination).path))
+        #expect(try manifestOnDisk(w, recorded.destination).state == .complete)
+    }
+
+    @Test("shutdown removes a created-but-unstarted take's empty folder")
+    func shutdownRemovesEmptyCreated() async throws {
+        let w = try await world()
+        try await w.registry.arm("camera:fake")
+        let take = try await w.engine.create(.init()).take
+        let folder = w.root.appendingPathComponent(take.destination)
+        #expect(FileManager.default.fileExists(atPath: folder.path))
+        await w.engine.shutdown()
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+        let event = try #require(w.manifests.withLock { $0 }.last { $0.id == take.id })
+        #expect(event.removed == true && event.reason == "daemon stopped before start")
     }
 
     @Test("Manifest JSON round-trips with ISO 8601 UTC dates and sorted keys")
