@@ -77,6 +77,38 @@ extension DaemonModel {
     struct ArmBody: Encodable {
         let armed: Bool
     }
+
+    /// Disarm all (brief §2): `POST /streams/disarm`, one call for the whole
+    /// rig, answering the list in `GET /streams`' shape. The daemon refuses
+    /// it while a take is recording — a take needs its streams — and the
+    /// popover does not offer it then either; a refusal that slips through
+    /// is shown in the daemon's words.
+    var canDisarmAll: Bool {
+        !armedStreams.isEmpty && take?.isRecording != true
+    }
+
+    func disarmAll() {
+        guard pending == nil else { return }
+        pending = Pending(id: "*", armed: false)
+        armError = nil
+        Task {
+            streamsRequest &+= 1
+            let sequence = streamsRequest
+            do {
+                let list: Server.StreamList = try await api.post("/streams/disarm", EmptyBody())
+                Log.info("disarmed all")
+                if sequence == streamsRequest {
+                    streams = list.streams
+                    permissions = list.permissions
+                }
+            } catch {
+                armError = "POST /streams/disarm → \(error)"
+                Log.info("disarm all failed: \(error)")
+                await refreshStreams()
+            }
+            pending = nil
+        }
+    }
 }
 
 extension StreamInfo.Kind {

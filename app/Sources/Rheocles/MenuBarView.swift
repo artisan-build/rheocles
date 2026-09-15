@@ -53,12 +53,39 @@ struct MenuBarView: View {
                 Text("Rheocles")
                     .font(Type.wordmark(15))
                     .foregroundStyle(Brand.ink)
-                Text("REE-oh-kleez")
-                    .font(Type.mono(9))
-                    .foregroundStyle(Brand.inkFaint)
+                    .fixedSize()
+                // The pronunciation is furniture; it yields to Disarm all,
+                // which needs the width when something is armed.
+                if !(daemon.status == .running && armedCount > 0) {
+                    Text("REE-oh-kleez")
+                        .font(Type.mono(9))
+                        .foregroundStyle(Brand.inkFaint)
+                        .fixedSize()
+                }
             }
 
             Spacer()
+
+            // Disarm all, beside the armed count: the rig stays live after a
+            // take and four switches one by one is a chore. Shown whenever
+            // something is armed; while a take is recording it is there but
+            // disabled — a take needs its streams, and the daemon would say
+            // so with a 409 anyway — so the eye learns where it lives.
+            if daemon.status == .running, armedCount > 0 {
+                let enabled = daemon.canDisarmAll && daemon.pending == nil
+                Button {
+                    daemon.disarmAll()
+                } label: {
+                    Text("Disarm all")
+                        .font(Type.body(10.5, .medium))
+                        .foregroundStyle(enabled ? Brand.ochreInk : Brand.script)
+                        .underline(enabled, color: Brand.ochre.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+                .disabled(!enabled)
+                .help(recording ? "Stop the take first" : "Disarm every armed stream")
+                .accessibilityLabel("Disarm all streams")
+            }
 
             StatePill(label: stateLabel, colour: stateColour)
 
@@ -145,8 +172,11 @@ struct MenuBarView: View {
                 Circle().fill(Brand.Block.aegean).frame(width: 5, height: 5)
                 // A real daemon always sends its version; the site's
                 // screenshot fixture sends none, so the shot does not date.
-                Text(d.map { $0.version.isEmpty ? "rheocles-core" : "rheocles-core \($0.version)" } ?? "rheocles-core ··")
-                    .foregroundStyle(Brand.Block.bone)
+                Text(
+                    d.map { $0.version.isEmpty ? "rheocles-core" : "rheocles-core \($0.version)" }
+                        ?? "rheocles-core ··"
+                )
+                .foregroundStyle(Brand.Block.bone)
                 Text("·")
                 Text(daemon.startedByUs ? "ours" : "shared")
                 Text("·")

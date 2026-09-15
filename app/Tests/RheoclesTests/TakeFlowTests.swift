@@ -259,3 +259,56 @@ extension Live {
         }
     }
 }
+
+extension Live {
+    /// Disarm all (prepared-take-and-disarm-all.md §2): one call for the rig,
+    /// refused while recording.
+    @Suite("Disarm all")
+    @MainActor
+    struct DisarmAllTests {
+        @Test("Offered only with something armed and nothing recording")
+        func rule() throws {
+            let cam = StreamInfo(
+                id: "camera:a", kind: .camera, name: "c", model: "m",
+                capabilities: .init(video: .init(width: 1, height: 1, maxFrameRate: 1)), armed: true
+            )
+            #expect(!DaemonModel.staged(.running).canDisarmAll)
+            #expect(DaemonModel.staged(.running, streams: [cam]).canDisarmAll)
+            var cold = cam
+            cold.armed = false
+            #expect(!DaemonModel.staged(.running, streams: [cold]).canDisarmAll)
+        }
+
+        @Test("Disarms every armed stream in one call; 409 while recording, shown")
+        func disarmAll() async throws {
+            let flow = TakeFlowTests()
+            let (daemon, model) = try flow.engine()
+            defer { daemon.stop() }
+            model.connect()
+            defer { model.shutdown() }
+            #expect(await eventually { model.streams.count == 2 })
+
+            model.arm("camera:fake", true)
+            #expect(await eventually { model.armedStreams.count == 1 && model.pending == nil })
+            model.arm("microphone:fake", true)
+            #expect(await eventually { model.armedStreams.count == 2 && model.pending == nil })
+            #expect(model.canDisarmAll)
+
+            model.record()
+            #expect(await eventually { model.take?.isRecording == true && !model.takeBusy })
+            #expect(!model.canDisarmAll)
+            model.disarmAll()
+            #expect(await eventually { model.pending == nil && model.armError != nil })
+            #expect(model.armError?.contains("take_active") == true)
+            #expect(model.armedStreams.count == 2)
+
+            model.stop()
+            #expect(await eventually { model.take?.isOver == true })
+            #expect(model.canDisarmAll)
+            model.disarmAll()
+            #expect(await eventually { model.armedStreams.isEmpty && model.pending == nil })
+            #expect(model.armError == nil)
+            #expect(!model.canDisarmAll)
+        }
+    }
+}
