@@ -214,6 +214,35 @@ struct WriterTests {
             duration > span - 0.3, "the file spans to stop (\(duration) vs \(span)), not ~0.5 s")
     }
 
+    @Test(
+        "A long hold does not cost the frames after it — no stale-pad starvation (S2)",
+        .enabled(if: rheoMediaTestsEnabled))
+    func holdDoesNotDropLaterFrames() async throws {
+        let url = temp("hold.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        let start = clock.nowHostSeconds
+        // A few frames, a 10 s hold (a slide sitting still — a big timestamp
+        // gap, fed without a real wait), then the new slide at a real 60 fps.
+        for i in 0..<10 {
+            writer.handle(
+                try frame(width: 1280, height: 720, pts: start + Double(i) / 60, shade: UInt8(i)))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        let afterHold = start + 10.0
+        for i in 0..<30 {
+            writer.handle(
+                try frame(
+                    width: 1280, height: 720, pts: afterHold + Double(i) / 60,
+                    shade: UInt8(100 + i)))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        #expect(await writer.finish() == nil)
+        // None of the 30 real frames may be dropped to make room for stale
+        // duplicates of the held slide.
+        #expect(writer.framesDropped == 0, "a hold dropped \(writer.framesDropped) later frames")
+    }
+
     @Test("Video: ProRes 422 is the alternative codec", .enabled(if: rheoMediaTestsEnabled))
     func prores() async throws {
         let url = temp("prores.mov")

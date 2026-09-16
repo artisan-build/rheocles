@@ -140,25 +140,23 @@ public final class VideoWriter: Writer, @unchecked Sendable {
         var slot = Int(((hostSeconds - firstHost) * Double(tcRate)).rounded())
         if slot <= lastSlot { slot = lastSlot + 1 }
 
-        // Pad missing slots with the last frame so a short gap — a dropped
-        // frame, or a source a touch under its rate — is filled and the file
-        // stays constant-rate. A long hold (a static screen, a stalled source)
-        // is left to the previous frame's on-screen duration instead of filled
-        // with hundreds of duplicates that would swamp the encoder; the grid
-        // stays anchored to the host clock either way. The fill is capped so a
-        // burst never outruns the encoder's queue, and each append is guarded
-        // — appending to an input that is not ready throws an Objective-C
-        // exception that would abort the whole process.
-        if lastSlot >= 0, let last = lastSample {
-            let cap = min(slot, lastSlot + 1 + tcRate)  // at most ~1 s of pads
-            var gap = lastSlot + 1
-            while gap < cap, video.isReadyForMoreMediaData {
+        // Pad a short gap with the last frame so a dropped frame or a source a
+        // touch under its rate stays constant-rate. The judgement is **per
+        // gap**: a gap wider than ~1 s is a hold (a static screen, a stalled
+        // source, a saturated encoder), so it is not padded at all — the real
+        // frame is placed straight away and the previous frame's on-screen
+        // duration, derived from this timestamp, covers the hold. Padding a
+        // hold would queue up to a second of stale duplicates, fill the
+        // encoder, and starve the frame that actually changed (the new slide
+        // arriving late). Each append is guarded — appending to an unready
+        // input throws an Objective-C exception that would abort the process.
+        if lastSlot >= 0, slot - lastSlot > 1, slot - lastSlot <= tcRate, let last = lastSample {
+            for gap in (lastSlot + 1)..<slot where video.isReadyForMoreMediaData {
                 if appendFrame(last, at: gap) {
                     frames += 1
                     padded += 1
                     lastSlot = gap
                 }
-                gap += 1
             }
         }
         // Re-check before the real frame: the padding above, or plain encoder
