@@ -140,17 +140,19 @@ public final class VideoWriter: Writer, @unchecked Sendable {
         var slot = Int(((hostSeconds - firstHost) * Double(tcRate)).rounded())
         if slot <= lastSlot { slot = lastSlot + 1 }
 
-        guard video.isReadyForMoreMediaData else {
-            dropped += 1
-            if let error = writer.error { failure = "write failed: \(error)" }
-            return
-        }
-        // Pad missing slots with the last frame — a gap of more than one slot
-        // (a drop, or a source slower than nominal) becomes duplicates rather
-        // than one stretched frame — so the file stays CFR.
+        // Pad missing slots with the last frame so a short gap — a dropped
+        // frame, or a source a touch under its rate — is filled and the file
+        // stays constant-rate. A long hold (a static screen, a stalled source)
+        // is left to the previous frame's on-screen duration instead of filled
+        // with hundreds of duplicates that would swamp the encoder; the grid
+        // stays anchored to the host clock either way. The fill is capped so a
+        // burst never outruns the encoder's queue, and each append is guarded
+        // — appending to an input that is not ready throws an Objective-C
+        // exception that would abort the whole process.
         if lastSlot >= 0, let last = lastSample {
+            let cap = min(slot, lastSlot + 1 + tcRate)  // at most ~1 s of pads
             var gap = lastSlot + 1
-            while gap < slot, video.isReadyForMoreMediaData {
+            while gap < cap, video.isReadyForMoreMediaData {
                 if appendFrame(last, at: gap) {
                     frames += 1
                     padded += 1
@@ -158,6 +160,14 @@ public final class VideoWriter: Writer, @unchecked Sendable {
                 }
                 gap += 1
             }
+        }
+        // Re-check before the real frame: the padding above, or plain encoder
+        // load, may have filled the queue. Drop rather than append to an
+        // unready input (which aborts); the next frame continues the timeline.
+        guard video.isReadyForMoreMediaData else {
+            dropped += 1
+            if let error = writer.error { failure = "write failed: \(error)" }
+            return
         }
         if appendFrame(sampleBuffer, at: slot) {
             frames += 1
@@ -176,11 +186,14 @@ public final class VideoWriter: Writer, @unchecked Sendable {
         let ticksPerFrame = Int64(mediaTimescale) / Int64(tcRate)
         let stamp = CMTime(
             value: first.value + Int64(slot) * ticksPerFrame, timescale: mediaTimescale)
-        let duration = CMTime(value: ticksPerFrame, timescale: mediaTimescale)
-        guard let toAppend = Self.restamp(sample, to: stamp, duration: duration),
+        // One nominal frame's duration, so consecutive slots are exactly
+        // constant-rate; `endSession` at stop still spans the last frame past
+        // this when a static tail holds.
+        let frameDuration = CMTime(value: ticksPerFrame, timescale: mediaTimescale)
+        guard let toAppend = Self.restamp(sample, to: stamp, duration: frameDuration),
             video.append(toAppend)
         else { return false }
-        appendTimecodeSample(at: slot, stamp: stamp, duration: duration)
+        appendTimecodeSample(at: slot, stamp: stamp, duration: frameDuration)
         return true
     }
 
@@ -317,21 +330,19 @@ public final class VideoWriter: Writer, @unchecked Sendable {
             finished = true
             finalDrift = measureDrift()
             finalRate = measureRate()
-            // Fill from the last written slot up to the slot the stop time
-            // falls in, so a static last frame spans to the end and the file's
-            // frame count matches its duration.
-            if let video, let firstHost = firstHostSeconds, let last = lastSample, lastSlot >= 0,
-                writer?.status == .writing
+            // Span a static tail to stop with a single held frame at the stop
+            // slot: AVAssetWriter derives the previous frame's on-screen
+            // duration from this next timestamp, so a slide held to the end of
+            // a talk lasts until stop instead of ending when it last changed —
+            // one append, no burst of duplicates however long the hold.
+            if let video, let last = lastSample, lastSlot >= 0, let firstHost = firstHostSeconds,
+                video.isReadyForMoreMediaData
             {
-                let finalSlot = Int(((clock.nowHostSeconds - firstHost) * Double(tcRate)).rounded())
-                var gap = lastSlot + 1
-                while gap <= finalSlot, video.isReadyForMoreMediaData {
-                    if appendFrame(last, at: gap) {
-                        frames += 1
-                        padded += 1
-                        lastSlot = gap
-                    }
-                    gap += 1
+                let stopSlot = Int(((clock.nowHostSeconds - firstHost) * Double(tcRate)).rounded())
+                if stopSlot > lastSlot, appendFrame(last, at: stopSlot) {
+                    frames += 1
+                    padded += 1
+                    lastSlot = stopSlot
                 }
             }
             return (writer, video, timecodeInput, failure, frames, dropped)

@@ -192,12 +192,17 @@ disk mid-write.
 
 Every video frame is stamped by the **host clock** at capture — the clock the
 audio, `started` and the `tmcd` track already share — and snapped to a
-nominal-rate grid (`VideoWriter`). A frame that arrives late, or a slot with no
-frame because the source runs under its nominal rate or the encoder dropped
-one, is filled by **re-submitting the previous frame** when the gap exceeds
-~1.5 nominal durations. So the file is **constant frame rate**: `N frames ×
-1/fps` equals the take's span to within a frame, and no editor has to conform
-variable-rate footage.
+nominal-rate grid (`VideoWriter`). A short gap — a dropped frame, or a source a
+touch under its nominal rate — is filled by **re-submitting the previous
+frame**, so the run of frames is constant-rate (`N × 1/fps` for that stretch)
+and no editor has to conform it. A **long** hold — a static screen, a stalled
+source, or the encoder saturating — is not filled with hundreds of duplicates
+(that would swamp the encoder and, before this was bounded, could abort it);
+instead the previous frame is **held**, its on-screen duration running to the
+next real frame, which QuickTime and every NLE play at the correct times. The
+fill is capped (~1 s) and every append is guarded against an unready encoder.
+Either way the timeline is the host clock's, and a static tail is spanned to
+stop by a single held frame at the end.
 
 This is what fixes the drift Len hit: an Elgato 4K X fed a **59.94** signal
 behind a card that advertised **60** delivered 24,811 frames over 414 s
@@ -229,9 +234,12 @@ was checked and changed:
 
 The residual drops are the shared hardware HEVC encoder saturating across
 **three simultaneous 4K streams** on that machine — a throughput ceiling, not a
-settings mistake. The change that matters for the recording is that a drop is
-now **harmless**: the gap is padded to keep the file CFR and the timeline
-correct, and the `overloaded` event warns while it is happening. A faithful
-before/after needs the same three-4K-stream rig; the mechanical fixes above are
-in, and the fake-load CFR tests confirm dropped and missing frames are padded to a
-constant rate.
+settings mistake. The change that matters for the recording is that a drop no
+longer **shifts** anything: a short gap is padded to keep the run
+constant-rate, and while the encoder is saturated the previous frame is held at
+the correct time rather than the take slipping — the timeline stays the host
+clock's either way, and the `overloaded` event warns while it is happening. A
+faithful before/after of the *drop count* needs the same three-4K-stream rig;
+the mechanical fixes above are in, and the real-time-paced tests confirm a gap
+longer than the encoder queue is handled without aborting and a static tail
+spans to stop.

@@ -170,6 +170,50 @@ struct WriterTests {
         #expect(samples.count == writer.framesWritten, "one tmcd sample per frame, pads included")
     }
 
+    @Test(
+        "A real-time gap longer than the encoder queue is handled, not aborted",
+        .enabled(if: rheoMediaTestsEnabled))
+    func realTimeGap() async throws {
+        // Fed in real time (not faster), so the encoder queue is what it is on
+        // the machine, and a real gap drains it — the case that aborted the
+        // process when the padding loop appended to an unready input.
+        let url = temp("gap.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        for _ in 0..<40 {
+            writer.handle(
+                try frame(width: 1280, height: 720, pts: clock.nowHostSeconds, shade: 60))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        // A 700 ms hole, then one frame — the review's 5/5 abort.
+        try await Task.sleep(for: .milliseconds(700))
+        writer.handle(try frame(width: 1280, height: 720, pts: clock.nowHostSeconds, shade: 200))
+        try await Task.sleep(for: .milliseconds(16))
+        #expect(await writer.finish() == nil, "a gap must never abort the writer")
+        #expect(try await AVURLAsset(url: url).load(.tracks).contains { $0.mediaType == .video })
+    }
+
+    @Test(
+        "A static tail spans to stop — the last frame lasts until finish, not until it last changed",
+        .enabled(if: rheoMediaTestsEnabled))
+    func staticTailSpansToStop() async throws {
+        let url = temp("tail.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        let start = clock.nowHostSeconds
+        for _ in 0..<30 {  // ~0.5 s of frames
+            writer.handle(try frame(width: 320, height: 240, pts: clock.nowHostSeconds, shade: 80))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        // Then nothing for 1.5 s before stop, as a held slide would.
+        try await Task.sleep(for: .milliseconds(1500))
+        let span = clock.nowHostSeconds - start
+        #expect(await writer.finish() == nil)
+        let duration = try await AVURLAsset(url: url).load(.duration).seconds
+        #expect(
+            duration > span - 0.3, "the file spans to stop (\(duration) vs \(span)), not ~0.5 s")
+    }
+
     @Test("Video: ProRes 422 is the alternative codec", .enabled(if: rheoMediaTestsEnabled))
     func prores() async throws {
         let url = temp("prores.mov")

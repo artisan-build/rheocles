@@ -505,16 +505,18 @@ an editor syncs them with no manifest (spec §4, §8).
   times do not (spec §8).
 - **Video is written at a constant frame rate.** Every frame is stamped by
   the host clock at capture — the clock the audio, `started` and `tmcd` share
-  — and snapped to a nominal-rate grid; a gap (a slow source, or a dropped
-  frame) is filled with the last frame. So `N frames × 1/fps == the take's
-  span` and no NLE has to conform VFR, and video never slips against audio the
-  way a "60" card fed a 59.94 signal used to (half a second over seven
-  minutes). Screens and windows are padded to their armed rate (30 or 60) the
-  same way; a static screen becomes cheap near-duplicate frames.
+  — and snapped to a nominal-rate grid; a **short** gap (a slow source, or a
+  dropped frame) is filled with the last frame so the run stays constant-rate
+  and no NLE has to conform VFR, while a **long** hold (a static screen, a
+  stalled source, a saturated encoder) is carried as a held frame at the
+  correct time rather than a burst of duplicates. Either way the timeline is
+  the host clock's, so video never slips against audio the way a "60" card fed
+  a 59.94 signal used to (half a second over seven minutes), and a static tail
+  is spanned to stop.
 - **`framesWritten`** counts frames actually in the file (real plus padding
   for video) or samples (audio); **`framesDropped`** (video, absent when zero)
-  counts frames the encoder was not ready for under load — those gaps are
-  padded, so the timeline stays constant-rate.
+  counts frames the encoder was not ready for under load — the gap is padded
+  or held, so the timeline stays correct.
 - **`measuredFrameRate`** (video) is the true incoming rate — delivered frames
   over the host span — so a 59.94 source behind a "60" card reads 59.94, the
   nominal notwithstanding.
