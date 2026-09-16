@@ -187,3 +187,59 @@ The pre-flight deliberately uses the nominal target, not the measured
 ~15–20 % lower actual output, so `507 insufficient_storage` decisions err on
 the side of caution rather than letting a take start and then run out of
 disk mid-write.
+
+## Constant frame rate, drift, and dropped frames (spec §8)
+
+Every video frame is stamped by the **host clock** at capture — the clock the
+audio, `started` and the `tmcd` track already share — and snapped to a
+nominal-rate grid (`VideoWriter`). A short gap — a dropped frame, or a source a
+touch under its nominal rate — is filled by **re-submitting the previous
+frame**, so the run of frames is constant-rate (`N × 1/fps` for that stretch)
+and no editor has to conform it. A **long** hold — a static screen, a stalled
+source, or the encoder saturating — is not filled with hundreds of duplicates
+(that would swamp the encoder and, before this was bounded, could abort it);
+instead the previous frame is **held**, its on-screen duration running to the
+next real frame, which QuickTime and every NLE play at the correct times. The
+fill is capped (~1 s) and every append is guarded against an unready encoder.
+Either way the timeline is the host clock's, and a static tail is spanned to
+stop by a single held frame at the end.
+
+This is what fixes the drift Len hit: an Elgato 4K X fed a **59.94** signal
+behind a card that advertised **60** delivered 24,811 frames over 414 s
+(**59.93 fps**), and the video slipped ~0.5 s against the Scarlett over seven
+minutes. The manifest now reports the true rate as `measuredFrameRate` and the
+mismatch as `drift`, and the file itself is CFR, so the slip is gone.
+
+**Cost.** Padding re-encodes a duplicate frame per filled slot. For HEVC a
+duplicate is a near-empty inter-frame — cheap in both bits and encoder time —
+so a static screen padded to its armed 30 or 60 costs little on disk. ProRes,
+intra-only, pays a full frame per pad; a mostly-static ProRes screen capture is
+correspondingly larger, which is one more reason HEVC is the default.
+
+### The 16 % drop rate at 4K60 (investigation)
+
+On Len's Mac, 4K60 HEVC on the Elgato **with two 4K displays armed at the same
+time** dropped ~16 % of camera frames (`framesDropped` 3,916 of 24,811). What
+was checked and changed:
+
+- **VideoToolbox real-time mode** — on. `AVAssetWriterInput.expectsMediaDataIsRealTime`
+  is `true`, which selects the encoder's live path and makes the input *drop*
+  rather than block when it falls behind (the right trade for a live take).
+- **`expectedFrameRate`** — now set (`AVVideoExpectedSourceFrameRateKey`) so the
+  encoder sizes its queue for the rate; it was already set for HEVC and is kept.
+  Frame reordering is off, for latency.
+- **Pixel-buffer copies** — none. Frames are appended by reference; the writer's
+  restamp copies only the timing (`CMSampleBufferCreateCopyWithNewTiming`
+  retains the image buffer, it does not copy pixels).
+
+The residual drops are the shared hardware HEVC encoder saturating across
+**three simultaneous 4K streams** on that machine — a throughput ceiling, not a
+settings mistake. The change that matters for the recording is that a drop no
+longer **shifts** anything: a short gap is padded to keep the run
+constant-rate, and while the encoder is saturated the previous frame is held at
+the correct time rather than the take slipping — the timeline stays the host
+clock's either way, and the `overloaded` event warns while it is happening. A
+faithful before/after of the *drop count* needs the same three-4K-stream rig;
+the mechanical fixes above are in, and the real-time-paced tests confirm a gap
+longer than the encoder queue is handled without aborting and a static tail
+spans to stop.

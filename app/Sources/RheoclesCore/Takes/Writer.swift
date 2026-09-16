@@ -11,8 +11,16 @@ public protocol Writer: FrameSink {
     /// count, not an error: a few under load is life, and the file's
     /// timeline is still right.
     var framesDropped: Int { get }
+    /// Frames the source has handed the writer (written + dropped, excluding
+    /// the writer's own CFR padding), for a true drop-rate and incoming rate.
+    var framesDelivered: Int { get }
     /// Frames × frame duration versus host elapsed, once measurable.
     var drift: Double? { get }
+    /// The true incoming rate, delivered frames over the host span they cover
+    /// — a 59.94 source behind a "60" card reads ~59.94. Video only; nil for
+    /// audio, for a screen with too few frames to measure, and before the
+    /// second frame.
+    var measuredFrameRate: Double? { get }
     /// Peak level since the last call, in dBFS, for audio streams; nil for
     /// video and before any samples. Reading resets the peak, so the `levels`
     /// event shows the loudest moment of each interval. A protocol
@@ -38,7 +46,9 @@ public final class NullWriter: Writer, @unchecked Sendable {
     public var timecode: String? { nil }
     public var framesWritten: Int { 0 }
     public var framesDropped: Int { 0 }
+    public var framesDelivered: Int { 0 }
     public var drift: Double? { nil }
+    public var measuredFrameRate: Double? { nil }
     public init() {}
     public func handle(_ sampleBuffer: CMSampleBuffer) {}
     public func sampleLevelDb() -> Double? { nil }

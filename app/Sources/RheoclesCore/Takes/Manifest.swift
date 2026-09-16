@@ -85,6 +85,10 @@ public struct Manifest: Codable, Sendable, Equatable {
         /// Frames × frame duration versus host elapsed, in seconds. Positive
         /// means the file runs long. Absent until measured.
         public var drift: Double?
+        /// The true incoming rate, delivered frames over the host span — a
+        /// 59.94 source behind a "60" card reads 59.94. Video only; absent for
+        /// audio and until measured.
+        public var measuredFrameRate: Double?
         public var events: [StreamEvent]
         /// Why the file is not what was asked for, when it is not.
         public var error: String?

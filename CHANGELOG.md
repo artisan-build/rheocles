@@ -9,6 +9,8 @@ section from this file, and the release workflow refuses to run without one.
 
 ### Fixed
 
+- Video no longer drifts against audio. A source running under its nominal rate — a 59.94 signal on a "60" capture card — used to slip about half a second over seven minutes; every frame is now placed on the host clock, the same one the audio uses, so the two stay locked.
+- Recordings are written at a constant frame rate. Dropped or missing frames are filled with the previous frame instead of leaving gaps, so files import cleanly everywhere rather than as variable-rate footage some editors conform badly. Each stream's true incoming rate and dropped-frame count are reported live and in the manifest.
 - A take that was prepared but never started no longer appears on disk at all. A paired recorder re-prepares its next take the moment you stop, so one manifest-only folder used to sit there between takes; a prepared take now lives in memory and is written only when recording actually starts.
 
 ## [0.1.2] — 2026-09-15

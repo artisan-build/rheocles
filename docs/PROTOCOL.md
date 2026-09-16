@@ -503,14 +503,29 @@ an editor syncs them with no manifest (spec §4, §8).
   manifest is authoritative: a file that started before midnight and a file
   that joined after disagree by 24 h in timecode, but the manifest's UTC
   times do not (spec §8).
-- **`framesWritten`** counts frames (video) or samples (audio) actually
-  written; **`framesDropped`** (video, absent when zero) counts frames the
-  encoder was not ready for under load — the timeline stays correct.
+- **Video is written at a constant frame rate.** Every frame is stamped by
+  the host clock at capture — the clock the audio, `started` and `tmcd` share
+  — and snapped to a nominal-rate grid; a **short** gap (a slow source, or a
+  dropped frame) is filled with the last frame so the run stays constant-rate
+  and no NLE has to conform VFR, while a **long** hold (a static screen, a
+  stalled source, a saturated encoder) is carried as a held frame at the
+  correct time rather than a burst of duplicates. Either way the timeline is
+  the host clock's, so video never slips against audio the way a "60" card fed
+  a 59.94 signal used to (half a second over seven minutes), and a static tail
+  is spanned to stop.
+- **`framesWritten`** counts frames actually in the file (real plus padding
+  for video) or samples (audio); **`framesDropped`** (video, absent when zero)
+  counts frames the encoder was not ready for under load — the gap is padded
+  or held, so the timeline stays correct.
+- **`measuredFrameRate`** (video) is the true incoming rate — delivered frames
+  over the host span — so a 59.94 source behind a "60" card reads 59.94, the
+  nominal notwithstanding.
 - **`drift`** is delivered frames × nominal frame duration versus the
   timeline they span, in seconds: ~0 for a camera at its rate, negative for
-  a capture card fed a slower signal. It is **absent for displays and
-  windows**, whose frame cadence is content-driven and where drift is
-  meaningless. Audio `drift` is samples ÷ rate versus host elapsed.
+  a capture card fed a slower signal. It is now **measured and corrected** —
+  the CFR grid removes the slip — and reported for the record. It is **absent
+  for displays and windows**, whose cadence is content-driven and where drift
+  is meaningless. Audio `drift` is samples ÷ rate versus host elapsed.
 
 A stream that delivered no frames while armed writes no file and finishes
 the take `incomplete` with a per-stream `error` (`no frames arrived`) — a
@@ -580,17 +595,19 @@ Every event has an `event` key naming its kind and no `id`.
 | event | since | carries |
 |---|---|---|
 | `stream` | step 3 | `stream`: the `StreamInfo` as it now is, on every change of armed state |
-| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) and when a `combined` mux finishes — carries join/leave events and markers; `removed: true` on the final event for a take whose empty folder was removed (superseded before start, or `created` at shutdown) |
-| `levels` | step 6 | `take` id and `streams: [{ id, levelDb?, framesWritten, drift? }]`, ~4×/s while recording — meters and a live drift readout. `levelDb` is peak dBFS since the last event, audio only |
+| `take` | step 4 | `take`: the manifest, on every state change (`created`, `recording`, `complete`, `incomplete`) and when a `combined` mux finishes — carries join/leave events and markers; `removed: true` on the final event for a take that recorded nothing and was discarded (superseded before start, or `created` at shutdown) — a prepared take never reaches disk |
+| `levels` | step 6 | `take` id and `streams: [{ id, levelDb?, framesWritten, drift?, framesDropped?, measuredFrameRate? }]`, ~4×/s while recording — meters, a live drift readout, the drop count and the true rate. `levelDb` is peak dBFS since the last event, audio only |
 | `marker` | step 6 | `take` id and the `{ t, label }` just added |
 | `stalled` | step 6 | `stream`: an armed or recording stream that stopped delivering frames (a camera with the lid closed) |
+| `overloaded` | drift+cfr | `stream` and `dropRate`: a recording stream dropping more than ~5% of frames over the last 10 s — the encoder cannot keep up. The file stays constant-rate; the footage is degraded |
 | `settings` | step 6 | `settings`: the new `{ outputRoot, codec, combine }` |
 
 ```json
 { "event": "stream",   "stream": { "id": "microphone:…", "kind": "microphone", "armed": true, "active": { … }, "framesSeen": 0, … } }
-{ "event": "levels",   "take": "20260912T045007-5kqn", "streams": [ { "id": "microphone:…", "levelDb": -18.3, "framesWritten": 96000, "drift": 0 } ] }
+{ "event": "levels",   "take": "20260912T045007-5kqn", "streams": [ { "id": "camera:…", "levelDb": null, "framesWritten": 24000, "drift": -0.5, "framesDropped": 3916, "measuredFrameRate": 59.94 } ] }
 { "event": "marker",   "take": "20260912T045007-5kqn", "marker": { "t": 2.042, "label": "chapter 1" } }
 { "event": "stalled",  "stream": { "id": "camera:…", "kind": "camera", "armed": true, "active": { … }, "framesSeen": 0, … } }
+{ "event": "overloaded", "stream": { "id": "camera:…", "kind": "camera", "armed": true, "active": { … }, "framesSeen": 24000, … }, "dropRate": 0.16 }
 { "event": "settings", "settings": { "outputRoot": "/Users/gopher/Movies/Rheocles", "codec": "prores", "combine": false } }
 ```
 

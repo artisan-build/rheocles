@@ -75,77 +75,184 @@ struct WriterTests {
         return try #require(sample)
     }
 
-    // The paced 75-frame HEVC software encode is the CI runner's ~160 s
-    // bottleneck; gate it (with ProRes below) so CI runs no real video encode,
-    // and keep it a full-coverage local/nightly test (RHEOCLES_MEDIA_TESTS=1).
-    @Test(
-        "Video: HEVC MOV with a tmcd track, one timecode sample per frame, timecode from the host clock",
-        .enabled(if: rheoMediaTestsEnabled))
-    func video() async throws {
-        let url = temp("video.mov")
-        let clock = HostClock.shared
-        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 30, clock: clock)
-        let start = clock.nowHostSeconds
-        // 2.5 s at 30 fps, paced: the input is real-time and drops what it
-        // cannot take.
-        for i in 0..<75 {
-            writer.handle(
-                try frame(width: 320, height: 240, pts: start + Double(i) / 30, shade: UInt8(i * 3))
-            )
-            try await Task.sleep(for: .milliseconds(33))
-        }
-        #expect(await writer.finish() == nil)
-        // 75, plus the last frame re-appended at the stop time when the
-        // paced loop ran long.
-        #expect(writer.framesWritten == 75 || writer.framesWritten == 76)
-        #expect(abs(writer.drift ?? 1) < 0.1)
-        let expected = HostClock.timecode(
-            frames: HostClock.frames(sinceMidnightOf: clock.date(forHostSeconds: start), fps: 30),
-            fps: 30)
-        #expect(writer.timecode == expected)
-
-        let asset = AVURLAsset(url: url)
-        let tracks = try await asset.load(.tracks)
-        #expect(tracks.map(\.mediaType).contains(.video))
-        #expect(tracks.map(\.mediaType).contains(.timecode))
-        let duration = try await asset.load(.duration).seconds
-        #expect(abs(duration - 2.5) < 0.3)
-        let tc = try #require(tracks.first { $0.mediaType == .timecode })
+    /// Every timecode sample's frame value, in order.
+    private func timecodes(in asset: AVURLAsset) async throws -> [UInt32] {
+        let tc = try #require(try await asset.load(.tracks).first { $0.mediaType == .timecode })
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: tc, outputSettings: nil)
         reader.add(output)
         reader.startReading()
         var samples: [UInt32] = []
         while let sb = output.copyNextSampleBuffer() {
-            // The reader hands out an empty marker buffer first; skip those.
             guard CMSampleBufferGetNumSamples(sb) > 0, let block = CMSampleBufferGetDataBuffer(sb)
-            else {
-                continue
-            }
+            else { continue }
             var value: UInt32 = 0
             CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &value)
             samples.append(UInt32(bigEndian: value))
         }
         #expect(reader.status == .completed, "reader: \(reader.error.map { "\($0)" } ?? "ok")")
-        #expect(samples.count == 75, "one timecode sample per frame")
-        let startFrames = HostClock.frames(
-            sinceMidnightOf: clock.date(forHostSeconds: start), fps: 30)
-        #expect(samples.map { Int($0) } == (0..<75).map { startFrames + $0 })
+        return samples
     }
 
-    // Real video-writer encode; gated with the HEVC one. Both exercise
-    // VideoWriter.finish()'s `await writer.finishWriting()`, whose continuation
-    // bridge crashes intermittently (signals 5/10/11) under the runner's
-    // software VideoToolbox — a pre-existing writer issue, not the codec.
-    @Test("Video: ProRes 422 is the alternative, same shape", .enabled(if: rheoMediaTestsEnabled))
+    // These real-encode tests are the CI runner's software-VideoToolbox
+    // bottleneck, so they are gated (RHEOCLES_MEDIA_TESTS=1) and run
+    // locally/nightly.
+
+    @Test(
+        "CFR: a 59.94 source is written at a constant 60, one tmcd sample per frame from the host clock",
+        .enabled(if: rheoMediaTestsEnabled))
+    func constantFrameRate() async throws {
+        let url = temp("cfr.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        let start = clock.nowHostSeconds
+        let sourceRate = 59.94
+        let count = 240  // ~4 s
+        for i in 0..<count {
+            writer.handle(
+                try frame(
+                    width: 320, height: 240, pts: start + Double(i) / sourceRate,
+                    shade: UInt8(i & 0xff)))
+            try await Task.sleep(for: .milliseconds(3))
+        }
+        #expect(await writer.finish() == nil)
+        // The measured rate is the true incoming rate, not the nominal 60.
+        #expect(abs((writer.measuredFrameRate ?? 0) - 59.94) < 0.2)
+
+        let asset = AVURLAsset(url: url)
+        let track = try #require(try await asset.load(.tracks).first { $0.mediaType == .video })
+        let span = Double(count - 1) / sourceRate
+        let duration = try await asset.load(.duration).seconds
+        #expect(abs(duration - span) < 3.0 / 60, "CFR duration within a frame of the span")
+        // Constant 60: frame count is the span × 60, within a frame or two.
+        let expectedFrames = Int((span * 60).rounded())
+        #expect(
+            abs(writer.framesWritten - expectedFrames) <= 2,
+            "\(writer.framesWritten) vs \(expectedFrames)")
+        // One timecode sample per frame, counting up by one with no gaps.
+        let samples = try await timecodes(in: asset)
+        #expect(samples.count == writer.framesWritten)
+        let startFrames = HostClock.frames(
+            sinceMidnightOf: clock.date(forHostSeconds: start), fps: 60)
+        #expect(samples.map { Int($0) } == (0..<samples.count).map { startFrames + $0 })
+    }
+
+    @Test(
+        "CFR: gaps in a 59.94 source are padded, so the file is still constant 60 and spans the take",
+        .enabled(if: rheoMediaTestsEnabled))
+    func paddedOverGaps() async throws {
+        let url = temp("cfr-gaps.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        let start = clock.nowHostSeconds
+        let sourceRate = 59.94
+        let count = 300  // ~5 s
+        var rng = SystemRandomNumberGenerator()
+        for i in 0..<count {
+            // 15% of frames never arrive — the writer pads the gap with the
+            // last frame, so the file stays CFR against the host timeline.
+            if i > 0, i < count - 1, Double.random(in: 0..<1, using: &rng) < 0.15 { continue }
+            writer.handle(
+                try frame(
+                    width: 320, height: 240, pts: start + Double(i) / sourceRate,
+                    shade: UInt8(i & 0xff)))
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(await writer.finish() == nil)
+        let asset = AVURLAsset(url: url)
+        let track = try #require(try await asset.load(.tracks).first { $0.mediaType == .video })
+        let span = Double(count - 1) / sourceRate
+        let duration = try await asset.load(.duration).seconds
+        #expect(abs(duration - span) < 3.0 / 60, "gaps padded: duration still spans the take")
+        let expectedFrames = Int((span * 60).rounded())
+        #expect(abs(writer.framesWritten - expectedFrames) <= 2, "constant 60 across the gaps")
+        let samples = try await timecodes(in: asset)
+        #expect(samples.count == writer.framesWritten, "one tmcd sample per frame, pads included")
+    }
+
+    @Test(
+        "A real-time gap longer than the encoder queue is handled, not aborted",
+        .enabled(if: rheoMediaTestsEnabled))
+    func realTimeGap() async throws {
+        // Fed in real time (not faster), so the encoder queue is what it is on
+        // the machine, and a real gap drains it — the case that aborted the
+        // process when the padding loop appended to an unready input.
+        let url = temp("gap.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        for _ in 0..<40 {
+            writer.handle(
+                try frame(width: 1280, height: 720, pts: clock.nowHostSeconds, shade: 60))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        // A 700 ms hole, then one frame — the review's 5/5 abort.
+        try await Task.sleep(for: .milliseconds(700))
+        writer.handle(try frame(width: 1280, height: 720, pts: clock.nowHostSeconds, shade: 200))
+        try await Task.sleep(for: .milliseconds(16))
+        #expect(await writer.finish() == nil, "a gap must never abort the writer")
+        #expect(try await AVURLAsset(url: url).load(.tracks).contains { $0.mediaType == .video })
+    }
+
+    @Test(
+        "A static tail spans to stop — the last frame lasts until finish, not until it last changed",
+        .enabled(if: rheoMediaTestsEnabled))
+    func staticTailSpansToStop() async throws {
+        let url = temp("tail.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        let start = clock.nowHostSeconds
+        for _ in 0..<30 {  // ~0.5 s of frames
+            writer.handle(try frame(width: 320, height: 240, pts: clock.nowHostSeconds, shade: 80))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        // Then nothing for 1.5 s before stop, as a held slide would.
+        try await Task.sleep(for: .milliseconds(1500))
+        let span = clock.nowHostSeconds - start
+        #expect(await writer.finish() == nil)
+        let duration = try await AVURLAsset(url: url).load(.duration).seconds
+        #expect(
+            duration > span - 0.3, "the file spans to stop (\(duration) vs \(span)), not ~0.5 s")
+    }
+
+    @Test(
+        "A long hold does not cost the frames after it — no stale-pad starvation (S2)",
+        .enabled(if: rheoMediaTestsEnabled))
+    func holdDoesNotDropLaterFrames() async throws {
+        let url = temp("hold.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        let start = clock.nowHostSeconds
+        // A few frames, a 10 s hold (a slide sitting still — a big timestamp
+        // gap, fed without a real wait), then the new slide at a real 60 fps.
+        for i in 0..<10 {
+            writer.handle(
+                try frame(width: 1280, height: 720, pts: start + Double(i) / 60, shade: UInt8(i)))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        let afterHold = start + 10.0
+        for i in 0..<30 {
+            writer.handle(
+                try frame(
+                    width: 1280, height: 720, pts: afterHold + Double(i) / 60,
+                    shade: UInt8(100 + i)))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        #expect(await writer.finish() == nil)
+        // None of the 30 real frames may be dropped to make room for stale
+        // duplicates of the held slide.
+        #expect(writer.framesDropped == 0, "a hold dropped \(writer.framesDropped) later frames")
+    }
+
+    @Test("Video: ProRes 422 is the alternative codec", .enabled(if: rheoMediaTestsEnabled))
     func prores() async throws {
         let url = temp("prores.mov")
-        let writer = VideoWriter(url: url, codec: .prores, frameRate: 30)
-        let start = HostClock.shared.nowHostSeconds
-        for i in 0..<15 {
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .prores, frameRate: 60, clock: clock)
+        let start = clock.nowHostSeconds
+        for i in 0..<60 {
             writer.handle(
-                try frame(width: 320, height: 240, pts: start + Double(i) / 30, shade: 40))
-            try await Task.sleep(for: .milliseconds(33))
+                try frame(width: 320, height: 240, pts: start + Double(i) / 60, shade: 40))
+            try await Task.sleep(for: .milliseconds(3))
         }
         #expect(await writer.finish() == nil)
         let track = try #require(

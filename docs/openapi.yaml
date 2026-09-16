@@ -42,19 +42,22 @@ x-websocket:
     description: Unsolicited frames with an `event` key and no `id`; the same objects GET /events delivers (see x-events).
 x-events:
   - event: levels
-    description: Per-stream peak level (audio, dBFS), frames written and drift, ~4x/s while recording.
-    example: { event: levels, take: 20260912T045007-5kqn, streams: [ { id: 'microphone:BuiltInMicrophoneDevice', levelDb: -18.3, framesWritten: 96000, drift: 0 } ] }
+    description: Per-stream peak level (audio, dBFS), frames written, drift, frames dropped and measured frame rate, ~4x/s while recording.
+    example: { event: levels, take: 20260912T045007-5kqn, streams: [ { id: 'camera:0x2300000fd9009c', levelDb: null, framesWritten: 24000, drift: -0.5, framesDropped: 3916, measuredFrameRate: 59.94 } ] }
   - event: marker
     description: A marker was added to the active take.
     example: { event: marker, take: 20260912T045007-5kqn, marker: { t: 2.042, label: chapter 1 } }
   - event: stalled
     description: An armed or recording stream stopped delivering frames.
     example: { event: stalled, stream: { id: 'camera:0x2300000fd9009c', kind: camera, name: Elgato 4K X, model: UVC Camera VendorID_4057 ProductID_156, capabilities: { video: { width: 3840, height: 2160, maxFrameRate: 30 } }, armed: true, active: { video: { width: 1280, height: 720, maxFrameRate: 30 } }, framesSeen: 0 } }
+  - event: overloaded
+    description: A recording stream is dropping more than ~5% of frames over the last 10 s — the encoder cannot keep up. The file stays constant-rate (drops become duplicated frames); `dropRate` is the fraction over the window.
+    example: { event: overloaded, stream: { id: 'camera:0x2300000fd9009c', kind: camera, name: Elgato 4K X, model: UVC Camera VendorID_4057 ProductID_156, capabilities: { video: { width: 3840, height: 2160, maxFrameRate: 60 } }, armed: true, active: { video: { width: 3840, height: 2160, maxFrameRate: 60 } }, framesSeen: 24000 }, dropRate: 0.16 }
   - event: settings
     description: The daemon's settings changed.
     example: { event: settings, settings: { outputRoot: /Users/gopher/Movies/Rheocles, codec: prores } }
   - event: take
-    description: A take changed state — created, recording, complete or incomplete. Carries the manifest, with `removed` set on the final event for a take whose empty folder was removed (superseded before start, or created at shutdown).
+    description: A take changed state — created, recording, complete or incomplete. Carries the manifest, with `removed` set on the final event for a take that recorded nothing and was discarded (superseded before start, or created at shutdown) — a prepared take never reaches disk.
     example: { event: take, take: { id: 20260912T040433-fd9q, name: Episode 12, state: recording, created: '2026-09-12T04:04:33.235Z', started: '2026-09-12T04:04:33.347Z', outputRoot: /Users/gopher/Movies/Rheocles, destination: takes/2026-09-11/210433-episode-12, version: 0.1.0, machine: { hostname: lens-macbook-pro.local, machineId: CD3B7EE5-5E6C-5155-854A-72E4728555F7 }, streams: [], markers: [], settings: { codec: hevc } } }
   - event: stream
     description: A stream's armed state changed.
@@ -1012,11 +1015,12 @@ components:
         removed:
           type: boolean
           description: >
-            Present and `true` only on the final `take` event for a take whose
-            folder was removed because it recorded nothing — superseded before
-            start, or still `created` when the daemon stopped. The take is
-            `incomplete` with the reason; `removed` tells a client to drop it
-            from its list. Never written to disk.
+            Present and `true` only on the final `take` event for a take that
+            recorded nothing and was discarded — superseded before start, or
+            still `created` when the daemon stopped. A prepared take lives in
+            memory and never reaches disk, so there is no folder to remove. The
+            take is `incomplete` with the reason; `removed` tells a client to
+            drop it from its list. Never written to disk.
     ManifestStream:
       type: object
       required: [id, kind, name, model, path, codec, format, framesWritten, events]
@@ -1086,6 +1090,12 @@ components:
         drift:
           type: number
           description: Frames × frame duration versus host elapsed, seconds.
+        measuredFrameRate:
+          type: number
+          description: >
+            Video only. The true incoming rate — delivered frames over the host
+            span — so a 59.94 source behind a "60" card reads 59.94. Absent for
+            audio and until measured.
         events:
           type: array
           items:

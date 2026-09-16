@@ -81,6 +81,10 @@ public actor TakeEngine {
     /// Per-stream frame count and how many ticks it has been unchanged, for
     /// stall detection, plus whether we have already announced the stall.
     private var frameWatch: [String: (count: Int, stuck: Int, stalled: Bool)] = [:]
+    /// Per-stream (delivered, dropped) samples over the last ~10 s, and whether
+    /// an `overloaded` warning is currently raised, for the drop-rate watch.
+    private var dropWatch: [String: (samples: [(delivered: Int, dropped: Int)], flagged: Bool)] =
+        [:]
     /// Finished takes this process has seen, newest first, so `GET /takes`
     /// does not have to touch the disk for the common case.
     private var recent: [Manifest] = []
@@ -133,16 +137,20 @@ public actor TakeEngine {
         statusTask?.cancel()
         statusTask = nil
         frameWatch = [:]
+        dropWatch = [:]
     }
 
     private func tick() async {
         guard let current = live, current.manifest.state == .recording else { return }
         var statuses: [StreamStatus] = []
         for (id, writer) in current.writers {
+            let droppedSoFar = writer.framesDropped
             statuses.append(
                 StreamStatus(
                     id: id, levelDb: writer.sampleLevelDb(), framesWritten: writer.framesWritten,
-                    drift: writer.drift))
+                    drift: writer.drift,
+                    framesDropped: droppedSoFar > 0 ? droppedSoFar : nil,
+                    measuredFrameRate: writer.measuredFrameRate))
             // Stall: framesSeen on the live session has not advanced.
             let seen = await registry.session(for: id)?.framesSeen ?? writer.framesWritten
             var watch = frameWatch[id] ?? (count: seen, stuck: 0, stalled: false)
@@ -156,6 +164,27 @@ public actor TakeEngine {
                 watch = (count: seen, stuck: 0, stalled: false)
             }
             frameWatch[id] = watch
+
+            // Overload: more than 5% of the last ~10 s of delivered frames
+            // dropped. Raised once on crossing, cleared with hysteresis at 2.5%
+            // so it does not flap. A ~40-sample window at 4 Hz is 10 s.
+            var drop = dropWatch[id] ?? (samples: [], flagged: false)
+            drop.samples.append((delivered: writer.framesDelivered, dropped: droppedSoFar))
+            if drop.samples.count > 41 { drop.samples.removeFirst() }
+            if drop.samples.count >= 40, let base = drop.samples.first {
+                let dDelivered = writer.framesDelivered - base.delivered
+                let dDropped = droppedSoFar - base.dropped
+                let rate = dDelivered > 0 ? Double(dDropped) / Double(dDelivered) : 0
+                if rate > 0.05, !drop.flagged {
+                    drop.flagged = true
+                    if let info = await registry.stream(id) {
+                        onEvent(Event.overloaded(info, dropRate: (rate * 100).rounded() / 100))
+                    }
+                } else if rate < 0.025, drop.flagged {
+                    drop.flagged = false
+                }
+            }
+            dropWatch[id] = drop
         }
         if !statuses.isEmpty {
             onEvent(
@@ -285,6 +314,7 @@ public actor TakeEngine {
             manifest.streams[index].framesDropped =
                 writer.framesDropped > 0 ? writer.framesDropped : nil
             manifest.streams[index].drift = writer.drift
+            manifest.streams[index].measuredFrameRate = writer.measuredFrameRate
             if manifest.streams[index].timecode == nil {
                 manifest.streams[index].timecode = writer.timecode
             }
@@ -833,6 +863,7 @@ public actor TakeEngine {
         stream.framesWritten = writer.framesWritten
         stream.framesDropped = writer.framesDropped > 0 ? writer.framesDropped : nil
         stream.drift = writer.drift
+        stream.measuredFrameRate = writer.measuredFrameRate
         if stream.events.last?.type != .leave {
             stream.events.append(.init(t: cueOffset, type: .leave))
         }

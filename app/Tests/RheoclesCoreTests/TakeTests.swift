@@ -14,7 +14,9 @@ final class FakeWriter: Writer, @unchecked Sendable {
     var timecode: String? { "10:00:00:00" }
     var framesWritten: Int { lock.withLock { frames } }
     var framesDropped: Int { 0 }
+    var framesDelivered: Int { lock.withLock { frames } }
     var drift: Double? { 0.001 }
+    var measuredFrameRate: Double? { 59.94 }
     func sampleLevelDb() -> Double? { -20 }
     func handle(_ sampleBuffer: CMSampleBuffer) { lock.withLock { frames += 1 } }
     func finish() async -> String? {
@@ -141,6 +143,8 @@ struct TakeTests {
             "stop detaches the writer, the stream stays armed")
         #expect(await w.registry.armedIDs == ["camera:fake"])
         #expect(stopped.streams[0].timecode == "10:00:00:00" && stopped.streams[0].drift == 0.001)
+        #expect(
+            stopped.streams[0].measuredFrameRate == 59.94, "the measured rate reaches the manifest")
         #expect(stopped.streams[0].events.last?.type == .leave)
         #expect(try manifestOnDisk(w, stopped.destination) == stopped)
         #expect(await w.engine.activeManifest == nil)
