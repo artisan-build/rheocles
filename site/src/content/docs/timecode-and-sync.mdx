@@ -64,19 +64,36 @@ name varies.
 No manifest, no slate, no waveform matching. The files carry their own
 time, so the editor does the placing.
 
+## Constant frame rate
+
+Video is written at a **constant frame rate**. Every frame is stamped by the
+host clock at capture — the same clock the audio, `started` and the timecode
+track use — and placed on a nominal-rate grid; when the source runs under its
+nominal rate, or the encoder drops a frame, the gap is filled with the previous
+frame. So `N frames × 1/fps` equals the take's span to within a frame, and the
+file imports cleanly into any editor rather than as variable-rate footage some
+conform badly.
+
+This is what keeps video locked to audio. An Elgato 4K X fed a **59.94** signal
+behind a card advertising **60** used to let the picture slip about half a
+second against the microphone over seven minutes; now both are on the one host
+clock and the file is constant-rate, so there is nothing to slip.
+
 ## Drift
 
-Drift is measured, not assumed. For a camera or a microphone, Rheocles
+Drift is measured, and now corrected. For a camera or a microphone, Rheocles
 compares delivered frames × the nominal frame duration (samples ÷ rate for
 audio) against the timeline they span and reports the difference in seconds
 as `drift` — ~0 for a camera running at its rate, negative for a capture
-card fed a slower signal than it advertises — in the manifest, and in
-`drift` events while recording once step 6 lands.
+card fed a slower signal than it advertises — in the manifest and in the live
+`levels` events. Alongside it, **`measuredFrameRate`** reports the true
+incoming rate (a 59.94 source reads 59.94, not the nominal 60). The constant
+frame rate above means the drift no longer moves the picture; the number is
+kept for the record.
 
-A capture device's clock is not the host's clock, and a long take can drift
-by a frame or two. Whether a client does anything with the number is the
-client's business; it costs nothing to emit, and an editor that wants to
-conform a long file has the figure to do it with.
+A capture device's clock is not the host's clock, and a long take would drift
+by a frame or two if left uncorrected. The figure is there for anyone who wants
+it; the file itself no longer needs it.
 
 <Callout kind="note" title="Absent, never zero">
 `drift` is **absent for displays and windows**: a screen delivers a frame

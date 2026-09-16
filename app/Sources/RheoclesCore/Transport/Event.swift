@@ -31,6 +31,14 @@ public enum Event {
         encode(["event": "stalled", "stream": stream])
     }
 
+    /// A recording stream is dropping frames faster than a threshold (~5% over
+    /// the last 10 s): the encoder cannot keep up. The file stays CFR — the
+    /// drops become duplicated frames — but the footage is degraded, so a
+    /// client can warn. `dropRate` is the fraction over the window.
+    public static func overloaded(_ stream: StreamInfo, dropRate: Double) -> String {
+        encode(["event": "overloaded", "stream": stream, "dropRate": dropRate])
+    }
+
     /// The daemon's settings changed.
     public static func settings(_ values: Settings.Values) -> String {
         encode(["event": "settings", "settings": values])
@@ -70,11 +78,20 @@ public struct StreamStatus: Codable, Sendable, Equatable {
     public let levelDb: Double?
     public let framesWritten: Int
     public let drift: Double?
+    /// Frames the encoder has dropped so far; nil (omitted) when none.
+    public let framesDropped: Int?
+    /// The true incoming rate, for video; nil for audio and before measurable.
+    public let measuredFrameRate: Double?
 
-    public init(id: String, levelDb: Double?, framesWritten: Int, drift: Double?) {
+    public init(
+        id: String, levelDb: Double?, framesWritten: Int, drift: Double?,
+        framesDropped: Int? = nil, measuredFrameRate: Double? = nil
+    ) {
         self.id = id
         self.levelDb = levelDb
         self.framesWritten = framesWritten
         self.drift = drift
+        self.framesDropped = framesDropped
+        self.measuredFrameRate = measuredFrameRate
     }
 }

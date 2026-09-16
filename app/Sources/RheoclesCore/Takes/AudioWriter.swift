@@ -53,6 +53,7 @@ public final class AudioWriter: Writer, @unchecked Sendable {
 
     public var framesWritten: Int { lock.withLock { samplesWritten } }
     public var framesDropped: Int { 0 }
+    public var framesDelivered: Int { lock.withLock { samplesWritten } }
 
     /// Samples ÷ rate versus the host time they span: the audio clock's
     /// drift against the host, in seconds. Positive means the file runs
@@ -65,6 +66,9 @@ public final class AudioWriter: Writer, @unchecked Sendable {
             return ((Double(samplesWritten) / sampleRate - (last - first)) * 1000).rounded() / 1000
         }
     }
+
+    /// Audio has no frame rate to measure.
+    public var measuredFrameRate: Double? { nil }
 
     public func handle(_ sampleBuffer: CMSampleBuffer) {
         lock.lock()
