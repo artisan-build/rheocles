@@ -82,10 +82,13 @@ public struct StreamStatus: Codable, Sendable, Equatable {
     public let framesDropped: Int?
     /// The true incoming rate, for video; nil for audio and before measurable.
     public let measuredFrameRate: Double?
+    /// True while the encoder is saturated and padding is suspended — the file
+    /// is held-frame, not strictly CFR, for this span. Absent otherwise.
+    public let paddingOff: Bool?
 
     public init(
         id: String, levelDb: Double?, framesWritten: Int, drift: Double?,
-        framesDropped: Int? = nil, measuredFrameRate: Double? = nil
+        framesDropped: Int? = nil, measuredFrameRate: Double? = nil, paddingOff: Bool? = nil
     ) {
         self.id = id
         self.levelDb = levelDb
@@ -93,5 +96,6 @@ public struct StreamStatus: Codable, Sendable, Equatable {
         self.drift = drift
         self.framesDropped = framesDropped
         self.measuredFrameRate = measuredFrameRate
+        self.paddingOff = paddingOff
     }
 }

@@ -145,12 +145,13 @@ public actor TakeEngine {
         var statuses: [StreamStatus] = []
         for (id, writer) in current.writers {
             let droppedSoFar = writer.framesDropped
+            let paddingOff = (writer as? VideoWriter)?.paddingSuspended == true ? true : nil
             statuses.append(
                 StreamStatus(
                     id: id, levelDb: writer.sampleLevelDb(), framesWritten: writer.framesWritten,
                     drift: writer.drift,
                     framesDropped: droppedSoFar > 0 ? droppedSoFar : nil,
-                    measuredFrameRate: writer.measuredFrameRate))
+                    measuredFrameRate: writer.measuredFrameRate, paddingOff: paddingOff))
             // Stall: framesSeen on the live session has not advanced.
             let seen = await registry.session(for: id)?.framesSeen ?? writer.framesWritten
             var watch = frameWatch[id] ?? (count: seen, stuck: 0, stalled: false)

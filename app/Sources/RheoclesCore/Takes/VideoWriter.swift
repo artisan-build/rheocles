@@ -56,6 +56,16 @@ public final class VideoWriter: Writer, @unchecked Sendable {
     /// Drift and rate as measured before stop pads out the tail.
     private var finalDrift: Double?
     private var finalRate: Double?
+    /// Padding is suspended while the encoder is saturated — drop rate over the
+    /// last second above the threshold — so a duplicate never competes with a
+    /// real frame for the queue. Re-enabled with hysteresis. The file is then
+    /// held-frame (right timeline) rather than strictly CFR for that span.
+    private var paddingEnabled = true
+    private var windowDelivered = 0
+    private var windowDropped = 0
+    /// Test seam: force the encoder's apparent readiness (simulate saturation)
+    /// without a real 4K load. `nil` in production — the real input decides.
+    var readinessGate: (@Sendable () -> Bool)?
 
     public init(url: URL, codec: Manifest.Codec, frameRate: Double, clock: HostClock = .shared) {
         self.url = url
@@ -74,6 +84,9 @@ public final class VideoWriter: Writer, @unchecked Sendable {
     public var framesWritten: Int { lock.withLock { frames } }
     public var framesDropped: Int { lock.withLock { dropped } }
     public var framesDelivered: Int { lock.withLock { delivered } }
+    /// True while padding is suspended under sustained saturation: the file is
+    /// held-frame (right timeline) rather than strictly CFR for that span.
+    public var paddingSuspended: Bool { lock.withLock { !paddingEnabled } }
     public func sampleLevelDb() -> Double? { nil }
 
     /// Delivered frames × nominal frame duration versus the timeline they
@@ -140,41 +153,77 @@ public final class VideoWriter: Writer, @unchecked Sendable {
         var slot = Int(((hostSeconds - firstHost) * Double(tcRate)).rounded())
         if slot <= lastSlot { slot = lastSlot + 1 }
 
-        // Pad a short gap with the last frame so a dropped frame or a source a
-        // touch under its rate stays constant-rate. The judgement is **per
-        // gap**: a gap wider than ~1 s is a hold (a static screen, a stalled
-        // source, a saturated encoder), so it is not padded at all — the real
-        // frame is placed straight away and the previous frame's on-screen
-        // duration, derived from this timestamp, covers the hold. Padding a
-        // hold would queue up to a second of stale duplicates, fill the
-        // encoder, and starve the frame that actually changed (the new slide
-        // arriving late). Each append is guarded — appending to an unready
-        // input throws an Objective-C exception that would abort the process.
-        if lastSlot >= 0, slot - lastSlot > 1, slot - lastSlot <= tcRate, let last = lastSample {
-            for gap in (lastSlot + 1)..<slot where video.isReadyForMoreMediaData {
+        // Pad a short gap with the last frame so a dropped frame, or a source a
+        // touch under its rate, stays constant-rate. Best-effort only: each pad
+        // is appended only while the encoder is ready and the loop stops the
+        // instant it is not, so a duplicate never fills the queue at the real
+        // frame's expense. Padding is skipped entirely for a gap wider than
+        // ~1 s (a hold — the previous frame's derived duration covers it) and
+        // while padding is suspended under sustained saturation.
+        if paddingEnabled, lastSlot >= 0, slot - lastSlot > 1, slot - lastSlot <= tcRate,
+            let last = lastSample
+        {
+            var gap = lastSlot + 1
+            while gap < slot, ready() {
                 if appendFrame(last, at: gap) {
                     frames += 1
                     padded += 1
                     lastSlot = gap
                 }
+                gap += 1
             }
         }
-        // Re-check before the real frame: the padding above, or plain encoder
-        // load, may have filled the queue. Drop rather than append to an
-        // unready input (which aborts); the next frame continues the timeline.
-        guard video.isReadyForMoreMediaData else {
+
+        // The real frame is never sacrificed for padding. If the encoder is not
+        // ready, apply back-pressure — retry for up to one frame period for it
+        // to drain — rather than dropping the frame that actually changed; a
+        // busy encoder then slows the source instead of starving the footage.
+        // Only count a drop when the frame is genuinely lost past that window.
+        let target = max(slot, lastSlot + 1)
+        let deadline = Date().addingTimeInterval(1.0 / Double(tcRate))
+        var landed = false
+        repeat {
+            if ready(), appendFrame(sampleBuffer, at: target) {
+                frames += 1
+                lastSlot = target
+                lastSample = sampleBuffer
+                landed = true
+                break
+            }
+            usleep(500)
+        } while Date() < deadline
+        if !landed {
             dropped += 1
             if let error = writer.error { failure = "write failed: \(error)" }
-            return
         }
-        if appendFrame(sampleBuffer, at: slot) {
-            frames += 1
-            lastSlot = slot
-            lastSample = sampleBuffer
-        } else {
-            dropped += 1
-            if let error = writer.error { failure = "write failed: \(error)" }
+
+        // Suspend or resume padding on the last second's drop rate.
+        reviewPadding()
+    }
+
+    /// Whether the encoder will take another sample. The optional gate is a
+    /// test seam to simulate saturation; production uses the input directly.
+    private func ready() -> Bool {
+        guard let video else { return false }
+        if let gate = readinessGate, !gate() { return false }
+        return video.isReadyForMoreMediaData
+    }
+
+    /// Once a second, disable padding if more than ~2% of frames dropped (the
+    /// encoder is saturated and any duplicate steals a real frame's slot), or
+    /// re-enable it below ~1%.
+    private func reviewPadding() {
+        guard delivered - windowDelivered >= tcRate else { return }
+        let d = delivered - windowDelivered
+        let dr = dropped - windowDropped
+        let rate = d > 0 ? Double(dr) / Double(d) : 0
+        if rate > 0.02 {
+            paddingEnabled = false
+        } else if rate < 0.01 {
+            paddingEnabled = true
         }
+        windowDelivered = delivered
+        windowDropped = dropped
     }
 
     /// Append one frame at a CFR slot: restamp to the grid tick and one

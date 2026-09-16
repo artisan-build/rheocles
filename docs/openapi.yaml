@@ -43,7 +43,7 @@ x-websocket:
 x-events:
   - event: levels
     description: Per-stream peak level (audio, dBFS), frames written, drift, frames dropped and measured frame rate, ~4x/s while recording.
-    example: { event: levels, take: 20260912T045007-5kqn, streams: [ { id: 'camera:0x2300000fd9009c', levelDb: null, framesWritten: 24000, drift: -0.5, framesDropped: 3916, measuredFrameRate: 59.94 } ] }
+    example: { event: levels, take: 20260912T045007-5kqn, streams: [ { id: 'camera:0x2300000fd9009c', levelDb: null, framesWritten: 24000, drift: -0.5, framesDropped: 3916, measuredFrameRate: 59.94, paddingOff: true } ] }
   - event: marker
     description: A marker was added to the active take.
     example: { event: marker, take: 20260912T045007-5kqn, marker: { t: 2.042, label: chapter 1 } }

@@ -243,6 +243,39 @@ struct WriterTests {
         #expect(writer.framesDropped == 0, "a hold dropped \(writer.framesDropped) later frames")
     }
 
+    @Test(
+        "A throttled encoder does not starve real frames — real frames come first (hotfix)",
+        .enabled(if: rheoMediaTestsEnabled))
+    func throttledEncoderKeepsRealFrames() async throws {
+        // Simulate a saturated shared encoder: the readiness gate says "not
+        // ready" 30% of the time while a 60 fps source is fed in real time.
+        final class Gate: @unchecked Sendable {
+            let lock = NSLock()
+            var rng = SystemRandomNumberGenerator()
+            func ready() -> Bool { lock.withLock { Double.random(in: 0..<1, using: &rng) >= 0.3 } }
+        }
+        let gate = Gate()
+        let url = temp("throttle.mov")
+        let clock = HostClock.shared
+        let writer = VideoWriter(url: url, codec: .hevc, frameRate: 60, clock: clock)
+        writer.readinessGate = { gate.ready() }
+        let start = clock.nowHostSeconds
+        let count = 120  // ~2 s at 60 fps
+        for i in 0..<count {
+            writer.handle(
+                try frame(width: 320, height: 240, pts: start + Double(i) / 60, shade: UInt8(i & 0xff)))
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        #expect(await writer.finish() == nil, "throttling must not abort")
+        let real = writer.framesDelivered - writer.framesDropped
+        let pads = writer.framesWritten - real
+        // Real frames are never sacrificed for padding.
+        #expect(
+            real >= Int(0.95 * Double(writer.framesDelivered)),
+            "kept \(real)/\(writer.framesDelivered) real frames")
+        #expect(pads <= real, "pads (\(pads)) must not exceed real frames (\(real))")
+    }
+
     @Test("Video: ProRes 422 is the alternative codec", .enabled(if: rheoMediaTestsEnabled))
     func prores() async throws {
         let url = temp("prores.mov")
